@@ -12,7 +12,7 @@ static HOOK: Once = Once::new();
 /// wrapping it, so installing it again changes nothing.
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "the hosts install it (phase C-2)")
+    expect(dead_code, reason = "the hosts install it; they are not written yet")
 )]
 pub(crate) fn install_panic_hook(name: &'static str) {
     HOOK.call_once(|| std::panic::set_hook(Box::new(move |info| report(name, info))));

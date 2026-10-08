@@ -80,7 +80,10 @@ pub(super) static INSTALLED: Mutex<Option<Installed>> = Mutex::new(None);
 /// See [`InstallError`].
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "the hosts install logging (phase C-2)")
+    expect(
+        dead_code,
+        reason = "the hosts install logging; they are not written yet"
+    )
 )]
 pub(crate) fn install(inputs: LogInputs) -> Result<(), InstallError> {
     let mut installed = INSTALLED.lock().unwrap_or_else(PoisonError::into_inner);

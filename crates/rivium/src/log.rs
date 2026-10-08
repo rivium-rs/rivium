@@ -32,7 +32,10 @@ use rivium_error::{Error, kinds};
 
 #[cfg_attr(
     not(test),
-    expect(unused_imports, reason = "the hosts install it (phase C-2)")
+    expect(
+        unused_imports,
+        reason = "the hosts install it; they are not written yet"
+    )
 )]
 pub(crate) use panic::install_panic_hook;
 pub(crate) use settings::LogSettings;
