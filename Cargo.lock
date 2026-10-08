@@ -262,6 +262,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "rivium",
+ "rivium-http",
+ "rivium-test",
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
 name = "http-body"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

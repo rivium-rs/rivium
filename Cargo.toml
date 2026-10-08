@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/*",
     "examples/embedded/*",
+    "examples/http-api",
     "examples/smoke",
     "examples/udp-echo",
     "fixtures/jni-forbid",
