@@ -50,9 +50,10 @@ fn todays_logs() -> ExportRequest {
     }
 }
 
-/// Waits until the export is no longer running.
+/// Waits until the export is no longer running: minutes under an emulator, where deflating
+/// takes long in a debug build.
 fn finished(exporter: &LogExporter, id: ExportId) -> Progress {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + Duration::from_secs(300);
     loop {
         let progress = exporter.progress(id).unwrap();
         if progress.state != ExportState::Running || Instant::now() > deadline {
