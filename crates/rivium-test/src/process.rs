@@ -23,7 +23,8 @@ use serde_json::{Map, Value};
 const WAIT: Duration = Duration::from_secs(60);
 
 /// A command that runs `bin`: through cargo's target runner when the test's target is a Unix
-/// one with a runner set, else directly.
+/// one with a runner set, else directly. The caller's `RUST_LOG` does not reach the program,
+/// so what it logs does not depend on the shell that runs the tests: set filters with `--set`.
 #[must_use]
 pub fn command(bin: &Path) -> Command {
     let triple = crate::TARGET.to_uppercase().replace(['-', '.'], "_");
@@ -31,14 +32,17 @@ pub fn command(bin: &Path) -> Command {
     let mut parts: Vec<String> = (runner.filter(|_| cfg!(unix)))
         .map(|runner| runner.split_whitespace().map(String::from).collect())
         .unwrap_or_default();
-    match parts.is_empty() {
+    let mut command = match parts.is_empty() {
         true => Command::new(bin),
         false => {
             let mut command = Command::new(parts.remove(0));
             command.args(parts).arg(bin);
             command
         }
-    }
+    };
+    // The program reads it as `log.filter`.
+    command.env_remove("RUST_LOG");
+    command
 }
 
 /// Starts the program `bin` with `args`, which log its events at `info` and above to standard
