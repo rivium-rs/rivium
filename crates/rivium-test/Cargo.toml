@@ -1,0 +1,18 @@
+[package]
+name = "rivium-test"
+description = "Test support for Rivium services: scripted services, log capture, contract suites"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+include = ["src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
+keywords = ["testing", "service", "lifecycle"]
+categories = ["development-tools::testing"]
+
+[dependencies]
+rivium.workspace = true
+
+[lints]
+workspace = true

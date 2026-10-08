@@ -1,0 +1,35 @@
+# cargo-deny policy for the Rivium workspace (run in CI by `ci/lint`: `cargo deny check`).
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+deny = [
+    # No C/C++ build chains beyond `cc` for ring: TLS uses rustls with ring, never aws-lc or OpenSSL.
+    { crate = "aws-lc-rs", reason = "TLS uses rustls with the ring provider" },
+    { crate = "aws-lc-sys", reason = "TLS uses rustls with the ring provider" },
+    { crate = "openssl", reason = "TLS uses rustls with the ring provider" },
+    { crate = "openssl-sys", reason = "TLS uses rustls with the ring provider" },
+    { crate = "cmake", reason = "no CMake build chain in the dependency graph" },
+    { crate = "cc", wrappers = ["ring"], reason = "only ring may compile C code" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

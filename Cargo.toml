@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "examples/*"]
+exclude = ["template"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# MSRV is a platform commitment: do not raise it without the maintainer's approval.
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/rivium-rs/rivium"
+
+[workspace.dependencies]
+# All Rivium crates share one version and are released together.
+rivium-error = { path = "crates/rivium-error", version = "0.1.0" }
+rivium = { path = "crates/rivium", version = "0.1.0" }
+rivium-http = { path = "crates/rivium-http", version = "0.1.0" }
+rivium-jni = { path = "crates/rivium-jni", version = "0.1.0" }
+rivium-test = { path = "crates/rivium-test", version = "0.1.0" }
+
+# Third-party crates: default features are always off; members enable what they use.
+axum = { version = "0.8", default-features = false }
+jni = { version = "0.22.4", default-features = false }
+rustls = { version = "0.23", default-features = false }
+tokio = { version = "1.47", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+undocumented_unsafe_blocks = "warn"
+
+# Every profile keeps the default `panic = "unwind"`: hosts turn panics into service failures and
+# FFI result codes, which `panic = "abort"` would make impossible.

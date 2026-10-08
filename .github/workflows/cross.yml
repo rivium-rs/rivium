@@ -1,0 +1,109 @@
+name: cross
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Keep in sync with scripts/local/common.sh. Images are pinned by digest in Cross.toml.
+  CROSS_REV: 65fe72b0cdb1e7e0cc0652517498d4389cc8f5cf
+
+jobs:
+  armv7:
+    name: cross/armv7
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target armv7-unknown-linux-gnueabihf && rustup default stable
+      - uses: ./.github/actions/install-cross
+        with:
+          rev: ${{ env.CROSS_REV }}
+      - name: Tests under qemu-user
+        run: cross test --locked --workspace --target armv7-unknown-linux-gnueabihf
+      - uses: ./.github/actions/setup-zigbuild
+      - name: glibc 2.17 baseline build and check
+        run: |
+          cargo zigbuild --locked --release -p smoke -p smoke-jni --target armv7-unknown-linux-gnueabihf.2.17
+          out=target/armv7-unknown-linux-gnueabihf/release
+          scripts/check-glibc.sh 2.17 "$out/smoke" "$out/libsmoke_jni.so"
+
+  loongarch64:
+    name: cross/loongarch64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target loongarch64-unknown-linux-gnu && rustup default stable
+      - uses: ./.github/actions/install-cross
+        with:
+          rev: ${{ env.CROSS_REV }}
+      - name: Tests under qemu-user
+        run: cross test --locked --workspace --target loongarch64-unknown-linux-gnu
+      - name: glibc 2.36 baseline (the image's sysroot)
+        run: |
+          cross build --locked --release -p smoke -p smoke-jni --target loongarch64-unknown-linux-gnu
+          out=target/loongarch64-unknown-linux-gnu/release
+          scripts/check-glibc.sh 2.36 "$out/smoke" "$out/libsmoke_jni.so"
+
+  glibc:
+    name: cross/glibc
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target aarch64-unknown-linux-gnu && rustup default stable
+      - uses: ./.github/actions/setup-zigbuild
+      - name: glibc 2.17 baseline builds and check
+        run: |
+          cargo zigbuild --locked --release -p smoke -p smoke-jni \
+            --target x86_64-unknown-linux-gnu.2.17 --target aarch64-unknown-linux-gnu.2.17
+          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            scripts/check-glibc.sh 2.17 "target/$target/release/smoke" "target/$target/release/libsmoke_jni.so"
+          done
+      - name: Planted violation (a build against the runner's glibc must fail the check)
+        run: |
+          cargo build --locked --release -p smoke
+          if scripts/check-glibc.sh 2.17 target/release/smoke; then
+            echo "::error::check-glibc.sh accepted a binary built against glibc $(ldd --version | head -n 1 | awk '{ print $NF }')"
+            exit 1
+          fi
+      - name: Run the 2.17 build on CentOS 7 (glibc 2.17)
+        run: docker run --rm -v "$PWD/target/x86_64-unknown-linux-gnu/release:/b" centos:7 /b/smoke check
+
+  android:
+    name: cross/android
+    runs-on: ubuntu-24.04
+    env:
+      TARGET: aarch64-linux-android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target aarch64-linux-android && rustup default stable
+      - name: JNI cdylib with the NDK (API 30 linker, 16 KB pages) and its alignment
+        run: |
+          ndk=$ANDROID_NDK_LATEST_HOME
+          grep Pkg.Revision "$ndk/source.properties"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang"
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384" \
+            cargo build --locked --release -p smoke-jni --target "$TARGET"
+          scripts/check-align.sh 16384 "target/$TARGET/release/libsmoke_jni.so"
+          # Planted violation: the same library linked for 4 KB pages must fail the check.
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=4096" \
+            cargo build --locked --release -p smoke-jni --target "$TARGET" --target-dir target/plant-4k
+          if scripts/check-align.sh 16384 "target/plant-4k/$TARGET/release/libsmoke_jni.so"; then
+            echo "::error::check-align.sh accepted a library linked for 4 KB pages"
+            exit 1
+          fi
+      - uses: ./.github/actions/install-cross
+        with:
+          rev: ${{ env.CROSS_REV }}
+      - name: Non-JNI tests under the bionic runner
+        run: cross test --locked --workspace --target "$TARGET"

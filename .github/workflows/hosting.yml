@@ -1,0 +1,47 @@
+name: hosting
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  systemd:
+    name: hosting/systemd
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - run: cargo build --locked --release -p smoke
+      - run: scripts/hosting/systemd.sh target/release/smoke
+
+  winsw:
+    name: hosting/winsw
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal && rustup default stable-x86_64-pc-windows-gnu
+      - run: cargo build --locked --release -p smoke
+      - shell: pwsh
+        run: scripts/hosting/winsw.ps1 -Binary target/release/smoke.exe
+
+  launchd:
+    name: hosting/launchd
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - run: cargo build --locked --release -p smoke
+      - run: scripts/hosting/launchd.sh target/release/smoke

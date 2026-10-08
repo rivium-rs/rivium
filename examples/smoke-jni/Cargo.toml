@@ -1,0 +1,17 @@
+[package]
+name = "smoke-jni"
+version = "0.0.0"
+description = "JNI smoke test for the CI baseline (JNI_OnLoad + RegisterNatives); replaced by the real examples"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+jni.workspace = true
+
+[lints]
+workspace = true

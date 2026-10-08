@@ -1,0 +1,22 @@
+[package]
+name = "rivium"
+description = "Service foundation: configuration, logging, service lifecycle and process/embedded hosts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+include = ["src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
+keywords = ["service", "lifecycle", "shutdown", "logging", "config"]
+categories = ["asynchronous", "config"]
+
+[features]
+# Log export mechanism (selection, packaging, progress, expiry).
+log-export = []
+
+[dependencies]
+rivium-error.workspace = true
+
+[lints]
+workspace = true
