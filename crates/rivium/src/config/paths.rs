@@ -51,7 +51,10 @@ impl Paths {
     /// embedded host, which reads no environment and must pass the root.
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "the hosts locate the files (phase C-2)")
+        expect(
+            dead_code,
+            reason = "the hosts locate the files; they are not written yet"
+        )
     )]
     pub(crate) fn locate(
         name: &str,
