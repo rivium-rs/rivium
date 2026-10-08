@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Refuses pushes that would publish a denylist entry: checks every commit that the remote does not
+# have yet (content, path names, author/committer, message) and the name of each pushed ref.
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+. "$root/scripts/hooks/denylist.sh"
+remote=$1
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref _remote_sha; do
+  [ "$local_sha" != "$zero" ] || continue # deleting a ref publishes nothing
+  refs=$(mktemp -d)
+  printf '%s\n%s\n' "$local_ref" "$remote_ref" > "$refs/pushed-ref-names"
+  "$root/scripts/check-public.sh" "$denylist" --dir "$refs" || status=1
+  rm -rf "$refs"
+  "$root/scripts/check-public.sh" "$denylist" --range "$local_sha" --not --remotes="$remote" || status=1
+done
+[ "$status" -eq 0 ] || echo "pre-push: refusing to push (public-content check failed)" >&2
+exit "$status"
