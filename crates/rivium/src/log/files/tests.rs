@@ -347,12 +347,12 @@ fn block_renames(dir: &Path, _file: &Path) -> Option<Box<dyn std::any::Any>> {
 #[cfg(windows)]
 fn block_renames(_dir: &Path, file: &Path) -> Option<Box<dyn std::any::Any>> {
     use std::os::windows::fs::OpenOptionsExt;
-    // FILE_SHARE_READ | FILE_SHARE_WRITE, without FILE_SHARE_DELETE.
+    // FILE_SHARE_READ | FILE_SHARE_WRITE, without FILE_SHARE_DELETE. Never skipped on Windows.
     let held = fs::OpenOptions::new()
         .read(true)
         .share_mode(0x1 | 0x2)
         .open(file)
-        .ok()?;
+        .expect("open the active file without sharing delete access");
     Some(Box::new(held))
 }
 
