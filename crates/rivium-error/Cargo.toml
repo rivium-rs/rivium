@@ -11,5 +11,8 @@ include = ["src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
 keywords = ["error", "service"]
 categories = ["rust-patterns"]
 
+[dependencies]
+tracing = { workspace = true, features = ["std"] }
+
 [lints]
 workspace = true
