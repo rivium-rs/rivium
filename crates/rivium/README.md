@@ -8,8 +8,9 @@ a TOML file, environment variables and `--set` overrides, with every problem rep
 compression and a disk budget, Android's log, the flush barrier, the panic hook), the service
 contract (`Service`, `ServiceContext`, `service()`, `periodic()`, readiness), the lifecycle
 kernel that supervises services (`lifecycle::Supervisor`), the process host (`App`,
-`process::run`, the exit codes of `Code`, in-process restarts), `fs::atomic_write` and
-`stats()`. The embedded host comes next. See the
+`process::run`, the exit codes of `Code`, in-process restarts), the embedded host
+(`embedded::Host`: start and stop on a thread of their own, result codes for FFI callers,
+restarts in the process), `fs::atomic_write` and `stats()`. See the
 [repository README](https://github.com/rivium-rs/rivium).
 
 ## License
