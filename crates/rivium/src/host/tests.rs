@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use super::{End, Failure, Overrides, Round, check, run};
+use super::{End, Event, Failure, Overrides, Round, check, run};
 use crate::lifecycle::{StopReason, Supervisor};
 use crate::log::LogSettings;
 use crate::{Code, ServiceKind, service};
@@ -35,6 +35,10 @@ enum Script {
     Panic,
     /// Building the round fails with this code, as loading the configuration again can.
     BuildFails(Code),
+    /// The only service fails before it is ready.
+    FailEarly,
+    /// A service asks for a restart before it is ready.
+    RestartEarly,
 }
 
 /// The rounds of a test: one script per round, the last one repeating; records when each
@@ -84,6 +88,16 @@ impl Rounds {
                     ctx.ready();
                     Ok(())
                 }),
+                Script::FailEarly => service("http", ServiceKind::Frontline, |_| async {
+                    Error::e_explain(kinds::UNAVAILABLE, "no device")
+                }),
+                Script::RestartEarly => {
+                    service("config", ServiceKind::Background, |ctx| async move {
+                        ctx.restarter().request("early");
+                        ctx.stopped().await;
+                        Ok(())
+                    })
+                }
             };
             let supervisor = Supervisor::new(secs(30), secs(3)).with(service);
             Ok(Round {
@@ -124,13 +138,25 @@ fn stops_at(times: &[u64]) -> mpsc::UnboundedReceiver<StopReason> {
 
 async fn ends(scripts: &[Script], in_process: bool, stops: &[u64]) -> (End, Rounds) {
     let rounds = Rounds::default();
-    let end = run(
-        rounds.build(scripts, in_process),
-        in_process,
-        &mut stops_at(stops),
-    )
-    .await;
+    let build = rounds.build(scripts, in_process);
+    let end = run(build, in_process, true, &mut stops_at(stops), |_| {}).await;
     (end, rounds)
+}
+
+/// As the embedded host runs the loop: in the process, without retrying a first round that
+/// never runs. Returns the events too, one line each.
+async fn embedded(scripts: &[Script], stops: &[u64]) -> (End, Rounds, Vec<String>) {
+    let (rounds, mut events) = (Rounds::default(), Vec::new());
+    let build = rounds.build(scripts, true);
+    let heard = |event: Event<'_>| {
+        events.push(match event {
+            Event::Phase(phase) => phase.to_string(),
+            Event::Failed(failure) => format!("failed: {}", failure.message),
+            Event::Rebuilt => "rebuilt".to_string(),
+        });
+    };
+    let end = run(build, true, false, &mut stops_at(stops), heard).await;
+    (end, rounds, events)
 }
 
 fn shown(end: &End) -> (Code, String) {
@@ -232,7 +258,7 @@ async fn a_stop_request_ends_the_loop_after_its_round() {
             in_process: true,
         })
     };
-    let end = run(build, true, &mut stops_at(&[1_000])).await;
+    let end = run(build, true, true, &mut stops_at(&[1_000]), |_| {}).await;
     assert_eq!(end.code, Code::Fault);
 }
 
@@ -268,6 +294,56 @@ async fn panics_and_failed_rebuilds_count_as_failures_in_process() {
             Code::Config,
             "gave up after 10 failures in a row; the last: cannot build".to_string()
         )
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn without_retrying_the_first_round_it_ends_the_loop_unless_it_runs() {
+    let cases = [
+        (Script::FailEarly, "startup failed: service http: no device"),
+        (Script::Panic, "startup failed: panic: composition root"),
+        (Script::BuildFails(Code::StartupFailed), "cannot build"),
+        (
+            Script::RestartEarly,
+            "startup failed: restart requested: early",
+        ),
+    ];
+    for (script, message) in cases {
+        let (end, rounds, _) = embedded(&[script], &[]).await;
+        assert_eq!(
+            shown(&end),
+            (Code::StartupFailed, message.to_string()),
+            "{script:?}"
+        );
+        assert_eq!(rounds.built.lock().unwrap().len(), 1, "{script:?}");
+    }
+    // Once the first round has run, its failure is retried as any other.
+    let (end, rounds, _) = embedded(&[Script::FailAfter(0), Script::Serve], &[5_000]).await;
+    assert_eq!(
+        (shown(&end), rounds.gaps()),
+        ((Code::Ok, String::new()), vec![1])
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_host_hears_every_phase_and_each_retried_failure_in_order() {
+    // The service fails as soon as it is ready: the run is running for no time at all.
+    let scripts = [Script::FailAfter(0), Script::Serve];
+    let (_, _, events) = embedded(&scripts, &[5_000]).await;
+    assert_eq!(
+        events,
+        [
+            "starting",
+            "running",
+            "stopping",
+            "stopped",
+            "failed: stopped after a fault: service http: device gone",
+            "rebuilt",
+            "starting",
+            "running",
+            "stopping",
+            "stopped",
+        ]
     );
 }
 

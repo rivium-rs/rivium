@@ -58,6 +58,12 @@ pub fn flush(timeout: Duration) -> crate::Result<()> {
     }
 }
 
+/// Whether logging is installed in this process.
+pub(crate) fn installed() -> bool {
+    let installed = install::INSTALLED.lock();
+    installed.unwrap_or_else(PoisonError::into_inner).is_some()
+}
+
 /// The counters of the installed log files: bytes written, write failures, files deleted by the
 /// budget.
 pub(crate) fn counters() -> [u64; 3] {

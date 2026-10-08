@@ -20,12 +20,13 @@ pub(super) enum Command {
     Help,
 }
 
-/// Where the configuration comes from.
+/// Where the configuration comes from: the options of `run`, which are also the arguments of
+/// the embedded host's start.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(super) struct Options {
-    pub(super) root: Option<PathBuf>,
-    pub(super) config: Option<PathBuf>,
-    pub(super) sets: Vec<(String, String)>,
+pub(crate) struct Options {
+    pub(crate) root: Option<PathBuf>,
+    pub(crate) config: Option<PathBuf>,
+    pub(crate) sets: Vec<(String, String)>,
 }
 
 /// Parses the arguments after the program name; the error says what is wrong.
@@ -49,7 +50,8 @@ pub(super) fn parse(args: &[OsString]) -> Result<Command, String> {
     })
 }
 
-fn options(args: &[OsString], sets_only: bool) -> Result<Options, String> {
+/// Parses options; with `sets_only`, as for `default-config`, only `--set`.
+pub(crate) fn options(args: &[OsString], sets_only: bool) -> Result<Options, String> {
     let mut options = Options::default();
     let mut args = args.iter();
     while let Some(arg) = args.next() {
