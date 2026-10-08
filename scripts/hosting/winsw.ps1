@@ -64,6 +64,11 @@ function Test-Scenario([int]$Code) {
         Check "exit $Code is restarted by onfailure" (Wait-Until 60 { (Count ' ready' $log) -ge 1 })
         Check 'two runs started' ((Count 'started' $log) -eq 2)
 
+        # WinSW 2.12 does not log the child's exit code, so hold a handle to the running child and
+        # read the exit code from it once the child has exited.
+        $childPid = [int]((Select-String -Path $log -Pattern 'started pid=(\d+)' | Select-Object -Last 1).Matches[0].Groups[1].Value)
+        $child = [Diagnostics.Process]::GetProcessById($childPid)
+        $null = $child.Handle
         $watch = [Diagnostics.Stopwatch]::StartNew()
         & $winsw stop
         $stopped = Wait-Until 30 { (Get-Service $id).Status -eq 'Stopped' }
@@ -72,9 +77,12 @@ function Test-Scenario([int]$Code) {
         Check 'service stopped' $stopped
         Check 'stopped within 15000 ms' ($watch.ElapsedMilliseconds -lt 15000)
         Check 'CTRL_C received and graceful stop logged' (((Count 'stop signal=CTRL_C' $log) -eq 1) -and ((Count ' stopped' $log) -eq 1))
+        Check 'stopped run exited with code 0' ($child.WaitForExit(15000) -and $child.ExitCode -eq 0)
+        Write-Output "stopped run exit code: $($child.ExitCode)"
+        # WinSW 2.12 logs "Process <pid> terminated." when CTRL_C did not stop the child in time.
+        Check 'no forced kill' ((Count "Process $childPid terminated." $wrapper) -eq 0)
         Write-Output '--- smoke log'; Get-Content $log
         Write-Output '--- WinSW log'; Get-Content $wrapper -ErrorAction SilentlyContinue
-        Check 'WinSW recorded exit code 0 for the stopped run' ((Count 'finished with 0' $wrapper) -ge 1)
     } finally {
         & $winsw stop 2>$null | Out-Null
         & $winsw uninstall
