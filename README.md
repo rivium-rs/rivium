@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./docs/rivium.png" alt="rivium logo" width="70%" />
+</p>
+
 # Rivium
 
 Rivium is a small foundation for long-running Rust services that run either as a standalone
@@ -6,6 +10,8 @@ through JNI. Both forms share one service lifecycle, and the crates also provide
 layered configuration, logging with a disk budget and an axum integration. They are published as
 versioned crates, so a fix reaches every service through a dependency update.
 
+> [!NOTE]
+>
 > **Status: under construction.** Nothing is published yet. The repository currently holds the
 > crate skeletons and the CI baseline: toolchain, platform and hosting smoke tests for every
 > supported target.
