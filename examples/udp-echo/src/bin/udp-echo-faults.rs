@@ -31,13 +31,13 @@ impl App for Faulty {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     type Config = Config;
 
-    fn services(config: &Config, _: &AppContext) -> Result<Vec<Box<dyn Service>>> {
+    fn services(config: &Config, ctx: &AppContext) -> Result<Vec<Box<dyn Service>>> {
         let faults = &config.faults;
         assert!(
             !faults.panic_in_services,
             "a panic injected in the composition root"
         );
-        let mut services = udp_echo::services(&config.echo, &config.stats);
+        let mut services = udp_echo::services(&config.echo, &config.stats, ctx.log_exporter());
         if faults.fail_after_ms > 0 {
             let after = Duration::from_millis(faults.fail_after_ms);
             let fault = rivium::service("fault", ServiceKind::Background, move |ctx| async move {

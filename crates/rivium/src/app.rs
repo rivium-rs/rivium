@@ -81,6 +81,8 @@ pub struct AppContext {
     readiness: Readiness,
     restarter: Restarter,
     check: Check,
+    #[cfg(feature = "log-export")]
+    exporter: log::LogExporter,
 }
 
 /// Checks a candidate configuration file.
@@ -101,6 +103,8 @@ impl AppContext {
             readiness: supervisor.readiness(),
             restarter: supervisor.restarter(),
             check,
+            #[cfg(feature = "log-export")]
+            exporter: log::exporter(),
         }
     }
 
@@ -145,6 +149,14 @@ impl AppContext {
     /// Every problem with the candidate.
     pub fn check_config(&self, candidate: &str) -> std::result::Result<(), Report> {
         (self.check)(candidate)
+    }
+
+    /// Packs log files into an archive to download (feature `log-export`). It belongs to the
+    /// process's logging, so an export outlives a restart in the process.
+    #[cfg(feature = "log-export")]
+    #[must_use]
+    pub fn log_exporter(&self) -> &log::LogExporter {
+        &self.exporter
     }
 }
 

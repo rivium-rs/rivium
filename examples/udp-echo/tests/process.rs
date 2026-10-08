@@ -91,6 +91,51 @@ fn sigterm_stops_the_service_with_0_and_each_step_is_logged_once() {
 
 #[cfg(unix)]
 #[test]
+fn a_log_export_in_progress_is_cancelled_before_the_exit() {
+    let root = root("export");
+    // A large rolled file from today, left by an earlier run: packing it takes a while.
+    let dir = root.join("logs/udp-echo");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+    let noise: Vec<u8> = (0..64 << 20)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            b"0123456789abcdef"[(state & 15) as usize]
+        })
+        .collect();
+    let today = rivium::log::Date::today();
+    std::fs::write(dir.join(format!("udp-echo.{today}.1.log")), noise).unwrap();
+    let program = start(BIN, &root, &[]);
+    let addr = program.addr_of("echo");
+    UdpSocket::bind("127.0.0.1:0")
+        .unwrap()
+        .send_to(b"export", addr)
+        .unwrap();
+    program.wait_for("log export started", &[]);
+    program.signal("TERM");
+    let exited = program.wait();
+    assert_eq!((exited.code, exited.stderr.as_str()), (Some(0), ""));
+    let names = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name());
+    let exports: Vec<_> = names
+        .filter(|name| name.to_string_lossy().starts_with("export-"))
+        .collect();
+    assert_eq!(exports, Vec::<std::ffi::OsString>::new());
+    let log = log(&root, "udp-echo");
+    let cancelled = log
+        .find("log export cancelled")
+        .unwrap_or_else(|| panic!("{log}"));
+    assert!(
+        cancelled < log.find("rivium::process: stopped").unwrap(),
+        "{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn a_second_signal_cuts_the_stop_short_with_128_plus_its_number() {
     let root = root("second");
     // Blocking reads of 30s hold the stop up.

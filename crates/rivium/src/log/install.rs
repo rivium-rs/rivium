@@ -66,6 +66,8 @@ pub(super) struct Installed {
     dir: PathBuf,
     pub(super) files: Files,
     filters: Filters,
+    #[cfg(feature = "log-export")]
+    pub(super) exports: Arc<super::export::Exports>,
 }
 
 /// The process's logging, installed once.
@@ -92,12 +94,21 @@ pub(crate) fn install(inputs: LogInputs) -> Result<(), InstallError> {
     subscriber
         .try_init()
         .map_err(|e| InstallError::Io(io::Error::other(e)))?;
+    #[cfg(feature = "log-export")]
+    let exports = Arc::new(super::export::Exports::new(
+        &inputs.name,
+        inputs.dir.clone(),
+        sinks(&inputs.name, &inputs.settings),
+        &inputs.settings.export,
+    ));
     let (settings, dir) = (inputs.settings, inputs.dir);
     *installed = Some(Installed {
         settings,
         dir,
         files,
         filters,
+        #[cfg(feature = "log-export")]
+        exports,
     });
     Ok(())
 }
@@ -122,23 +133,10 @@ impl Installed {
         for (index, handle) in &self.filters {
             let _ = handle.reload(EnvFilter::new(&new[*index]));
         }
-        let kept: Vec<&str> = [
-            (
-                "log.file.max_file_size",
-                now.file.max_file_size != then.file.max_file_size,
-            ),
-            (
-                "log.file.max_total_size",
-                now.file.max_total_size != then.file.max_total_size,
-            ),
-            (
-                "log.console.format",
-                now.console.format != then.console.format,
-            ),
-        ]
-        .into_iter()
-        .filter_map(|(key, differs)| differs.then_some(key))
-        .collect();
+        // The directory and the files are checked above, against the resolved directory.
+        let kept: Vec<&str> = (now.unchangeable(then).into_iter())
+            .filter(|key| !["log.file.dir", "log.files"].contains(key))
+            .collect();
         if !kept.is_empty() {
             tracing::warn!(keys = ?kept, "log settings changed; they take effect when the process restarts");
         }
@@ -190,7 +188,7 @@ pub(super) fn build(
         sinks: sinks(&inputs.name, settings),
         max_file_size: settings.file.max_file_size,
         max_total_size: settings.file.max_total_size,
-        export_reserve: 0,
+        export_reserve: settings.export_reserve(),
     };
     let files = Files::start(config, Arc::new(SystemTime::now)).map_err(InstallError::Io)?;
     let filters = filters(settings);

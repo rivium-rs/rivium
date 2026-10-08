@@ -40,7 +40,9 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
-use crate::host::{self, AFTER_DEADLINE, End, Event, FLUSH, Failure, RUNTIME_SHUTDOWN, Rounds};
+use crate::host::{
+    self, AFTER_DEADLINE, EXPORT_CANCEL, End, Event, FLUSH, Failure, RUNTIME_SHUTDOWN, Rounds,
+};
 use crate::lifecycle::StopReason;
 use crate::lifecycle::health::Phase;
 use crate::log::{self, payload_text};
@@ -435,6 +437,7 @@ fn serve<A: App>(
         }
     });
     runtime.shutdown_timeout(RUNTIME_SHUTDOWN);
+    log::cancel_export(EXPORT_CANCEL);
     end
 }
 
