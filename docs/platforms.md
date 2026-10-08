@@ -25,9 +25,11 @@ The minimum supported Rust version is 1.92, checked by `ci/msrv`.
 
 ## Current state
 
-First edition, 2026-10-08 (CI baseline). The library crates are still skeletons, so every job
-above runs smoke programs that exercise what a Rivium service depends on: a multi-threaded tokio
-runtime, an axum server, a rustls handshake with the ring provider, a process that stops
-gracefully on its platform's stop request, and a JNI library registered with `RegisterNatives`.
-The jobs listed for the T1 and T2 rows pass; the T3 rows have no record yet and are unverified.
-The table is finalised once the library and the validation slices are complete.
+First edition, 2026-10-08 (CI baseline), updated as the crates are implemented. Every test job
+runs the workspace tests: the T2 rows run them under qemu-user or the bionic runner, including
+the embedded host's tests. The JNI rows build the `beacon-jni` example with `rivium_jni::export!`:
+`ci/test-linux` runs rivium-jni's desktop JVM contract on it, `cross/android` checks its 16 KB
+page alignment, and the glibc checks cover it. The glibc checks and the hosting tests still use a
+smoke program for the process form. The jobs listed for the T1 and T2 rows pass; the T3 rows
+have no record yet and are unverified. The table is finalised once the library and the
+validation slices are complete.

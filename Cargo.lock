@@ -89,6 +89,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "beacon-jni"
+version = "0.1.0"
+dependencies = [
+ "beacon",
+ "rivium-jni",
+]
+
+[[package]]
 name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -315,6 +323,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "jni-forbid"
+version = "0.0.0"
+dependencies = [
+ "rivium",
+ "rivium-jni",
+]
+
+[[package]]
 name = "jni-macros"
 version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -524,6 +540,7 @@ dependencies = [
 name = "rivium-jni"
 version = "0.1.0"
 dependencies = [
+ "jni",
  "rivium",
 ]
 
@@ -735,13 +752,6 @@ dependencies = [
  "axum",
  "rustls",
  "tokio",
-]
-
-[[package]]
-name = "smoke-jni"
-version = "0.0.0"
-dependencies = [
- "jni",
 ]
 
 [[package]]

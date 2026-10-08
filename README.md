@@ -12,9 +12,9 @@ versioned crates, so a fix reaches every service through a dependency update.
 
 > [!NOTE]
 >
-> **Status: under construction.** Nothing is published yet. The repository currently holds the
-> crate skeletons and the CI baseline: toolchain, platform and hosting smoke tests for every
-> supported target.
+> **Status: under construction.** Nothing is published yet. Implemented so far: the error type,
+> configuration, logging with a disk budget, the lifecycle kernel, the process and embedded
+> hosts, the JNI adapter and the test support. The HTTP integration and log export come next.
 
 ## Crates
 

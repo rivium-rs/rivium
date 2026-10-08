@@ -1,0 +1,18 @@
+[package]
+name = "jni-forbid"
+version = "0.0.0"
+description = "Guard: a JNI library with rivium_jni::export! keeps #![forbid(unsafe_code)]"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rivium.workspace = true
+rivium-jni.workspace = true
+
+[lints]
+workspace = true

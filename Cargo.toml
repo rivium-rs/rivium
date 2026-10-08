@@ -4,8 +4,8 @@ members = [
     "crates/*",
     "examples/embedded/*",
     "examples/smoke",
-    "examples/smoke-jni",
     "examples/udp-echo",
+    "fixtures/jni-forbid",
     "fixtures/minimal",
 ]
 exclude = ["template"]
@@ -43,6 +43,8 @@ tracing-subscriber = { version = "0.3.20", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
+# Set only by test builds of rivium-jni that inject panics into its native methods.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(rivium_jni_fault)"] }
 missing_docs = "warn"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
