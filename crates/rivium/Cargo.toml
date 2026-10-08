@@ -23,7 +23,10 @@ serde_ignored.workspace = true
 serde_path_to_error.workspace = true
 toml = { workspace = true, features = ["std", "parse", "display", "serde"] }
 tracing = { workspace = true, features = ["std"] }
-tracing-subscriber = { workspace = true, features = ["std", "env-filter"] }
+tracing-subscriber = { workspace = true, features = ["std", "env-filter", "fmt", "json", "tracing-log"] }
+
+[dev-dependencies]
+log.workspace = true
 
 [lints]
 workspace = true
