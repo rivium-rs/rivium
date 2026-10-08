@@ -4,10 +4,11 @@ Test support for services built on Rivium: scripted services, log capture, proce
 
 **Status:** pre-release, not published yet. Implemented so far: `ScriptedService`, which follows
 a list of steps to drive the supervisor through any order of events; `capture_logs`, which
-captures a test's log events as JSON objects; and `deps::assert_closure_excludes`, which checks
-that a package's dependency closure on the test's target platform contains no banned crate. The
-process-level tools and the lifecycle contract suites come next. See the
-[repository README](https://github.com/rivium-rs/rivium).
+captures a test's log events as JSON objects; `process`, which runs a service program as a
+supervisor would (signals, events, exit codes) and checks the lifecycle contract every program
+keeps; and `deps::assert_closure_excludes`, which checks that a package's dependency closure on
+the test's target platform contains no banned crate. The embedded contract suite comes with the
+embedded host. See the [repository README](https://github.com/rivium-rs/rivium).
 
 ## License
 
