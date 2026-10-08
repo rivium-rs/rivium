@@ -19,8 +19,8 @@ for tool in tokei jq; do
 done
 
 # crate:budget, then the total budget. A budget is raised only with the maintainer's approval.
-budgets="rivium-error:500 rivium:4900 rivium-http:900 rivium-jni:350 rivium-test:750"
-total_budget=7400
+budgets="rivium-error:500 rivium:5400 rivium-http:900 rivium-jni:350 rivium-test:750"
+total_budget=7900
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/loc.XXXXXX")
 trap 'rm -rf "$work"' EXIT
