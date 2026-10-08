@@ -6,9 +6,10 @@ Test support for services built on Rivium: scripted services, log capture, proce
 a list of steps to drive the supervisor through any order of events; `capture_logs`, which
 captures a test's log events as JSON objects; `process`, which runs a service program as a
 supervisor would (signals, events, exit codes) and checks the lifecycle contract every program
-keeps; and `deps::assert_closure_excludes`, which checks that a package's dependency closure on
-the test's target platform contains no banned crate. The embedded contract suite comes with the
-embedded host. See the [repository README](https://github.com/rivium-rs/rivium).
+keeps; `embedded`, which checks the same contract on a program that runs embedded, through its
+`embedded::Host`; and `deps::assert_closure_excludes`, which checks that a package's dependency
+closure on the test's target platform contains no banned crate. See the
+[repository README](https://github.com/rivium-rs/rivium).
 
 ## License
 

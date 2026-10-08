@@ -70,6 +70,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "beacon"
+version = "0.1.0"
+dependencies = [
+ "rivium",
+ "rivium-test",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "beacon-bin"
+version = "0.1.0"
+dependencies = [
+ "beacon",
+ "rivium",
+ "rivium-test",
+]
+
+[[package]]
 name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,10 +1,12 @@
 //! Test support for services built on Rivium: scripted services to drive the supervisor
 //! ([`ScriptedService`]), log capture ([`capture_logs`]), tools to test a service program as a
-//! process, with the lifecycle contract every program keeps ([`process`]), and the dependency
-//! closure check ([`deps`]). Use it as a dev-dependency only.
+//! process, the lifecycle contract every program keeps as a process ([`process`]) and when
+//! embedded ([`embedded`]), and the dependency closure check ([`deps`]). Use it as a
+//! dev-dependency only.
 #![forbid(unsafe_code)]
 
 pub mod deps;
+pub mod embedded;
 mod logs;
 pub mod process;
 mod services;
