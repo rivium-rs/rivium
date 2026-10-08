@@ -476,9 +476,12 @@ dependencies = [
  "flate2",
  "log",
  "rivium-error",
+ "rivium-test",
  "serde",
  "serde_ignored",
+ "serde_json",
  "serde_path_to_error",
+ "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
@@ -511,6 +514,9 @@ version = "0.1.0"
 dependencies = [
  "rivium",
  "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
