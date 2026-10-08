@@ -17,6 +17,12 @@ log-export = []
 
 [dependencies]
 rivium-error.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+serde_ignored.workspace = true
+serde_path_to_error.workspace = true
+toml = { workspace = true, features = ["std", "parse", "display", "serde"] }
+tracing = { workspace = true, features = ["std"] }
+tracing-subscriber = { workspace = true, features = ["std", "env-filter"] }
 
 [lints]
 workspace = true
