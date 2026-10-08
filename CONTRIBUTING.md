@@ -19,7 +19,9 @@
    explains why.
 4. **Push and open a draft pull request against `main` right away.** The `ci`, `cross` and
    `hosting` workflows run on pull requests and on `main`; the public-content check runs on every
-   push.
+   push. On a pull request that changes only documentation (files under `docs/` and Markdown
+   files at the top level, as decided by `scripts/docs-only.sh`), every job of those three
+   workflows except `changes` is skipped; on `main` every job runs.
 5. **When the work is complete,** run `just check`, make sure every check is green and mark the
    pull request ready for review. Its title is a Conventional Commit that still fits in 72
    characters once GitHub appends ` (#<n>)`; `check/pr-title` checks it that way.
