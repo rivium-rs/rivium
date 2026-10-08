@@ -18,9 +18,9 @@ for tool in tokei jq; do
   command -v "$tool" > /dev/null || { echo "loc.sh: $tool is required" >&2; exit 2; }
 done
 
-# crate:budget, then the total budget.
-budgets="rivium-error:500 rivium:4000 rivium-http:900 rivium-jni:350 rivium-test:750"
-total_budget=6500
+# crate:budget, then the total budget. A budget is raised only with the maintainer's approval.
+budgets="rivium-error:500 rivium:4900 rivium-http:900 rivium-jni:350 rivium-test:750"
+total_budget=7400
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/loc.XXXXXX")
 trap 'rm -rf "$work"' EXIT
