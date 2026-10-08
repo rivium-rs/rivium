@@ -125,13 +125,20 @@ fn serve(
     restarter: &Restarter,
     echoed: &AtomicU64,
 ) -> Result<()> {
-    use std::io::ErrorKind::{ConnectionReset, TimedOut, WouldBlock};
+    use std::io::ErrorKind::{ConnectionReset, Interrupted, TimedOut, WouldBlock};
     let mut buffer = [0; 65_536];
     while !stop.is_stopping() {
         let (len, peer) = match socket.recv_from(&mut buffer) {
             Ok(received) => received,
-            // A timeout, or on Windows a peer that went away before an earlier answer.
-            Err(error) if matches!(error.kind(), WouldBlock | TimedOut | ConnectionReset) => {
+            // A timeout; a signal, which on Linux interrupts a read with a timeout even with
+            // SA_RESTART, as does stopping and continuing the process; or on Windows a peer
+            // that went away before an earlier answer.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    WouldBlock | TimedOut | Interrupted | ConnectionReset
+                ) =>
+            {
                 continue;
             }
             Err(error) => return Err(error).or_err(SOCKET, "receiving a datagram"),
