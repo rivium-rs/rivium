@@ -510,8 +510,7 @@ fn the_deadline_ends_a_stopping_run_by_its_reason() {
 
 #[test]
 fn a_deadline_before_the_run_is_stopping_is_logged_and_ignored() {
-    let logs = Logs::default();
-    tracing::subscriber::with_default(logs.subscriber(), || {
+    let logs = Logs::capture(|| {
         for mut state in [starting(), running()] {
             assert_eq!(step(&mut state, Input::Timer(Timer::Deadline)), NONE);
         }
@@ -535,18 +534,25 @@ fn nothing_counts_after_the_end() {
 
 // Logging: once, where the failure is handled
 
-/// JSON lines written while a subscriber of these logs is the default.
+/// JSON lines written while [`Logs::capture`] runs.
 #[derive(Clone, Default)]
 struct Logs(Arc<Mutex<Vec<u8>>>);
 
 impl Logs {
-    fn subscriber(&self) -> impl tracing::Subscriber + Send + Sync {
-        let logs = self.clone();
-        tracing_subscriber::fmt()
+    /// The events `f` logs on this thread.
+    fn capture(f: impl FnOnce()) -> Logs {
+        let logs = Logs::default();
+        let writer = logs.clone();
+        let subscriber = tracing_subscriber::fmt()
             .json()
             .flatten_event(true)
-            .with_writer(move || logs.clone())
-            .finish()
+            .with_writer(move || writer.clone())
+            .finish();
+        // As `rivium_test::capture_logs` does: with a second subscriber alive, a callsite that
+        // another test reaches first is not cached as never enabled.
+        let _second = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+        tracing::subscriber::with_default(subscriber, f);
+        logs
     }
 
     /// The lines of this level as `message error.type service.name task.name`.
@@ -577,8 +583,7 @@ impl io::Write for Logs {
 
 #[test]
 fn the_failure_that_stops_the_run_is_an_error_and_later_ones_warnings() {
-    let logs = Logs::default();
-    tracing::subscriber::with_default(logs.subscriber(), || {
+    let logs = Logs::capture(|| {
         let mut state = with(&[("http", Frontline), ("log", Background), ("db", Background)]);
         state.step(Input::Ready(0));
         state.step(Input::ChildFailed(1, "flush".into(), error("disk full")));
@@ -598,8 +603,7 @@ fn the_failure_that_stops_the_run_is_an_error_and_later_ones_warnings() {
         ]
     );
 
-    let logs = Logs::default();
-    tracing::subscriber::with_default(logs.subscriber(), || {
+    let logs = Logs::capture(|| {
         // A stop, then a failure: the failure becomes the reason and is the error.
         let mut state = stopping_for("stop");
         state.step(failed(LOG));

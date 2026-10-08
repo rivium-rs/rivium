@@ -4,7 +4,8 @@ use std::io;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use serde_json::{Map, Value};
-use tracing::subscriber::DefaultGuard;
+use tracing::Dispatch;
+use tracing::subscriber::{DefaultGuard, NoSubscriber};
 
 /// Captures every event logged on this thread, at every level, until the capture is dropped.
 /// It sets the thread's default subscriber and installs nothing globally, so tests that
@@ -28,10 +29,15 @@ pub fn capture_logs() -> LogCapture {
         .with_max_level(tracing::Level::TRACE)
         .with_writer(move || writer.clone())
         .finish();
+    // While only one subscriber exists, a callsite that another thread reaches first, with no
+    // subscriber of its own, is cached as never enabled, and this capture would miss its
+    // events. With a second one, tracing asks every live subscriber instead.
+    let second = Dispatch::new(NoSubscriber::default());
     let guard = tracing::subscriber::set_default(subscriber);
     LogCapture {
         buffer,
         _guard: guard,
+        _second: second,
     }
 }
 
@@ -40,6 +46,7 @@ pub fn capture_logs() -> LogCapture {
 pub struct LogCapture {
     buffer: Buffer,
     _guard: DefaultGuard,
+    _second: Dispatch,
 }
 
 impl LogCapture {
@@ -81,5 +88,22 @@ impl io::Write for Buffer {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture_logs;
+
+    #[test]
+    fn a_capture_sees_callsites_that_another_thread_reached_first() {
+        fn log() {
+            tracing::warn!("from a shared callsite");
+        }
+        let logs = capture_logs();
+        // A thread without a subscriber of its own reaches the callsite first.
+        std::thread::spawn(log).join().unwrap();
+        log();
+        assert_eq!(logs.with_message("from a shared callsite").len(), 1);
     }
 }
