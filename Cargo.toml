@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "examples/*", "fixtures/minimal"]
+members = [
+    "crates/*",
+    "examples/embedded/*",
+    "examples/smoke",
+    "examples/smoke-jni",
+    "examples/udp-echo",
+    "fixtures/minimal",
+]
 exclude = ["template"]
 
 [workspace.package]

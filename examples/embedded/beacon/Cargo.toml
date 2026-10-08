@@ -1,0 +1,19 @@
+[package]
+name = "beacon"
+version = "0.1.0"
+description = "Example: the service library of a program that runs as a process and embedded in an Android app"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+tracing.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true
