@@ -31,7 +31,7 @@
 //! problems, with a hint when they look like a typo of a known one.
 
 pub mod de;
-mod load;
+pub(crate) mod load;
 mod paths;
 mod report;
 #[cfg(test)]

@@ -11,10 +11,6 @@ static HOOK: Once = Once::new();
 
 /// Installs the panic hook, once per process: it replaces the previous hook instead of
 /// wrapping it, so installing it again changes nothing.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the hosts install it; they are not written yet")
-)]
 pub(crate) fn install_panic_hook(name: &'static str) {
     HOOK.call_once(|| std::panic::set_hook(Box::new(move |info| report(name, info))));
 }
