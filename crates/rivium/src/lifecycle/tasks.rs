@@ -149,12 +149,16 @@ impl Run {
     }
 
     /// Ends the run: no task starts any more, and the tasks still running are aborted. Returns
-    /// them, and among them the blocking tasks, which keep running.
+    /// them, and among them the blocking tasks, which keep running: service by service in the
+    /// order the services were given, each service's tasks in the order they started. Tasks
+    /// of different services start in an order that depends on scheduling.
     pub(super) fn close(&self) -> (Vec<String>, Vec<String>) {
         let mut tasks = self.tasks();
         tasks.closed = true;
+        let mut live: Vec<Task> = std::mem::take(&mut tasks.live).into_values().collect();
+        live.sort_by_key(|task| task.service);
         let (mut abandoned, mut blocking) = (Vec::new(), Vec::new());
-        for task in std::mem::take(&mut tasks.live).into_values() {
+        for task in live {
             match task.abort {
                 Some(abort) => abort.abort(),
                 None => blocking.push(task.path.clone()),

@@ -111,8 +111,9 @@ fn a_second_signal_cuts_the_stop_short_with_128_plus_its_number() {
         stderr(&exited),
         [
             "udp-echo: the stop was cut short by a second stop request (SIGINT)",
-            // `stats` is a background service: asked to stop once `echo` has stopped.
-            "udp-echo: abandoned: stats, echo/socket"
+            // `stats` is a background service: asked to stop once `echo` has stopped. The list
+            // follows the order of the services.
+            "udp-echo: abandoned: echo/socket, stats"
         ]
     );
 }
@@ -143,7 +144,7 @@ fn a_service_still_running_at_the_deadline_is_abandoned_with_124() {
         stderr(&exited),
         [
             "udp-echo: stop timed out",
-            "udp-echo: abandoned: stats, echo/socket"
+            "udp-echo: abandoned: echo/socket, stats"
         ]
     );
 }
