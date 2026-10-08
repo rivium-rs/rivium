@@ -1,0 +1,22 @@
+[package]
+name = "http-api"
+version = "0.1.0"
+description = "Example: an HTTP API on Rivium's process host, with the status envelope, probes and an HTTP binding of log export"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium = { workspace = true, features = ["log-export"] }
+rivium-http.workspace = true
+axum.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+rivium-test.workspace = true
+zip = { workspace = true, features = ["deflate-flate2"] }
+
+[lints]
+workspace = true
