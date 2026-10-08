@@ -1,0 +1,19 @@
+[package]
+name = "udp-echo"
+version = "0.1.0"
+description = "Example: a UDP echo service on Rivium's process host, with blocking reads and a periodic job"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+tracing.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true
