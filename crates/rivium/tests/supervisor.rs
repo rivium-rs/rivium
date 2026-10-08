@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use rivium::lifecycle::{Outcome, StopHandle, StopReason, Supervisor, stop_channel};
-use rivium::{BoxFuture, Error, Result, Service, ServiceContext, ServiceKind, error::kinds};
+use rivium::{
+    BoxFuture, Error, Result, Service, ServiceContext, ServiceKind, StopSignal, error::kinds,
+};
 use rivium_test::{ScriptedService, Step, capture_logs};
 use tokio::time::Instant;
 
@@ -361,6 +363,44 @@ async fn dropping_the_run_aborts_every_service_and_task() {
         .await
         .unwrap()
         .unwrap();
+}
+
+/// A background service that hands out its stop signal, as to a blocking task.
+fn watched(signal: Arc<std::sync::Mutex<Option<StopSignal>>>) -> Box<dyn Service> {
+    rivium::service("log", Background, move |ctx| async move {
+        *signal.lock().unwrap() = Some(ctx.stop_signal());
+        ctx.ready();
+        ctx.stopped().await;
+        Ok(())
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_end_of_the_run_is_a_stop_for_every_service() {
+    // The run ends before `log` is asked to stop, while `http` ignores its stop: at the
+    // deadline, at a second stop request, or when its future is dropped.
+    let ends = [
+        (vec![(secs(1), sigterm())], Some("stop-timed-out")),
+        (
+            vec![(secs(1), sigterm()), (secs(2), sigint())],
+            Some("aborted"),
+        ),
+        (vec![], None),
+    ];
+    for (stops, outcome) in ends {
+        let seen = Arc::new(std::sync::Mutex::new(None));
+        let mut services = scripted(vec![http(vec![Step::Ready, Step::IgnoreStop(secs(3_600))])]);
+        services.push(watched(Arc::clone(&seen)));
+        let run = supervisor(services).run(stops_at(stops));
+        let ended = tokio::time::timeout(secs(10), run).await.ok();
+        assert_eq!(ended.as_ref().map(name), outcome);
+        let signal = seen.lock().unwrap().take().unwrap();
+        // What a blocking task checks between calls.
+        assert!(signal.is_stopping(), "{outcome:?}");
+        tokio::time::timeout(secs(1), signal.stopped())
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]
