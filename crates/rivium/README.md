@@ -4,7 +4,9 @@ The service foundation: layered configuration with source tracking, logging with
 
 **Status:** pre-release, not published yet. Implemented so far: configuration loading (defaults,
 a TOML file, environment variables and `--set` overrides, with every problem reported at once),
-`config::Paths`, the value checks in `config::de` and `fs::atomic_write`. See the
+`config::Paths`, the value checks in `config::de`, logging (console, files with rolling,
+compression and a disk budget, Android's log, the flush barrier, the panic hook),
+`fs::atomic_write` and `stats()`. The hosts that use them come next. See the
 [repository README](https://github.com/rivium-rs/rivium).
 
 ## License
