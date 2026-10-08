@@ -6,9 +6,11 @@ The service foundation: layered configuration with source tracking, logging with
 a TOML file, environment variables and `--set` overrides, with every problem reported at once),
 `config::Paths`, the value checks in `config::de`, logging (console, files with rolling,
 compression and a disk budget, Android's log, the flush barrier, the panic hook), the service
-contract (`Service`, `ServiceContext`, `service()`, `periodic()`, readiness) and the lifecycle
-kernel that supervises services (`lifecycle::Supervisor`), `fs::atomic_write` and `stats()`. The
-hosts come next. See the [repository README](https://github.com/rivium-rs/rivium).
+contract (`Service`, `ServiceContext`, `service()`, `periodic()`, readiness), the lifecycle
+kernel that supervises services (`lifecycle::Supervisor`), the process host (`App`,
+`process::run`, the exit codes of `Code`, in-process restarts), `fs::atomic_write` and
+`stats()`. The embedded host comes next. See the
+[repository README](https://github.com/rivium-rs/rivium).
 
 ## License
 
