@@ -223,15 +223,23 @@ async fn a_later_failure_does_not_replace_the_first() {
 #[tokio::test(start_paused = true)]
 async fn services_still_running_at_the_deadline_are_abandoned() {
     let logs = capture_logs();
-    let stuck = http(vec![Step::Ready, Step::IgnoreStop(secs(3_600))]);
+    // The task starts after `log` has: the list still follows the order of the services.
+    let stuck = rivium::service("http", Frontline, |ctx| async move {
+        ctx.ready();
+        ctx.stopped().await;
+        ctx.spawn("drain", std::future::pending());
+        std::future::pending().await
+    });
+    let services: Vec<Box<dyn Service>> = vec![stuck, Box::new(log(serving()))];
     let start = Instant::now();
-    let outcome = run(vec![stuck, log(serving())], vec![(secs(1), sigterm())]).await;
+    let stops = stops_at(vec![(secs(1), sigterm())]);
+    let outcome = ended(supervisor(services).run(stops)).await;
     assert_eq!(name(&outcome), "stop-timed-out");
     assert_eq!(start.elapsed(), secs(4));
     let outcome = &logs.with_message("outcome")[0];
     assert_eq!(
         (outcome["level"].as_str(), outcome["abandoned"].as_str()),
-        (Some("WARN"), Some("http, log"))
+        (Some("WARN"), Some("http, http/drain, log"))
     );
 }
 
