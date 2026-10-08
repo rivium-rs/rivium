@@ -128,7 +128,7 @@ fn a_log_storm_stays_within_the_budget_and_the_last_line_reaches_the_file() {
     let main = std::fs::read_to_string(dir.join("udp-echo.log")).unwrap();
     let last = main.lines().last().unwrap_or_default();
     assert!(
-        last.contains("rivium::process: stopped code="Restart" exit_code=75"),
+        last.contains("rivium::process: stopped code=\"Restart\" exit_code=75"),
         "{last}"
     );
     println!(
