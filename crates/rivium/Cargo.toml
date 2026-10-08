@@ -17,6 +17,7 @@ log-export = []
 
 [dependencies]
 rivium-error.workspace = true
+flate2 = { workspace = true, features = ["rust_backend"] }
 serde = { workspace = true, features = ["std", "derive"] }
 serde_ignored.workspace = true
 serde_path_to_error.workspace = true
