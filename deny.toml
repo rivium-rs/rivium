@@ -20,6 +20,9 @@ confidence-threshold = 0.9
 [bans]
 multiple-versions = "allow"
 wildcards = "deny"
+# Except path-only dev-dependencies, such as rivium's on rivium-test (which depends on rivium):
+# publishing drops them, so rivium never waits for rivium-test on crates.io.
+allow-wildcard-paths = true
 deny = [
     # No C/C++ build chains beyond `cc` for ring: TLS uses rustls with ring, never aws-lc or OpenSSL.
     { crate = "aws-lc-rs", reason = "TLS uses rustls with the ring provider" },

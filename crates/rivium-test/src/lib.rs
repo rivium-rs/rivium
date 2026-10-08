@@ -1,8 +1,12 @@
-//! Test support for services built on Rivium.
-//!
-//! This crate will provide scripted services, log capture, process-level test tools and the
-//! lifecycle contract suites. Use it as a dev-dependency only. It is pre-release: so far it
-//! provides [`deps`], the dependency closure check.
+//! Test support for services built on Rivium: scripted services to drive the supervisor
+//! ([`ScriptedService`]), log capture ([`capture_logs`]) and the dependency closure check
+//! ([`deps`]). Use it as a dev-dependency only. It is pre-release: the process-level tools and
+//! the lifecycle contract suites come next.
 #![forbid(unsafe_code)]
 
 pub mod deps;
+mod logs;
+mod services;
+
+pub use logs::{LogCapture, capture_logs};
+pub use services::{Journal, SCRIPTED, ScriptedService, Step};

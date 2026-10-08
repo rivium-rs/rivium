@@ -38,6 +38,7 @@ use rivium_error::{Error, kinds};
     )
 )]
 pub(crate) use panic::install_panic_hook;
+pub(crate) use panic::payload_text;
 pub(crate) use settings::LogSettings;
 
 /// A layer for the global subscriber, as `App::log_layers` adds them: for example a bridge to

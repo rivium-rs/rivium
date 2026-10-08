@@ -1,6 +1,7 @@
 //! The panic hook: a panic becomes an error event with target `panic`, or a line on stderr while
 //! no subscriber is installed. On Android it is also written to Android's log at once.
 
+use std::any::Any;
 use std::panic::PanicHookInfo;
 use std::sync::Once;
 
@@ -18,11 +19,15 @@ pub(crate) fn install_panic_hook(name: &'static str) {
     HOOK.call_once(|| std::panic::set_hook(Box::new(move |info| report(name, info))));
 }
 
-fn report(name: &str, info: &PanicHookInfo<'_>) {
-    let payload = info.payload();
-    let message = (payload.downcast_ref::<&str>().copied())
+/// The message a panic was started with.
+pub(crate) fn payload_text(payload: &(dyn Any + Send)) -> &str {
+    (payload.downcast_ref::<&str>().copied())
         .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("<not a string>");
+        .unwrap_or("<not a string>")
+}
+
+fn report(name: &str, info: &PanicHookInfo<'_>) {
+    let message = payload_text(info.payload());
     let location = info.location().map(ToString::to_string).unwrap_or_default();
     let thread = std::thread::current();
     let thread = thread.name().unwrap_or("<unnamed>");
