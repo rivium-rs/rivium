@@ -7,9 +7,6 @@ use std::process::Command;
 
 use serde_json::Value;
 
-/// The platform this crate was compiled for, which is the platform of the calling test.
-const TARGET: &str = env!("RIVIUM_TEST_TARGET");
-
 /// Asserts that no banned crate is in the dependency closure of `package` on the target
 /// platform the calling test was compiled for.
 ///
@@ -36,7 +33,7 @@ pub fn assert_closure_excludes(manifest: &Path, package: &str, banned: &[&str]) 
             "--format-version",
             "1",
             "--filter-platform",
-            TARGET,
+            crate::TARGET,
         ])
         .arg("--manifest-path")
         .arg(manifest)
@@ -48,7 +45,8 @@ pub fn assert_closure_excludes(manifest: &Path, package: &str, banned: &[&str]) 
     let found = banned_in_closure(&metadata, package, banned);
     assert!(
         found.is_empty(),
-        "the dependency closure of {package} on {TARGET} contains banned crates:\n{}",
+        "the dependency closure of {package} on {} contains banned crates:\n{}",
+        crate::TARGET,
         found.join("\n")
     );
 }
