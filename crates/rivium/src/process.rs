@@ -15,7 +15,7 @@
 //! line after the service's name. After the services' stop deadline (`lifecycle.stop_timeout`)
 //! the program takes at most one more second to exit.
 
-mod cli;
+pub(crate) mod cli;
 
 use std::ffi::OsString;
 use std::io::Write;
@@ -26,22 +26,14 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::Code;
-use crate::app::{App, AppContext, Identity};
+use crate::app::App;
 use crate::config::Paths;
 use crate::config::de::format_duration;
-use crate::config::load::{FileLayer, Inputs, Loaded, default_config, load};
-use crate::host::{self, End, Failure, Overrides, Round};
-use crate::lifecycle::{Restart, StopReason, Supervisor};
-use crate::log::{self, InstallError, LogInputs, payload_text};
+use crate::config::load::{Loaded, default_config};
+use crate::host::{self, AFTER_DEADLINE, End, FLUSH, Failure, RUNTIME_SHUTDOWN, Rounds};
+use crate::lifecycle::{Restart, StopReason};
+use crate::log::{self, payload_text};
 use cli::{Command, Options};
-
-/// How long the runtime may take to shut down once the services have ended.
-const RUNTIME_SHUTDOWN: Duration = Duration::from_millis(400);
-/// How long the last log lines may take to reach the log files.
-const FLUSH: Duration = Duration::from_millis(500);
-/// What the host takes after the stop deadline: the runtime, a log export being cancelled
-/// (100ms), and the flush.
-const AFTER_DEADLINE: Duration = Duration::from_secs(1);
 
 /// Runs the program `A` and returns its exit code; `main` returns it:
 ///
@@ -117,28 +109,10 @@ fn configure<A: App>(
     options: &Options,
     env: &[(OsString, OsString)],
 ) -> Result<(Paths, bool, Loaded<A::Config>), Code> {
-    let (root, config) = (options.root.clone(), options.config.clone());
-    let (paths, explicit) = Paths::locate(A::NAME, root, config, Some(env), A::CONFIG_FILE)
-        .map_err(|error| {
-            report(A::NAME, &format!("{error:#}"));
-            Code::Usage
-        })?;
-    let file = FileLayer::Path {
-        path: paths.config_file().to_path_buf(),
-        explicit,
-    };
-    let inputs = Inputs {
-        name: A::NAME,
-        file,
-        env: Some(env),
-        sets: &options.sets,
-        host: false,
-    };
-    let loaded = load::<A::Config>(&inputs).map_err(|problems| {
-        report(A::NAME, &problems.to_string());
-        Code::Config
-    })?;
-    Ok((paths, explicit, loaded))
+    host::configure::<A>(options, Some(env)).map_err(|failure| {
+        report(A::NAME, &failure.message);
+        failure.code
+    })
 }
 
 /// `run`: loads the configuration, installs logging, then runs rounds of services until one
@@ -148,22 +122,11 @@ fn serve<A: App>(options: Options, env: &[(OsString, OsString)]) -> Code {
         Ok(configured) => configured,
         Err(code) => return code,
     };
-    let reserved = &loaded.reserved;
-    let inputs = LogInputs {
-        name: A::NAME.to_string(),
-        settings: reserved.log.clone(),
-        dir: paths.resolve(&reserved.log.file.dir),
-        console: true,
-        logcat: false,
-        layers: A::log_layers(&loaded.config),
-    };
-    if let Err(error) = log::install(inputs) {
-        report(A::NAME, &error.to_string());
-        return match error {
-            InstallError::Changed(_) => Code::Config,
-            InstallError::Io(_) => Code::CantCreate,
-        };
+    if let Err(failure) = host::install_logging::<A>(&paths, &loaded, false) {
+        report(A::NAME, &failure.message);
+        return failure.code;
     }
+    let reserved = &loaded.reserved;
     let lifecycle = &reserved.lifecycle;
     tracing::info!(
         service.name = A::NAME,
@@ -197,14 +160,17 @@ fn serve<A: App>(options: Options, env: &[(OsString, OsString)]) -> Code {
             let mut rounds = Rounds::<A> {
                 paths,
                 explicit,
-                env,
+                env: Some(env),
                 sets: options.sets,
                 first: Some(loaded),
             };
             let end = runtime.block_on(async {
                 let (stop, mut stops) = mpsc::unbounded_channel();
                 match os_stops(stop) {
-                    Ok(()) => host::run(|_| rounds.build(), in_process, &mut stops).await,
+                    Ok(()) => {
+                        let build = |_| rounds.build();
+                        host::run(build, in_process, true, &mut stops, |_| {}).await
+                    }
                     Err(error) => {
                         let why = format!("cannot handle stop requests: {error}");
                         Failure::new(Code::OsError, why).into()
@@ -230,81 +196,6 @@ fn finish(name: &str, end: &End) {
         }
     }
     let _ = log::flush(FLUSH);
-}
-
-/// What the process host builds each round from.
-struct Rounds<'a, A: App> {
-    paths: Paths,
-    explicit: bool,
-    env: &'a [(OsString, OsString)],
-    sets: Vec<(String, String)>,
-    /// The configuration of the first round, loaded before logging was installed.
-    first: Option<Loaded<A::Config>>,
-}
-
-impl<A: App> Rounds<'_, A> {
-    /// The next round: its configuration, loaded again after the first round, and its
-    /// services.
-    fn build(&mut self) -> Result<Round, Failure> {
-        let loaded = match self.first.take() {
-            Some(loaded) => loaded,
-            None => self.reload()?,
-        };
-        let lifecycle = &loaded.reserved.lifecycle;
-        let in_process = lifecycle.restart == Restart::InProcess;
-        let supervisor = Supervisor::new(lifecycle.startup_timeout, lifecycle.stop_timeout);
-        let identity = Identity {
-            name: A::NAME,
-            version: A::VERSION,
-            instance: lifecycle.instance.clone(),
-        };
-        let file = self.paths.config_file().to_path_buf();
-        let overrides = Overrides {
-            env: Some(self.env.to_vec()),
-            sets: self.sets.clone(),
-            host: false,
-        };
-        let installed = in_process.then(|| loaded.reserved.log.clone());
-        let check = host::check::<A::Config>(A::NAME, file, overrides, installed);
-        let ctx = AppContext::new(self.paths.clone(), identity, &supervisor, check);
-        let services = A::services(&loaded.config, &ctx).map_err(|error| {
-            let why = format!("startup failed: the services cannot be built: {error:#}");
-            Failure::new(Code::StartupFailed, why)
-        })?;
-        let supervisor = services.into_iter().fold(supervisor, Supervisor::with);
-        Ok(Round {
-            supervisor,
-            in_process,
-        })
-    }
-
-    /// Loads the configuration again and reloads the log filters.
-    fn reload(&self) -> Result<Loaded<A::Config>, Failure> {
-        let file = FileLayer::Path {
-            path: self.paths.config_file().to_path_buf(),
-            explicit: self.explicit,
-        };
-        let inputs = Inputs {
-            name: A::NAME,
-            file,
-            env: Some(self.env),
-            sets: &self.sets,
-            host: false,
-        };
-        let loaded = load::<A::Config>(&inputs)
-            .map_err(|problems| Failure::new(Code::Config, problems.to_string()))?;
-        let settings = &loaded.reserved.log;
-        let inputs = LogInputs {
-            name: A::NAME.to_string(),
-            settings: settings.clone(),
-            dir: self.paths.resolve(&settings.file.dir),
-            console: true,
-            logcat: false,
-            layers: Vec::new(),
-        };
-        log::install(inputs).map_err(|error| Failure::new(Code::Config, error.to_string()))?;
-        Ok(loaded)
-    }
 }
 
 /// Warns when the stop budget reaches the time after which this platform's supervisor kills

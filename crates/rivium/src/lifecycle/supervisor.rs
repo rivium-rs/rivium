@@ -124,6 +124,8 @@ pub struct Supervisor {
     run: Arc<Run>,
     inputs: mpsc::UnboundedReceiver<Input>,
     phase: watch::Sender<Phase>,
+    /// Every phase the run enters, for the host; readiness keeps only the latest.
+    phases: Option<mpsc::UnboundedSender<Phase>>,
     health: HealthRegistry,
 }
 
@@ -140,6 +142,7 @@ impl Supervisor {
             run: Arc::new(Run::new(inputs)),
             inputs: received,
             phase: watch::Sender::new(Phase::Starting),
+            phases: None,
             health: HealthRegistry::default(),
         }
     }
@@ -173,6 +176,13 @@ impl Supervisor {
         Restarter::new(self.run.inputs.clone())
     }
 
+    /// Every phase the run enters, in order, even a phase it leaves at once.
+    pub(crate) fn phases(&mut self) -> mpsc::UnboundedReceiver<Phase> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        self.phases = Some(sender);
+        receiver
+    }
+
     /// Like [`run`](Self::run), and also says which services and tasks were abandoned.
     pub(crate) async fn supervise(self, stop: StopReceiver) -> (Outcome, Vec<String>) {
         let Supervisor {
@@ -182,6 +192,7 @@ impl Supervisor {
             run,
             mut inputs,
             phase,
+            phases,
             health: _,
         } = self;
         let named: Vec<_> = (services.iter())
@@ -192,6 +203,7 @@ impl Supervisor {
         let mut driver = Driver {
             run: Arc::clone(&run),
             phase,
+            phases,
             stops: Vec::new(),
             deadline: None,
             handles: Vec::new(),
@@ -223,6 +235,7 @@ impl Supervisor {
 struct Driver {
     run: Arc<Run>,
     phase: watch::Sender<Phase>,
+    phases: Option<mpsc::UnboundedSender<Phase>>,
     /// Each service's kind and stop flag.
     stops: Vec<(ServiceKind, watch::Sender<bool>)>,
     deadline: Option<Instant>,
@@ -237,6 +250,9 @@ impl Driver {
             match effect {
                 Effect::Phase(phase, reason) => {
                     self.phase.send_replace(phase);
+                    if let Some(phases) = &self.phases {
+                        let _ = phases.send(phase);
+                    }
                     tracing::info!(phase = phase.as_str(), reason = %reason, "phase changed");
                 }
                 Effect::Cancel(i) => {
