@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 rivium.workspace = true
 serde = { workspace = true, features = ["std", "derive"] }
+tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 
 [dev-dependencies]
