@@ -423,7 +423,12 @@ fn bounded(dir: &Path, bound: u64, running: &AtomicBool) -> (u64, u64, Vec<u64>)
         );
         peak = peak.max(used);
         samples += 1;
-        highest.push(sequences(dir).last().copied().unwrap_or(0));
+        // The newest file can be missed too, as it is compressed and renamed while the directory
+        // is read: a highest number below the last one is read again before it counts.
+        let read = || sequences(dir).last().copied().unwrap_or(0);
+        let last = highest.last().copied().unwrap_or(0);
+        let high = (0..3).map(|_| read()).find(|high| *high >= last);
+        highest.push(high.unwrap_or_else(read));
         std::thread::sleep(Duration::from_millis(20));
     }
     (peak, samples, highest)
