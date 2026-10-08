@@ -7,9 +7,9 @@
 targets="x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf"
 zig "set -e
   for t in $targets; do rustup target add \$t > /dev/null 2>&1; done
-  cargo zigbuild --locked --release -p smoke -p smoke-jni $(for t in $targets; do printf -- '--target %s.2.17 ' "$t"; done)
+  cargo zigbuild --locked --release -p smoke -p beacon-jni $(for t in $targets; do printf -- '--target %s.2.17 ' "$t"; done)
   for t in $targets; do
-    scripts/check-glibc.sh 2.17 target/local/zig/\$t/release/smoke target/local/zig/\$t/release/libsmoke_jni.so
+    scripts/check-glibc.sh 2.17 target/local/zig/\$t/release/smoke target/local/zig/\$t/release/libbeacon_jni.so
   done"
 arch=$(docker info --format '{{.Architecture}}')
 case "$arch" in arm64) arch=aarch64 ;; amd64) arch=x86_64 ;; esac

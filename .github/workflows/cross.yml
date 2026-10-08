@@ -66,9 +66,9 @@ jobs:
       - uses: ./.github/actions/setup-zigbuild
       - name: glibc 2.17 baseline build and check
         run: |
-          cargo zigbuild --locked --release -p smoke -p smoke-jni --target armv7-unknown-linux-gnueabihf.2.17
+          cargo zigbuild --locked --release -p smoke -p beacon-jni --target armv7-unknown-linux-gnueabihf.2.17
           out=target/armv7-unknown-linux-gnueabihf/release
-          scripts/check-glibc.sh 2.17 "$out/smoke" "$out/libsmoke_jni.so"
+          scripts/check-glibc.sh 2.17 "$out/smoke" "$out/libbeacon_jni.so"
 
   loongarch64:
     name: cross/loongarch64
@@ -85,9 +85,9 @@ jobs:
         run: cross test --locked --workspace --target loongarch64-unknown-linux-gnu
       - name: glibc 2.36 baseline (the image's sysroot)
         run: |
-          cross build --locked --release -p smoke -p smoke-jni --target loongarch64-unknown-linux-gnu
+          cross build --locked --release -p smoke -p beacon-jni --target loongarch64-unknown-linux-gnu
           out=target/loongarch64-unknown-linux-gnu/release
-          scripts/check-glibc.sh 2.36 "$out/smoke" "$out/libsmoke_jni.so"
+          scripts/check-glibc.sh 2.36 "$out/smoke" "$out/libbeacon_jni.so"
 
   glibc:
     name: cross/glibc
@@ -100,10 +100,10 @@ jobs:
       - uses: ./.github/actions/setup-zigbuild
       - name: glibc 2.17 baseline builds and check
         run: |
-          cargo zigbuild --locked --release -p smoke -p smoke-jni \
+          cargo zigbuild --locked --release -p smoke -p beacon-jni \
             --target x86_64-unknown-linux-gnu.2.17 --target aarch64-unknown-linux-gnu.2.17
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-            scripts/check-glibc.sh 2.17 "target/$target/release/smoke" "target/$target/release/libsmoke_jni.so"
+            scripts/check-glibc.sh 2.17 "target/$target/release/smoke" "target/$target/release/libbeacon_jni.so"
           done
       - name: Planted violation (a build against the runner's glibc must fail the check)
         run: |
@@ -125,18 +125,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal --target aarch64-linux-android && rustup default stable
-      - name: JNI cdylib with the NDK (API 30 linker, 16 KB pages) and its alignment
+      - name: beacon-jni with the NDK (API 30 linker, 16 KB pages) and its alignment
         run: |
           ndk=$ANDROID_NDK_LATEST_HOME
           grep Pkg.Revision "$ndk/source.properties"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang"
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384" \
-            cargo build --locked --release -p smoke-jni --target "$TARGET"
-          scripts/check-align.sh 16384 "target/$TARGET/release/libsmoke_jni.so"
+            cargo build --locked --release -p beacon-jni --target "$TARGET"
+          scripts/check-align.sh 16384 "target/$TARGET/release/libbeacon_jni.so"
           # Planted violation: the same library linked for 4 KB pages must fail the check.
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=4096" \
-            cargo build --locked --release -p smoke-jni --target "$TARGET" --target-dir target/plant-4k
-          if scripts/check-align.sh 16384 "target/plant-4k/$TARGET/release/libsmoke_jni.so"; then
+            cargo build --locked --release -p beacon-jni --target "$TARGET" --target-dir target/plant-4k
+          if scripts/check-align.sh 16384 "target/plant-4k/$TARGET/release/libbeacon_jni.so"; then
             echo "::error::check-align.sh accepted a library linked for 4 KB pages"
             exit 1
           fi

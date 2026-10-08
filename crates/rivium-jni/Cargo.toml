@@ -12,6 +12,7 @@ keywords = ["jni", "android", "ffi", "service"]
 categories = ["api-bindings"]
 
 [dependencies]
+jni.workspace = true
 rivium.workspace = true
 
 [lints]

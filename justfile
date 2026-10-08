@@ -12,13 +12,14 @@ default:
 tools:
     cargo install --locked --root .tools cargo-hack@0.6.45
 
-# Formatting, clippy, cargo-deny, feature matrix and script self-tests (what ci/lint runs)
+# Formatting, clippy, cargo-deny, feature matrix, the panic = "abort" refusal and script self-tests (what ci/lint runs)
 lint:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
     cargo deny --locked check
     cargo hack check --each-feature --workspace --locked
-    shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh
+    scripts/check-panic-abort.sh
+    shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh crates/rivium-jni/tests/jvm/run.sh
     scripts/tests/check-public.sh
     scripts/tests/check-commit-msg.sh
     scripts/tests/docs-only.sh
@@ -63,7 +64,7 @@ hooks denylist:
 cross *targets="armv7-unknown-linux-gnueabihf loongarch64-unknown-linux-gnu aarch64-linux-android":
     scripts/local/cross-test.sh {{ targets }}
 
-# Android: bionic tests and 16 KB page alignment of the JNI cdylib
+# Android: bionic tests and 16 KB page alignment of the beacon-jni library
 android:
     scripts/local/android.sh
 
@@ -71,7 +72,7 @@ android:
 glibc:
     scripts/local/glibc.sh
 
-# Desktop JVM: JNI smoke cdylib loaded by a JDK 17
+# Desktop JVM: rivium-jni's contract on the beacon-jni library in a JDK 17
 jvm:
     scripts/local/jvm.sh
 

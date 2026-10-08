@@ -63,9 +63,12 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo deny --locked check
       - run: cargo hack check --each-feature --workspace --locked
+      - name: rivium-jni refuses panic = "abort" (fixtures/jni-forbid)
+        run: scripts/check-panic-abort.sh
       - name: Lint scripts and run their self-tests (planted violations)
         run: |
-          shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh
+          shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh \
+            crates/rivium-jni/tests/jvm/run.sh
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
           scripts/tests/docs-only.sh
@@ -83,10 +86,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Desktop JVM contract (JNI smoke cdylib, including a planted signature mismatch)
+      - name: Desktop JVM contract of rivium-jni (beacon-jni; panics in a --cfg rivium_jni_fault build)
         run: |
-          cargo build --locked -p smoke-jni
-          examples/smoke-jni/jvm/run.sh target/debug
+          cargo build --locked -p beacon-jni
+          RUSTFLAGS="--cfg rivium_jni_fault" cargo build --locked -p beacon-jni --target-dir target/jni-fault
+          crates/rivium-jni/tests/jvm/run.sh target/debug beacon_jni com/example/beacon target/jni-fault/debug
 
   test-linux-arm64:
     name: ci/test-linux-arm64
