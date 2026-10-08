@@ -21,7 +21,8 @@
    `hosting` workflows run on pull requests and on `main`; the public-content check runs on every
    push.
 5. **When the work is complete,** run `just check`, make sure every check is green and mark the
-   pull request ready for review. Its title is a Conventional Commit (`check/pr-title`).
+   pull request ready for review. Its title is a Conventional Commit that still fits in 72
+   characters once GitHub appends ` (#<n>)`; `check/pr-title` checks it that way.
 6. **Merge with "Squash and merge"** after the maintainer approves that pull request. Its title
    becomes the commit on `main`, which keeps every commit there a reviewed, CI-verified state. Merge commits made on GitHub skip the local hooks, so check the final
    message with `scripts/check-public.sh <denylist> --message <file>` and merge with your
