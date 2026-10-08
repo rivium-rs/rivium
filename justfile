@@ -21,6 +21,7 @@ lint:
     shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh
     scripts/tests/check-public.sh
     scripts/tests/check-commit-msg.sh
+    scripts/tests/docs-only.sh
     scripts/tests/loc.sh
     if command -v actionlint > /dev/null; then actionlint; else echo "actionlint not installed (see .tools/); skipped"; fi
 
