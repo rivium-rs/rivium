@@ -2,8 +2,13 @@
 
 ## Workflow
 
-1. **Branch from `main`.** One branch per change, named `<type>/<topic>` (for example
-   `fix/log-rotation`); a development phase of the initial plan uses `c-<n>`.
+1. **Branch from `main`, one branch and one pull request per coherent unit of work** (a crate, a
+   module or a set of related changes), named `<type>/<topic>` (for example `fix/log-rotation`).
+   A development phase of the initial plan is delivered as several such units on branches
+   `c-<n>/<topic>`. Start the next unit from `main` once the previous one is merged; if it has
+   to build on a unit that is still under review, branch from that unit and, after its pull
+   request is merged, merge `main` into the dependent branch (never rebase it) before asking for
+   review.
 2. **Install the hooks once:** `just hooks <denylist>`. They check every commit (staged tree,
    identity, message) and every push against the private denylist, and check that commit
    messages are Conventional Commits.
@@ -17,8 +22,8 @@
    push.
 5. **When the work is complete,** run `just check`, make sure every check is green and mark the
    pull request ready for review. Its title is a Conventional Commit (`check/pr-title`).
-6. **Merge with "Squash and merge"** after the maintainer approves. The pull request title becomes
-   the commit on `main`. Merge commits made on GitHub skip the local hooks, so check the final
+6. **Merge with "Squash and merge"** after the maintainer approves that pull request. Its title
+   becomes the commit on `main`, which keeps every commit there a reviewed, CI-verified state. Merge commits made on GitHub skip the local hooks, so check the final
    message with `scripts/check-public.sh <denylist> --message <file>` and merge with your
    GitHub noreply address as the author, for example
    `gh pr merge <n> --squash --subject "<title> (#<n>)" --body-file <file> --author-email <noreply>`.
