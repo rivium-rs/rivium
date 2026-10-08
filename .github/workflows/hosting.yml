@@ -28,7 +28,11 @@ jobs:
       - run: scripts/hosting/systemd.sh target/release/smoke
       - name: Planted violation (a service that exits 3 when stopped must fail the exit-status check)
         run: |
-          if scripts/hosting/systemd.sh target/release/smoke --stop-exit 3 | tee "$RUNNER_TEMP/plant.log"; then
+          # No pipe here: run steps use `bash -e` without pipefail, so `harness | tee` would hide the status.
+          status=0
+          scripts/hosting/systemd.sh target/release/smoke --stop-exit 3 > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/plant.log"
+          if [ "$status" -eq 0 ]; then
             echo "::error::the systemd checks accepted a service that exits 3 when stopped"
             exit 1
           fi
@@ -62,7 +66,11 @@ jobs:
       - run: scripts/hosting/launchd.sh target/release/smoke
       - name: Planted violation (a service that exits 3 when stopped must fail the exit-code check)
         run: |
-          if scripts/hosting/launchd.sh target/release/smoke --stop-exit 3 | tee "$RUNNER_TEMP/plant.log"; then
+          # No pipe here: run steps use `bash -e` without pipefail, so `harness | tee` would hide the status.
+          status=0
+          scripts/hosting/launchd.sh target/release/smoke --stop-exit 3 > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/plant.log"
+          if [ "$status" -eq 0 ]; then
             echo "::error::the launchd checks accepted a service that exits 3 when stopped"
             exit 1
           fi
