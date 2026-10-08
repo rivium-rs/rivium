@@ -280,11 +280,11 @@ impl Driver {
             self.run.deadline.send_replace(Some(at));
         }
         let inputs = self.run.inputs.clone();
-        let timer = tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             tokio::time::sleep_until(at).await;
             let _ = inputs.send(Input::Timer(timer));
         });
-        self.handles.push(timer.abort_handle());
+        self.handles.push(handle.abort_handle());
     }
 
     /// Passes the host's stop requests on to the machine.
