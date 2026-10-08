@@ -10,7 +10,9 @@ contract (`Service`, `ServiceContext`, `service()`, `periodic()`, readiness), th
 kernel that supervises services (`lifecycle::Supervisor`), the process host (`App`,
 `process::run`, the exit codes of `Code`, in-process restarts), the embedded host
 (`embedded::Host`: start and stop on a thread of their own, result codes for FFI callers,
-restarts in the process), `fs::atomic_write` and `stats()`. See the
+restarts in the process), `fs::atomic_write`, `stats()` and, with the feature `log-export`,
+log export (`log::LogExporter`: log files of chosen days packed into a zip archive to download,
+within a share of the log directory's budget). See the
 [repository README](https://github.com/rivium-rs/rivium).
 
 ## License

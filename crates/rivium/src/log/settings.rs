@@ -1,6 +1,8 @@
 //! The `[log]` section of the configuration.
 
 use std::path::PathBuf;
+#[cfg(feature = "log-export")]
+use std::time::Duration;
 
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
@@ -19,6 +21,8 @@ pub(crate) struct LogSettings {
     /// `[[log.files]]`: category files, each with its own filter.
     pub(crate) files: Vec<Category>,
     pub(crate) logcat: Logcat,
+    #[cfg(feature = "log-export")]
+    pub(crate) export: Export,
 }
 
 /// `[log.console]`: standard output, written by the process host only.
@@ -66,6 +70,24 @@ pub(crate) struct Category {
     pub(crate) filter: String,
 }
 
+/// `[log.export]`: log export archives, which keep a share of the log directory's budget.
+#[cfg(feature = "log-export")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Export {
+    /// The largest archive, and the share of `log.file.max_total_size` kept for it.
+    #[serde(
+        serialize_with = "serialize_bytes",
+        deserialize_with = "bytes::<_, MIB, GIB>"
+    )]
+    pub(crate) max_size: u64,
+    /// How long a finished archive can be downloaded.
+    #[serde(
+        serialize_with = "crate::config::de::serialize_duration",
+        deserialize_with = "crate::config::de::duration::<_, 1, 86_400>"
+    )]
+    pub(crate) expire_after: Duration,
+}
+
 /// `[log.logcat]`: Android's log, written by the embedded host on Android only.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Logcat {
@@ -96,6 +118,11 @@ impl LogSettings {
             logcat: Logcat {
                 filter: "warn".into(),
             },
+            #[cfg(feature = "log-export")]
+            export: Export {
+                max_size: 64 * MIB,
+                expire_after: Duration::from_secs(30 * 60),
+            },
         }
     }
 
@@ -123,10 +150,28 @@ impl LogSettings {
                 "log.console.format",
                 self.console.format != installed.console.format,
             ),
+            #[cfg(feature = "log-export")]
+            (
+                "log.export.max_size",
+                self.export.max_size != installed.export.max_size,
+            ),
+            #[cfg(feature = "log-export")]
+            (
+                "log.export.expire_after",
+                self.export.expire_after != installed.export.expire_after,
+            ),
         ]
         .into_iter()
         .filter_map(|(key, differs)| differs.then_some(key))
         .collect()
+    }
+
+    /// The share of `log.file.max_total_size` kept for log export archives.
+    pub(crate) fn export_reserve(&self) -> u64 {
+        #[cfg(feature = "log-export")]
+        return self.export.max_size;
+        #[cfg(not(feature = "log-export"))]
+        0
     }
 
     /// Problems that no single value shows, as (key, reason); `name` is the main file's.
@@ -148,12 +193,19 @@ impl LogSettings {
             }
             names.push(name);
         }
-        // The active files and the archive being compressed must fit in the log files' share.
+        // The active files and the archive being compressed must fit in the log files' share,
+        // besides the export archive's.
         let sinks = 1 + self.files.len() as u64;
-        let least = (sinks + 2).saturating_mul(self.file.max_file_size);
+        let least = (sinks + 2)
+            .saturating_mul(self.file.max_file_size)
+            .saturating_add(self.export_reserve());
         if self.file.max_total_size < least {
+            let export = match self.export_reserve() {
+                0 => "",
+                _ => " + log.export.max_size",
+            };
             let reason = format!(
-                "must be at least {} for {sinks} log file(s): ({sinks} + 2) × log.file.max_file_size",
+                "must be at least {} for {sinks} log file(s): ({sinks} + 2) × log.file.max_file_size{export}",
                 format_bytes(least)
             );
             problems.push(("log.file.max_total_size".into(), reason));

@@ -556,6 +556,25 @@ fn deletion_follows_sequence_numbers_when_the_clock_moves_back() {
 }
 
 #[test]
+fn startup_keeps_the_export_share_free() {
+    let dir = dir("export-share");
+    fs::create_dir_all(&dir).unwrap();
+    for seq in 1..=5 {
+        let name = format!("app.2026-10-01.{seq}.log.gz");
+        fs::write(dir.join(name), vec![0; 4_096]).unwrap();
+    }
+    // 24 KiB less one file size for compression and 8 KiB for log export: 12 KiB for logs.
+    let config = FilesConfig {
+        export_reserve: 8 * KIB,
+        ..config(&dir, &["app"], 4 * KIB, 24 * KIB)
+    };
+    let files = Files::start(config, real()).unwrap();
+    files.stop();
+    assert_eq!(sequences(&dir), BTreeSet::from([3, 4, 5]));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn startup_keeps_one_file_size_free_for_compression() {
     let dir = dir("share");
     fs::create_dir_all(&dir).unwrap();

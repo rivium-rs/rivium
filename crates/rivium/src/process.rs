@@ -30,7 +30,9 @@ use crate::app::App;
 use crate::config::Paths;
 use crate::config::de::format_duration;
 use crate::config::load::{Loaded, default_config};
-use crate::host::{self, AFTER_DEADLINE, End, FLUSH, Failure, RUNTIME_SHUTDOWN, Rounds};
+use crate::host::{
+    self, AFTER_DEADLINE, EXPORT_CANCEL, End, FLUSH, Failure, RUNTIME_SHUTDOWN, Rounds,
+};
 use crate::lifecycle::{Restart, StopReason};
 use crate::log::{self, payload_text};
 use cli::{Command, Options};
@@ -181,6 +183,7 @@ fn serve<A: App>(options: Options, env: &[(OsString, OsString)]) -> Code {
             end
         }
     };
+    log::cancel_export(EXPORT_CANCEL);
     finish(A::NAME, &end);
     end.code
 }

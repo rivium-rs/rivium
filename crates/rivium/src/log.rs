@@ -14,8 +14,13 @@
 //! the directory within `log.file.max_total_size` (plus one file size per active file). Records
 //! of the `log` crate are logged as events too. A process installs logging once; later
 //! installations, as in-process restarts make, only reload the filters.
+//!
+//! With the feature `log-export`, `LogExporter` packs log files into an archive to download;
+//! `[log.export]` sets its size, a share of the directory's budget, and how long it is kept.
 
 mod budget;
+#[cfg(feature = "log-export")]
+mod export;
 mod files;
 mod install;
 #[cfg(any(test, target_os = "android"))]
@@ -30,6 +35,8 @@ use std::time::Duration;
 
 use rivium_error::{Error, kinds};
 
+#[cfg(feature = "log-export")]
+pub use export::{Archive, Date, ExportId, ExportRequest, ExportState, LogExporter, Progress};
 pub(crate) use install::{InstallError, LogInputs, install};
 pub(crate) use panic::{install_panic_hook, payload_text};
 pub(crate) use settings::LogSettings;
@@ -56,6 +63,29 @@ pub fn flush(timeout: Duration) -> crate::Result<()> {
         ),
         _ => Ok(()),
     }
+}
+
+/// The exporter of the process's log files; it fails every export until logging is installed.
+#[cfg(feature = "log-export")]
+pub(crate) fn exporter() -> LogExporter {
+    let installed = install::INSTALLED.lock();
+    let installed = installed.unwrap_or_else(PoisonError::into_inner);
+    LogExporter(
+        installed
+            .as_ref()
+            .map(|installed| installed.exports.clone()),
+    )
+}
+
+/// Cancels the log export in progress, if any, and waits up to `within` for it to end: the
+/// hosts call it as they tear down, but not between rounds.
+pub(crate) fn cancel_export(within: Duration) {
+    #[cfg(feature = "log-export")]
+    if let Some(exports) = exporter().0 {
+        exports.cancel_running(within);
+    }
+    #[cfg(not(feature = "log-export"))]
+    let _ = within;
 }
 
 /// Whether logging is installed in this process.

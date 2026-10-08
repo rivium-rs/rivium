@@ -31,6 +31,8 @@ use crate::stats::{FAULTS, RESTARTS};
 
 /// How long the runtime may take to shut down once the services have ended.
 pub(crate) const RUNTIME_SHUTDOWN: Duration = Duration::from_millis(400);
+/// How long a log export in progress may take to stop as the host tears down.
+pub(crate) const EXPORT_CANCEL: Duration = Duration::from_millis(100);
 /// How long the last log lines may take to reach the log files.
 pub(crate) const FLUSH: Duration = Duration::from_millis(500);
 /// What a host takes after the stop deadline: the runtime, a log export being cancelled

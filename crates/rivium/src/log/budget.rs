@@ -60,7 +60,7 @@ pub(super) fn parse(name: &str) -> Option<(&str, Kind)> {
     }
 }
 
-fn is_date(text: &str) -> bool {
+pub(super) fn is_date(text: &str) -> bool {
     let bytes = text.as_bytes();
     bytes.len() == 10
         && (bytes.iter().enumerate()).all(|(i, b)| {

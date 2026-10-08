@@ -377,6 +377,19 @@ fn the_service_must_not_define_rivium_sections() {
     );
 }
 
+/// The least `log.file.max_total_size` for this many log files of 16MiB, as the problem states
+/// it: with log export, its archive's share of 64MiB counts too.
+fn least_total(sinks: u64) -> String {
+    let (export, share) = match cfg!(feature = "log-export") {
+        true => (" + log.export.max_size", 64),
+        false => ("", 0),
+    };
+    let least = (sinks + 2) * 16 + share;
+    format!(
+        "must be at least {least}MiB for {sinks} log file(s): ({sinks} + 2) × log.file.max_file_size{export}"
+    )
+}
+
 #[test]
 fn rivium_sections_are_checked_and_listed() {
     let file = r#"
@@ -414,7 +427,8 @@ restart = "in-process"
                 "invalid configuration: lifecycle.stop_timeout {source}: must be between 1s and 2m, got \"121s\""
             ),
             format!(
-                "invalid configuration: log.file.max_total_size {source}: must be at least 64MiB for 2 log file(s): (2 + 2) × log.file.max_file_size"
+                "invalid configuration: log.file.max_total_size {source}: {}",
+                least_total(2)
             ),
             format!(
                 "invalid configuration: log.filter {source}: not a log filter: it has no directive"
@@ -435,7 +449,8 @@ restart = "in-process"
         problems(&report),
         [
             format!(
-                "invalid configuration: log.file.max_total_size {source}: must be at least 80MiB for 3 log file(s): (3 + 2) × log.file.max_file_size"
+                "invalid configuration: log.file.max_total_size {source}: {}",
+                least_total(3)
             ),
             format!(
                 "invalid configuration: log.files[1].name {source}: `app` is the name of another log file"
@@ -444,7 +459,7 @@ restart = "in-process"
     );
     let fixed = fixed
         .replace("name = \"app\"", "name = \"debug\"")
-        .replace("32MiB", "80MiB");
+        .replace("32MiB", "144MiB");
     let loaded = ok(load_with(Some(&fixed), &[], &[]));
     let lifecycle = &loaded.reserved.lifecycle;
     assert_eq!(

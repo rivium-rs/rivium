@@ -217,6 +217,12 @@ pub(super) fn day(time: SystemTime) -> i64 {
 
 /// A day as `YYYY-MM-DD` (proleptic Gregorian calendar).
 pub(super) fn date(day: i64) -> String {
+    let (y, m, d) = civil(day);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// A day as year, month and day of the proleptic Gregorian calendar.
+pub(super) fn civil(day: i64) -> (i64, i64, i64) {
     let z = day + 719_468;
     let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));
     let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
@@ -226,8 +232,7 @@ pub(super) fn date(day: i64) -> String {
         doy - (153 * mp + 2) / 5 + 1,
         if mp < 10 { mp + 3 } else { mp - 9 },
     );
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}")
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
 /// One sink's active file.

@@ -13,8 +13,8 @@ versioned crates, so a fix reaches every service through a dependency update.
 > [!NOTE]
 >
 > **Status: under construction.** Nothing is published yet. Implemented so far: the error type,
-> configuration, logging with a disk budget, the lifecycle kernel, the process and embedded
-> hosts, the JNI adapter and the test support. The HTTP integration and log export come next.
+> configuration, logging with a disk budget and log export, the lifecycle kernel, the process and
+> embedded hosts, the JNI adapter and the test support. The HTTP integration comes next.
 
 ## Crates
 
