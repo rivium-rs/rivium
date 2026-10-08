@@ -37,8 +37,8 @@ and the CI job that verifies it. The minimum supported Rust version is 1.92.
 | `just loc`, `just deps` | Size budget and dependency closure of the library crates |
 
 Developer tools are installed under `.tools/` (`just tools`), never globally. Maintainers install
-the git hooks that run the public-content check with `just hooks <denylist>`. Commit messages
-follow [Conventional Commits](https://www.conventionalcommits.org/).
+the git hooks that run the public-content check with `just hooks <denylist>`. Branches, commit
+messages (Conventional Commits) and pull requests follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
