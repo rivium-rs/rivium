@@ -24,11 +24,13 @@
    pull request ready for review. Its title is a Conventional Commit that still fits in 72
    characters once GitHub appends ` (#<n>)`; `check/pr-title` checks it that way.
 6. **Merge with "Squash and merge"** after the maintainer approves that pull request. Its title
-   becomes the commit on `main`, which keeps every commit there a reviewed, CI-verified state. Merge commits made on GitHub skip the local hooks, so check the final
-   message with `scripts/check-public.sh <denylist> --message <file>` and merge with your
-   GitHub noreply address as the author, for example
-   `gh pr merge <n> --squash --subject "<title> (#<n>)" --body-file <file> --author-email <noreply>`.
-   Keep the branch; never force-push or rewrite history that has been pushed.
+   becomes the commit on `main`, which keeps every commit there a reviewed, CI-verified state.
+   Merge commits made on GitHub skip the local hooks, so check the final message with
+   `scripts/check-public.sh <denylist> --message <file>` and merge with your GitHub noreply
+   address as the author, for example
+   `gh pr merge <n> --squash --delete-branch --subject "<title> (#<n>)" --body-file <file> --author-email <noreply>`.
+   `--delete-branch` removes the remote and local branch; the pull request keeps its commits.
+   Never force-push or rewrite history that has been pushed.
 
 ## Checks
 
