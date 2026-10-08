@@ -38,6 +38,7 @@ jobs:
           shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
+          scripts/tests/docs-only.sh
 
   test-linux:
     name: ci/test-linux
