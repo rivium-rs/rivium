@@ -155,7 +155,7 @@ async fn without_in_process_restarts_the_first_round_ends_the_loop() {
         (
             Script::Panic,
             Code::StartupFailed,
-            "panic: composition root",
+            "startup failed: panic: composition root",
         ),
         (
             Script::BuildFails(Code::StartupFailed),

@@ -262,7 +262,7 @@ fn stopped_at_once(stops: &mut mpsc::UnboundedReceiver<StopReason>) -> End {
 fn panicked(payload: &(dyn std::any::Any + Send)) -> Failure {
     Failure::new(
         Code::StartupFailed,
-        format!("panic: {}", payload_text(payload)),
+        format!("startup failed: panic: {}", payload_text(payload)),
     )
 }
 
