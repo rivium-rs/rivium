@@ -24,8 +24,9 @@ use crate::Result;
 
 /// How long an export waits for the lines logged before it to reach the files.
 const BARRIER: Duration = Duration::from_millis(500);
-/// How much an export copies between two looks at a cancellation.
-const CHUNK: usize = 64 * 1024;
+/// How much an export copies between two looks at a cancellation: little enough to notice one
+/// within milliseconds, even under an emulator.
+const CHUNK: usize = 8 * 1024;
 
 /// A calendar day, UTC, as the names of rolled log files carry it. It is written `YYYY-MM-DD`,
 /// as text and in serde formats.
@@ -525,6 +526,8 @@ impl Exports {
             written: 0,
             max: self.max_size,
             over: &over,
+            work,
+            broken: false,
         });
         let mut packed = Vec::new();
         let mut skipped = Vec::new();
@@ -559,6 +562,8 @@ impl Exports {
             Ok::<_, Stop>(limited.written)
         })();
         match packing {
+            // Cancelled as the archive was finished: it is incomplete.
+            Ok(_) if work.cancel.load(Relaxed) => Err(Stop::Cancelled),
             Ok(size) => Ok((size, skipped.len())),
             Err(Stop::Failed(_)) if over.get() => {
                 let max = crate::config::de::format_bytes(self.max_size);
@@ -669,27 +674,40 @@ fn manifest(name: &str, packed: &[String], skipped: &[String]) -> String {
     text
 }
 
-/// The archive's file, which refuses a write that would take it over `max`.
+/// The archive's file, which refuses a write that would take it over `max`. Once packing has
+/// stopped, after a cancellation or an error, the archive is thrown away and writes go nowhere:
+/// the zip writer finishes the archive as it is dropped, and would report a failure on stderr.
 struct Limited<'a> {
     file: BufWriter<File>,
     written: u64,
     max: u64,
     over: &'a Cell<bool>,
+    work: &'a Work,
+    broken: bool,
 }
 
 impl Write for Limited<'_> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if self.written + bytes.len() as u64 > self.max {
-            self.over.set(true);
-            return Err(io::Error::other("the archive is too large"));
+        if self.broken || self.work.cancel.load(Relaxed) {
+            return Ok(bytes.len());
         }
-        let written = self.file.write(bytes)?;
-        self.written += written as u64;
-        Ok(written)
+        let written = match self.written + bytes.len() as u64 > self.max {
+            true => {
+                self.over.set(true);
+                Err(io::Error::other("the archive is too large"))
+            }
+            false => self.file.write(bytes),
+        };
+        self.broken = written.is_err();
+        self.written += *written.as_ref().unwrap_or(&0) as u64;
+        written
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()
+        match self.broken {
+            true => Ok(()),
+            false => self.file.flush(),
+        }
     }
 }
 

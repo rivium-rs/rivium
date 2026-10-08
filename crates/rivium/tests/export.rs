@@ -179,10 +179,11 @@ fn log_export() {
     assert_eq!(finished(&rebuilt, id).state, ExportState::Done);
     assert!(rebuilt.archive(id).unwrap().path.exists());
 
-    // Stopping the host cancels an export in progress, but the exporter stays.
+    // Stopping the host cancels an export in progress, waiting a moment for it, and the
+    // exporter stays.
     let id = exporter.start(todays_logs()).unwrap();
     assert_eq!(host.stop(Duration::from_secs(4)), Code::Ok);
-    assert_eq!(exporter.progress(id).unwrap().state, ExportState::Cancelled);
+    assert_eq!(finished(&exporter, id).state, ExportState::Cancelled);
     let left: Vec<String> = names(&logs)
         .into_iter()
         .filter(|name| name.starts_with("export-"))
