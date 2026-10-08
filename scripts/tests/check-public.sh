@@ -114,22 +114,23 @@ expect 2 "empty denylist fails closed" "$check" "$tmp/empty.txt"
 # Hooks, end to end: a commit hook refuses, and pre-push refuses to publish a planted commit.
 new_repo
 mkdir "$tmp/repo/scripts"
-cp -R "$root/scripts/check-public.sh" "$root/scripts/hooks" "$tmp/repo/scripts/"
+cp -R "$root/scripts/check-public.sh" "$root/scripts/check-commit-msg.sh" "$root/scripts/hooks" "$tmp/repo/scripts/"
 git -C "$tmp/repo" config core.hooksPath scripts/hooks
 git -C "$tmp/repo" config rivium.denylist "$list"
 echo clean > "$tmp/repo/a.txt"
 git -C "$tmp/repo" add -A
-expect 0 "hooks: clean commit accepted" git -C "$tmp/repo" commit -q -m "clean"
-expect 1 "hooks: commit-msg refuses" git -C "$tmp/repo" commit -q --allow-empty -m "about $term1"
+expect 0 "hooks: clean commit accepted" git -C "$tmp/repo" commit -q -m "chore: clean"
+expect 1 "hooks: commit-msg refuses" git -C "$tmp/repo" commit -q --allow-empty -m "chore: about $term1"
+expect 1 "hooks: commit-msg refuses a non-conventional message" git -C "$tmp/repo" commit -q --allow-empty -m "clean"
 echo "x $term2" > "$tmp/repo/b.txt"
 git -C "$tmp/repo" add b.txt
-expect 1 "hooks: pre-commit refuses" git -C "$tmp/repo" commit -q -m "b"
-git -C "$tmp/repo" commit -q --no-verify -m "b" # bypass the commit hooks to test pre-push
+expect 1 "hooks: pre-commit refuses" git -C "$tmp/repo" commit -q -m "chore: b"
+git -C "$tmp/repo" commit -q --no-verify -m "chore: b" # bypass the commit hooks to test pre-push
 git init -q --bare "$tmp/remote.git"
 git -C "$tmp/repo" remote add origin "$tmp/remote.git"
 expect 1 "hooks: pre-push refuses planted commit" git -C "$tmp/repo" push -q origin main
 git -C "$tmp/repo" rm -q b.txt
-git -C "$tmp/repo" commit -q -m "remove"
+git -C "$tmp/repo" commit -q -m "chore: remove"
 expect 1 "hooks: pre-push still refuses (history)" git -C "$tmp/repo" push -q origin main
 git -C "$tmp/repo" reset -q --hard HEAD~2
 expect 0 "hooks: pre-push accepts clean history" git -C "$tmp/repo" push -q origin main

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Refuses commit messages that contain a denylist entry.
+# Refuses commit messages that contain a denylist entry or are not Conventional Commits.
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 . "$root/scripts/hooks/denylist.sh"
-exec "$root/scripts/check-public.sh" "$denylist" --message "$1"
+"$root/scripts/check-public.sh" "$denylist" --message "$1"
+exec "$root/scripts/check-commit-msg.sh" "$1"

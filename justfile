@@ -20,6 +20,7 @@ lint:
     cargo hack check --each-feature --workspace --locked
     shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh
     scripts/tests/check-public.sh
+    scripts/tests/check-commit-msg.sh
     scripts/tests/loc.sh
     if command -v actionlint > /dev/null; then actionlint; else echo "actionlint not installed (see .tools/); skipped"; fi
 
@@ -51,7 +52,7 @@ deps:
 public denylist=`git config --get rivium.denylist || true`:
     scripts/check-public.sh "{{ denylist }}"
 
-# Install the git hooks (pre-commit, commit-msg, pre-push) that run the public-content check
+# Install the git hooks (pre-commit, commit-msg, pre-push): public-content check, Conventional Commits
 hooks denylist:
     git config core.hooksPath scripts/hooks
     git config rivium.denylist "$(cd "$(dirname "{{ denylist }}")" && pwd)/$(basename "{{ denylist }}")"
