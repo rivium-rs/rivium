@@ -1,0 +1,49 @@
+name: public
+
+# The public-content check runs on every push to any branch: CI is the backstop, the pre-push hook
+# is the first line of defence.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public:
+    name: check/public
+    runs-on: ubuntu-24.04
+    # Pull requests from forks get no secrets: skipped there, the maintainer checks locally.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check the whole history against the private denylist
+        env:
+          PUBLIC_DENYLIST: ${{ secrets.PUBLIC_DENYLIST }}
+        run: |
+          if [ -z "$PUBLIC_DENYLIST" ]; then
+            echo "::error::secret PUBLIC_DENYLIST is missing or empty"
+            exit 1
+          fi
+          list="$RUNNER_TEMP/denylist.txt"
+          printf '%s\n' "$PUBLIC_DENYLIST" > "$list"
+          # Planted violation: a file holding the list's first entry must be reported (proves the
+          # list loaded and matches). Output is discarded; entries are never printed.
+          plant="$RUNNER_TEMP/plant"
+          mkdir -p "$plant"
+          awk '{ sub(/\r$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") } $0 != "" && substr($0, 1, 1) != "#" { print; exit }' \
+            "$list" > "$plant/planted.txt"
+          if scripts/check-public.sh "$list" --dir "$plant" > /dev/null 2>&1; then
+            echo "::error::the planted denylist entry was not detected"
+            exit 1
+          fi
+          rm -rf "$plant"
+          scripts/check-public.sh "$list"

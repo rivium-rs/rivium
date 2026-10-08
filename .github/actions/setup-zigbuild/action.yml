@@ -1,0 +1,13 @@
+name: Set up cargo-zigbuild
+description: Installs zig (from PyPI) and cargo-zigbuild at pinned versions.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.13"
+    - shell: bash
+      run: python -m pip install ziglang==0.15.2 && python -m ziglang version
+    - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+      with:
+        tool: cargo-zigbuild@0.23.4

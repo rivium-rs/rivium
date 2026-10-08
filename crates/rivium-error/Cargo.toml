@@ -1,0 +1,15 @@
+[package]
+name = "rivium-error"
+description = "The error type, classification and log fields shared by Rivium services"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+include = ["src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
+keywords = ["error", "service"]
+categories = ["rust-patterns"]
+
+[lints]
+workspace = true
