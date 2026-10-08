@@ -58,13 +58,6 @@ pub(crate) struct SinkSender {
 
 impl SinkSender {
     /// Queues one line; waits while the queue is full. `false` when the writer is gone.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the output layers write to the files (next change)"
-        )
-    )]
     pub(crate) fn send(&self, line: Vec<u8>) -> bool {
         self.queue.send(Message::Line(self.sink, line)).is_ok()
     }
@@ -74,10 +67,7 @@ impl SinkSender {
 /// written and compressed what they hold.
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "the threads are joined by tests only; stats() reads the counters"
-    )
+    expect(dead_code, reason = "the threads are joined by tests only")
 )]
 pub(crate) struct Files {
     queue: SyncSender<Message>,
@@ -94,13 +84,6 @@ impl Files {
     ///
     /// When the directory or an active file cannot be created or opened, or a thread cannot be
     /// started.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the output layers write to the files (next change)"
-        )
-    )]
     pub(crate) fn start(config: FilesConfig, clock: Clock) -> io::Result<Files> {
         fs::create_dir_all(&config.dir)?;
         let counters = Arc::new(Counters::default());
@@ -181,13 +164,6 @@ impl Files {
     }
 
     /// What the output layer of the sink with this index writes to.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the output layers write to the files (next change)"
-        )
-    )]
     pub(crate) fn sender(&self, sink: usize) -> SinkSender {
         SinkSender {
             queue: self.queue.clone(),
@@ -197,13 +173,6 @@ impl Files {
 
     /// Returns once every line queued before has been written to the operating system (not
     /// synced to disk), or `false` when that takes longer than `timeout`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the output layers write to the files (next change)"
-        )
-    )]
     pub(crate) fn flush(&self, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         let (done, wait) = mpsc::channel();
