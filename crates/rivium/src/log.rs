@@ -30,15 +30,8 @@ use std::time::Duration;
 
 use rivium_error::{Error, kinds};
 
-#[cfg_attr(
-    not(test),
-    expect(
-        unused_imports,
-        reason = "the hosts install it; they are not written yet"
-    )
-)]
-pub(crate) use panic::install_panic_hook;
-pub(crate) use panic::payload_text;
+pub(crate) use install::{InstallError, LogInputs, install};
+pub(crate) use panic::{install_panic_hook, payload_text};
 pub(crate) use settings::LogSettings;
 
 /// A layer for the global subscriber, as `App::log_layers` adds them: for example a bridge to

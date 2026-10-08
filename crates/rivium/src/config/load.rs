@@ -29,10 +29,6 @@ pub(crate) struct Reserved {
 
 /// The configuration file layer.
 #[derive(Clone, Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the hosts read files; they are not written yet")
-)]
 pub(crate) enum FileLayer {
     /// No file, as for `default-config`.
     None,
@@ -60,10 +56,6 @@ pub(crate) struct Inputs<'a> {
 
 /// A loaded configuration.
 #[derive(Clone, Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the hosts read these; they are not written yet")
-)]
 pub(crate) struct Loaded<C> {
     pub(crate) config: C,
     pub(crate) reserved: Reserved,
@@ -157,13 +149,6 @@ pub(crate) fn load<C: Serialize + DeserializeOwned + Default>(
 /// # Errors
 ///
 /// When an override is not valid.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the process host prints it; they are not written yet"
-    )
-)]
 pub(crate) fn default_config<C: Serialize + DeserializeOwned + Default>(
     name: &str,
     sets: &[(String, String)],
@@ -188,12 +173,15 @@ pub(crate) fn default_config<C: Serialize + DeserializeOwned + Default>(
     })
 }
 
+impl<C> Loaded<C> {
+    /// Where the value of `key`, such as `log.file.dir`, came from.
+    pub(crate) fn source_of(&self, key: &str) -> Source {
+        self.tree.source_at(&parse(key)).clone()
+    }
+}
+
 impl<C: Serialize> Loaded<C> {
     /// Every key in effect, one line each: `<key> = <value> (<source>)`.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "check-config prints it; they are not written yet")
-    )]
     pub(crate) fn listing(&self) -> Vec<String> {
         let mut table = toml::Table::try_from(&self.config).unwrap_or_default();
         table.extend(toml::Table::try_from(&self.reserved).unwrap_or_default());

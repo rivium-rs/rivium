@@ -99,6 +99,36 @@ impl LogSettings {
         }
     }
 
+    /// The keys whose values differ from `installed` and cannot change while the process runs:
+    /// every setting but the filters.
+    pub(crate) fn unchangeable(&self, installed: &LogSettings) -> Vec<&'static str> {
+        let names = |settings: &LogSettings| {
+            (settings.files.iter())
+                .map(|category| category.name.clone())
+                .collect::<Vec<_>>()
+        };
+        let (now, then) = (&self.file, &installed.file);
+        [
+            ("log.file.dir", now.dir != then.dir),
+            ("log.files", names(self) != names(installed)),
+            (
+                "log.file.max_file_size",
+                now.max_file_size != then.max_file_size,
+            ),
+            (
+                "log.file.max_total_size",
+                now.max_total_size != then.max_total_size,
+            ),
+            (
+                "log.console.format",
+                self.console.format != installed.console.format,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(key, differs)| differs.then_some(key))
+        .collect()
+    }
+
     /// Problems that no single value shows, as (key, reason); `name` is the main file's.
     pub(crate) fn problems(&self, name: &str) -> Vec<(String, String)> {
         let mut problems = Vec::new();

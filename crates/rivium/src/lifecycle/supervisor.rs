@@ -159,28 +159,16 @@ impl Supervisor {
     }
 
     /// The readiness of this supervisor's run.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the hosts use it; they are not written yet")
-    )]
     pub(crate) fn readiness(&self) -> Readiness {
         Readiness::new(self.phase.subscribe(), self.health.clone())
     }
 
     /// The health items of this supervisor's run.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the hosts use it; they are not written yet")
-    )]
     pub(crate) fn health(&self) -> HealthRegistry {
         self.health.clone()
     }
 
     /// Asks this supervisor's run for a restart.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the hosts use it; they are not written yet")
-    )]
     pub(crate) fn restarter(&self) -> Restarter {
         Restarter::new(self.run.inputs.clone())
     }

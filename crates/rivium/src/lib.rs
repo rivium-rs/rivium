@@ -1,22 +1,28 @@
 //! The Rivium service foundation.
 //!
-//! This crate will provide configuration loading, logging with a disk budget, the service
-//! lifecycle kernel, the process host and the embedded host. It is pre-release: so far it
-//! provides [`config`], [`log`], the service contract ([`Service`], [`ServiceContext`],
-//! [`service()`], [`periodic()`]) and the [`lifecycle`] kernel that runs services,
-//! [`fs::atomic_write`] and [`stats()`]; the hosts come next.
+//! A service program implements [`App`]: its configuration and its [`Service`]s, built with
+//! [`service()`], [`periodic()`] or by hand. A host runs it: [`process::run`] as a program of
+//! its own, with configuration ([`config`]), logging with a disk budget ([`log`]), stop
+//! requests, restarts and exit codes ([`Code`]) handled. The [`lifecycle`] kernel supervises
+//! the services. This crate is pre-release: the embedded host comes next.
 
 use std::future::Future;
 use std::pin::Pin;
 
 pub use rivium_error::{self as error, BError, Error, Result};
 
+mod app;
+mod code;
 pub mod config;
 pub mod fs;
+mod host;
 pub mod lifecycle;
 pub mod log;
+pub mod process;
 mod stats;
 
+pub use app::{App, AppContext, Identity};
+pub use code::Code;
 pub use lifecycle::health::{Health, HealthHandle, HealthRegistry, Phase, Readiness};
 pub use lifecycle::service::{
     Restarter, Service, ServiceContext, ServiceKind, StopSignal, periodic, service,
