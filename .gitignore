@@ -1,0 +1,10 @@
+# Internal planning and design documents reference company projects. They live in the
+# company's private repository, never in the public Rivium repository (taskbook Q-6, N-8).
+/docs/planning/
+/docs/design/
+
+# Build output and repository-local developer tools (toolchains, caches, local image overrides).
+/target/
+/.tools/
+
+.DS_Store
