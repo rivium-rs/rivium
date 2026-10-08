@@ -23,9 +23,14 @@ rivium-test = { path = "crates/rivium-test", version = "0.1.0" }
 axum = { version = "0.8", default-features = false }
 jni = { version = "0.22.4", default-features = false }
 rustls = { version = "0.23", default-features = false }
+serde = { version = "1.0.219", default-features = false }
+serde_ignored = { version = "0.1.12", default-features = false }
+serde_path_to_error = { version = "0.1.17", default-features = false }
 serde_json = { version = "1.0.140", default-features = false }
 tokio = { version = "1.47", default-features = false }
+toml = { version = "1.1.0", default-features = false }
 tracing = { version = "0.1.41", default-features = false }
+tracing-subscriber = { version = "0.3.20", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
