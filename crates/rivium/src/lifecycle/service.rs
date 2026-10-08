@@ -190,8 +190,8 @@ impl ServiceContext {
         tracing::info!(service.name = %self.name, listen.addr = %addr, "listening");
     }
 
-    /// Completes once the service is asked to stop. The future owns what it needs, so it can
-    /// be handed to a server's graceful shutdown.
+    /// Completes once the service is asked to stop, or the run has ended. The future owns what
+    /// it needs, so it can be handed to a server's graceful shutdown.
     pub fn stopped(&self) -> impl Future<Output = ()> + Send + 'static {
         self.stop.stopped()
     }
@@ -202,7 +202,7 @@ impl ServiceContext {
         self.stop.clone()
     }
 
-    /// Whether the service has been asked to stop.
+    /// Whether the service has been asked to stop, or the run has ended.
     #[must_use]
     pub fn is_stopping(&self) -> bool {
         self.stop.is_stopping()
@@ -210,7 +210,8 @@ impl ServiceContext {
 
     /// When the run is stopping, the moment by which the service must have ended: whatever
     /// still runs then is abandoned. Plan the last work with it, such as
-    /// `tokio::time::timeout_at(deadline, flush())`.
+    /// `tokio::time::timeout_at(deadline, flush())`. A run whose future is dropped before it
+    /// stops sets none.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
         self.stop.deadline()
@@ -276,13 +277,15 @@ impl StopSignal {
         StopSignal { stopping, deadline }
     }
 
-    /// Whether the service has been asked to stop.
+    /// Whether the service has been asked to stop, or the run has ended: a run can end
+    /// before every service is asked, at the deadline or at a second stop request.
     #[must_use]
     pub fn is_stopping(&self) -> bool {
-        *self.stopping.borrow()
+        // As in `stopped`: a closed channel means the run is gone.
+        *self.stopping.borrow() || self.stopping.has_changed().is_err()
     }
 
-    /// Completes once the service is asked to stop.
+    /// Completes once the service is asked to stop, or the run has ended.
     pub fn stopped(&self) -> impl Future<Output = ()> + Send + 'static {
         let mut stopping = self.stopping.clone();
         async move {
@@ -291,7 +294,8 @@ impl StopSignal {
         }
     }
 
-    /// When the run is stopping, the moment by which the service must have ended.
+    /// When the run is stopping, the moment by which the service must have ended. A run whose
+    /// future is dropped before it stops sets none.
     #[must_use]
     pub fn deadline(&self) -> Option<Instant> {
         *self.deadline.borrow()
