@@ -31,3 +31,5 @@ runtime, an axum server, a rustls handshake with the ring provider, a process th
 gracefully on its platform's stop request, and a JNI library registered with `RegisterNatives`.
 The jobs listed for the T1 and T2 rows pass; the T3 rows have no record yet and are unverified.
 The table is finalised once the library and the validation slices are complete.
+
+<!-- Planted documentation-only change for #8; never merged. -->
