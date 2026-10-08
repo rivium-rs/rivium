@@ -200,3 +200,37 @@ async fn ready(State(readiness): State<Readiness>) -> Response {
     response.extensions_mut().insert(Plain);
     response
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::HttpSettings;
+
+    #[test]
+    fn settings_write_and_read_durations_and_sizes_as_text() {
+        let defaults = HttpSettings::default();
+        let written = serde_json::to_value(&defaults).unwrap();
+        let expected = json!({
+            "addr": "127.0.0.1:8080",
+            "request_timeout": "30s",
+            "body_limit": "1MiB",
+            "expose_internal_detail": false,
+            "probes": true,
+        });
+        assert_eq!(written, expected);
+        assert_eq!(
+            serde_json::from_value::<HttpSettings>(written).unwrap(),
+            defaults
+        );
+        for (key, value, why) in [
+            ("request_timeout", "0s", "must be between 1s and 1h"),
+            ("body_limit", "2GiB", "must be between 0 and 1GiB"),
+        ] {
+            let mut settings = expected.clone();
+            settings[key] = value.into();
+            let error = serde_json::from_value::<HttpSettings>(settings).unwrap_err();
+            assert!(error.to_string().contains(why), "{key}: {error}");
+        }
+    }
+}
