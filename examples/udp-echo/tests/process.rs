@@ -73,7 +73,7 @@ fn sigterm_stops_the_service_with_0_and_each_step_is_logged_once() {
             "phase changed phase=\"stopping\" reason=SIGTERM",
         ),
         ("outcome", "outcome outcome=\"stopped\""),
-        ("stopped", "rivium::process: stopped exit_code=0"),
+        ("stopped", "rivium::process: stopped code="Ok" exit_code=0"),
     ] {
         let found = log.lines().filter(|line| line.contains(part)).count();
         assert_eq!(found, 1, "{once} in\n{log}");
@@ -81,7 +81,7 @@ fn sigterm_stops_the_service_with_0_and_each_step_is_logged_once() {
     // The flush barrier: the last line before the exit is in the file.
     let last = log.lines().last().unwrap();
     assert!(
-        last.contains("rivium::process: stopped exit_code=0"),
+        last.contains("rivium::process: stopped code="Ok" exit_code=0"),
         "{log}"
     );
 }
