@@ -110,8 +110,14 @@ pub fn services(echo: &EchoSettings, stats: &StatsSettings) -> Vec<Box<dyn Servi
         let bound = socket.local_addr().or_err(SOCKET, "reading the address")?;
         ctx.listening(bound);
         let (stop, restarter) = (ctx.stop_signal(), ctx.restarter());
-        ctx.spawn_blocking("socket", move || serve(&socket, &stop, &restarter, &echoed));
-        ctx.ready();
+        // Ready once the socket is read: a stop asked earlier would find no read to wait for.
+        let (reading, read) = tokio::sync::oneshot::channel();
+        ctx.spawn_blocking("socket", move || {
+            serve(&socket, &stop, &restarter, &echoed, reading)
+        });
+        if read.await.is_ok() {
+            ctx.ready();
+        }
         ctx.stopped().await;
         Ok(())
     });
@@ -124,10 +130,15 @@ fn serve(
     stop: &StopSignal,
     restarter: &Restarter,
     echoed: &AtomicU64,
+    reading: tokio::sync::oneshot::Sender<()>,
 ) -> Result<()> {
     use std::io::ErrorKind::{ConnectionReset, Interrupted, TimedOut, WouldBlock};
     let mut buffer = [0; 65_536];
+    let mut reading = Some(reading);
     while !stop.is_stopping() {
+        if let Some(reading) = reading.take() {
+            let _ = reading.send(());
+        }
         let (len, peer) = match socket.recv_from(&mut buffer) {
             Ok(received) => received,
             // A timeout; a signal, which on Linux interrupts a read with a timeout even with

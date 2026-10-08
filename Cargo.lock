@@ -987,6 +987,7 @@ dependencies = [
  "rivium",
  "rivium-test",
  "serde",
+ "tokio",
  "tracing",
 ]
 
