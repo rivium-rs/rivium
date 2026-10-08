@@ -221,11 +221,11 @@ fn serve<A: App>(options: Options, env: &[(OsString, OsString)]) -> Code {
 
 /// Logs how the program ends, says why on stderr when it went wrong, and waits for the logs.
 fn finish(name: &str, end: &End) {
-    let exit_code = end.code.exit_code();
+    let (code, exit_code) = (end.code.name(), end.code.exit_code());
     match &end.message {
-        None => tracing::info!(exit_code, "stopped"),
+        None => tracing::info!(code, exit_code, "stopped"),
         Some(why) => {
-            tracing::warn!(exit_code, reason = %why, "stopped");
+            tracing::warn!(code, exit_code, reason = %why, "stopped");
             report(name, why);
         }
     }
