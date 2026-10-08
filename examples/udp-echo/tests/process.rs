@@ -89,15 +89,13 @@ fn sigterm_stops_the_service_with_0_and_each_step_is_logged_once() {
     );
 }
 
-#[cfg(unix)]
-#[test]
-fn a_log_export_in_progress_is_cancelled_before_the_exit() {
-    let root = root("export");
-    // A large rolled file from today, left by an earlier run: packing it takes a while.
+/// Leaves a rolled log file of today with `len` bytes that deflate poorly below `root`, as an
+/// earlier run would have, and returns the log directory.
+fn rolled_today(root: &Path, len: usize) -> PathBuf {
     let dir = root.join("logs/udp-echo");
     std::fs::create_dir_all(&dir).unwrap();
     let mut state = 0x9E37_79B9_7F4A_7C15_u64;
-    let noise: Vec<u8> = (0..64 << 20)
+    let noise: Vec<u8> = (0..len)
         .map(|_| {
             state ^= state << 13;
             state ^= state >> 7;
@@ -107,6 +105,39 @@ fn a_log_export_in_progress_is_cancelled_before_the_exit() {
         .collect();
     let today = rivium::log::Date::today();
     std::fs::write(dir.join(format!("udp-echo.{today}.1.log")), noise).unwrap();
+    dir
+}
+
+#[test]
+fn a_log_export_over_its_limit_fails_and_says_so_in_the_log_only() {
+    let root = root("export-limit");
+    rolled_today(&root, 4 << 20);
+    let program = start(BIN, &root, &["--set", "log.export.max_size=1MiB"]);
+    let addr = program.addr_of("echo");
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    socket.send_to(b"export", addr).unwrap();
+    let failed = program.wait_for("log export failed", &[]);
+    assert_eq!(failed["error.class"], "InvalidInput", "{failed:?}");
+    socket.send_to(b"restart", addr).unwrap();
+    let exited = program.wait();
+    assert_eq!(exited.code, Some(75));
+    // Standard error has the operator's lines only, each after the name.
+    assert!(
+        exited
+            .stderr
+            .lines()
+            .all(|line| line.starts_with("udp-echo: ")),
+        "{}",
+        exited.stderr
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_log_export_in_progress_is_cancelled_before_the_exit() {
+    let root = root("export");
+    // Packing a large file left by an earlier run takes a while.
+    let dir = rolled_today(&root, 64 << 20);
     let program = start(BIN, &root, &[]);
     let addr = program.addr_of("echo");
     UdpSocket::bind("127.0.0.1:0")
