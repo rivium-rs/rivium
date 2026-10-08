@@ -31,7 +31,7 @@ pub(crate) struct Reserved {
 #[derive(Clone, Debug)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "the hosts read files (phase C-2)")
+    expect(dead_code, reason = "the hosts read files; they are not written yet")
 )]
 pub(crate) enum FileLayer {
     /// No file, as for `default-config`.
@@ -62,7 +62,7 @@ pub(crate) struct Inputs<'a> {
 #[derive(Clone, Debug)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "the hosts read these (phase C-2)")
+    expect(dead_code, reason = "the hosts read these; they are not written yet")
 )]
 pub(crate) struct Loaded<C> {
     pub(crate) config: C,
@@ -159,7 +159,10 @@ pub(crate) fn load<C: Serialize + DeserializeOwned + Default>(
 /// When an override is not valid.
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "the process host prints it (phase C-2)")
+    expect(
+        dead_code,
+        reason = "the process host prints it; they are not written yet"
+    )
 )]
 pub(crate) fn default_config<C: Serialize + DeserializeOwned + Default>(
     name: &str,
@@ -189,7 +192,7 @@ impl<C: Serialize> Loaded<C> {
     /// Every key in effect, one line each: `<key> = <value> (<source>)`.
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "check-config prints it (phase C-2)")
+        expect(dead_code, reason = "check-config prints it; they are not written yet")
     )]
     pub(crate) fn listing(&self) -> Vec<String> {
         let mut table = toml::Table::try_from(&self.config).unwrap_or_default();
