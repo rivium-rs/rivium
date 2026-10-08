@@ -86,7 +86,8 @@ impl LogSettings {
                 format: Format::Text,
             },
             file: File {
-                dir: PathBuf::from("logs").join(name),
+                // Written with `/`, so the default configuration is the same on every platform.
+                dir: PathBuf::from(format!("logs/{name}")),
                 filter: String::new(),
                 max_file_size: 16 * MIB,
                 max_total_size: 256 * MIB,
