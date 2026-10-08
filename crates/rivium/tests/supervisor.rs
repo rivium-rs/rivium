@@ -4,6 +4,7 @@
 //! drop-safety, blocking work, restarts, `periodic`, the logs, and that the outcome does not
 //! depend on scheduling.
 
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -75,7 +76,14 @@ fn stops_at(stops: Vec<(Duration, StopReason)>) -> rivium::lifecycle::StopReceiv
 }
 
 async fn run(services: Vec<ScriptedService>, stops: Vec<(Duration, StopReason)>) -> Outcome {
-    supervisor(scripted(services)).run(stops_at(stops)).await
+    ended(supervisor(scripted(services)).run(stops_at(stops))).await
+}
+
+/// The outcome of a run; a run that never ends fails the test rather than hang it.
+async fn ended(run: impl Future<Output = Outcome>) -> Outcome {
+    let within = secs(7_200);
+    let outcome = tokio::time::timeout(within, run).await;
+    outcome.unwrap_or_else(|_| panic!("the run did not end within {within:?}"))
 }
 
 fn name(outcome: &Outcome) -> &'static str {
@@ -168,7 +176,7 @@ async fn a_failing_task_fails_its_service_at_once() {
         seen.entries()
     });
     let services = vec![Box::new(front) as Box<dyn Service>, collector()];
-    let outcome = supervisor(services).run(stops_at(vec![])).await;
+    let outcome = ended(supervisor(services).run(stops_at(vec![]))).await;
     assert_eq!(name(&outcome), "fault");
     assert_eq!(
         error_of(&outcome),
@@ -242,9 +250,7 @@ async fn the_deadline_reaches_the_services_and_a_shorter_budget_brings_it_forwar
     let seen = Arc::new(std::sync::Mutex::new(None));
     let start = Instant::now();
     let services = vec![timed(Arc::clone(&seen), secs(2))];
-    let outcome = supervisor(services)
-        .run(stops_at(vec![(secs(1), sigterm())]))
-        .await;
+    let outcome = ended(supervisor(services).run(stops_at(vec![(secs(1), sigterm())]))).await;
     assert_eq!(name(&outcome), "stopped");
     assert_eq!(
         *seen.lock().unwrap(),
@@ -256,9 +262,7 @@ async fn the_deadline_reaches_the_services_and_a_shorter_budget_brings_it_forwar
     let start = Instant::now();
     let host = StopReason::Host { budget: secs(1) };
     let services = vec![timed(Arc::clone(&seen), secs(2))];
-    let outcome = supervisor(services)
-        .run(stops_at(vec![(secs(1), host)]))
-        .await;
+    let outcome = ended(supervisor(services).run(stops_at(vec![(secs(1), host)]))).await;
     assert_eq!(name(&outcome), "stop-timed-out");
     assert_eq!(*seen.lock().unwrap(), Some(start + secs(2)));
     assert_eq!(start.elapsed(), secs(2));
@@ -276,9 +280,7 @@ async fn the_deadline_reaches_the_services_and_a_shorter_budget_brings_it_forwar
     };
     let mut services = vec![timed(Arc::clone(&seen), secs(60))];
     services.extend(scripted(vec![failing]));
-    let outcome = supervisor(services)
-        .run(stops_at(vec![(secs(2), host)]))
-        .await;
+    let outcome = ended(supervisor(services).run(stops_at(vec![(secs(2), host)]))).await;
     assert_eq!(name(&outcome), "fault");
     assert_eq!(start.elapsed(), millis(2_500));
 }
@@ -307,7 +309,7 @@ async fn a_restart_request_stops_the_run_gracefully() {
     });
     let mut services = scripted(vec![http(serving())]);
     services.push(restarting);
-    let outcome = supervisor(services).run(stops_at(vec![])).await;
+    let outcome = ended(supervisor(services).run(stops_at(vec![]))).await;
     assert!(
         matches!(outcome, Outcome::RestartRequested(ref why) if why == "configuration changed")
     );
@@ -362,7 +364,7 @@ async fn a_blocking_task_cannot_be_aborted_and_is_abandoned_at_the_deadline() {
     let (stop, stops) = stop_channel();
     stop.stop(sigterm());
     let start = std::time::Instant::now();
-    let outcome = supervisor.run(stops).await;
+    let outcome = ended(supervisor.run(stops)).await;
     assert_eq!(name(&outcome), "stop-timed-out");
     assert!(start.elapsed() < secs(1), "{:?}", start.elapsed());
     let still = &logs.with_message("blocking tasks cannot be aborted and keep running")[0];
@@ -381,7 +383,7 @@ async fn a_service_ends_only_with_its_last_task() {
         Ok(())
     });
     let start = Instant::now();
-    let outcome = supervisor(vec![job]).run(stops_at(vec![])).await;
+    let outcome = ended(supervisor(vec![job]).run(stops_at(vec![]))).await;
     // Every service finished on its own: the run is over once the upload is.
     assert_eq!(name(&outcome), "stopped");
     assert_eq!(start.elapsed(), secs(5));
@@ -405,7 +407,7 @@ async fn periodic_ticks_skip_missed_ticks_and_a_failing_tick_fails_the_service()
         }
     });
     let start = Instant::now();
-    let outcome = supervisor(vec![poller]).run(stops_at(vec![])).await;
+    let outcome = ended(supervisor(vec![poller]).run(stops_at(vec![]))).await;
     // Ticks at 0s, 1s, 2s (until 4.5s), 5s, 6s, and the failing one at 7s.
     assert_eq!(error_of(&outcome), "service poller: device gone");
     assert_eq!(
@@ -421,9 +423,7 @@ async fn a_stop_request_cancels_the_tick_in_progress() {
         Ok(())
     });
     let start = Instant::now();
-    let outcome = supervisor(vec![slow])
-        .run(stops_at(vec![(millis(500), sigterm())]))
-        .await;
+    let outcome = ended(supervisor(vec![slow]).run(stops_at(vec![(millis(500), sigterm())]))).await;
     assert_eq!(name(&outcome), "stopped");
     assert_eq!(start.elapsed(), millis(500));
 }
@@ -441,9 +441,7 @@ async fn each_phase_change_the_listening_address_and_the_outcome_are_logged_once
         ctx.stopped().await;
         Ok(())
     });
-    let outcome = supervisor(vec![listener])
-        .run(stops_at(vec![(secs(1), sigterm())]))
-        .await;
+    let outcome = ended(supervisor(vec![listener]).run(stops_at(vec![(secs(1), sigterm())]))).await;
     assert_eq!(name(&outcome), "stopped");
     let lines: Vec<String> = (logs.events().iter())
         .map(|event| {
@@ -519,7 +517,8 @@ async fn outcomes(
     for _ in 0..runs {
         let (handle, receiver) = stop_channel();
         stops.iter().for_each(|stop| handle.stop(stop.clone()));
-        let outcome = name(&supervisor(make()).run(receiver).await);
+        let run = tokio::time::timeout(secs(10), supervisor(make()).run(receiver));
+        let outcome = name(&run.await.expect("the run did not end within 10s"));
         if !seen.contains(&outcome) {
             seen.push(outcome);
         }
