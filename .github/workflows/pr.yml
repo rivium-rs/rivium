@@ -13,9 +13,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: The title becomes the squash commit on main, so it must be a Conventional Commit
+      - name: The title plus " (#N)" becomes the squash commit on main, so it must be a Conventional Commit
         env:
           TITLE: ${{ github.event.pull_request.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          printf '%s\n' "$TITLE" > "$RUNNER_TEMP/title"
-          scripts/check-commit-msg.sh "$RUNNER_TEMP/title"
+          printf '%s (#%s)\n' "$TITLE" "$NUMBER" > "$RUNNER_TEMP/subject"
+          scripts/check-commit-msg.sh "$RUNNER_TEMP/subject"
