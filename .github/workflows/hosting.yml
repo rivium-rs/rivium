@@ -1,8 +1,9 @@
 name: hosting
 
+# Runs on pull requests and on main; branches get CI through their (draft) pull request.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
