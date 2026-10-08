@@ -1,0 +1,18 @@
+[package]
+name = "minimal"
+version = "0.0.0"
+description = "Minimal Rivium consumer: its test checks the dependency closures"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium-error.workspace = true
+rivium.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true
