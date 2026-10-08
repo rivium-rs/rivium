@@ -151,21 +151,18 @@ fn logging_is_installed_once_then_only_its_filters_change() {
         name: "audit".into(),
         filter: "audit=info".into(),
     });
-    let mut quiet = inputs(dir.clone(), settings.clone());
-    quiet.console = false;
-    install(quiet).unwrap_or_else(|error| panic!("{error}"));
+    // With the console on (at `warn` unless stdout is a terminal), the panics of failing tests
+    // still reach the test output once logging is installed in this process.
+    install(inputs(dir.clone(), settings.clone())).unwrap_or_else(|error| panic!("{error}"));
     tracing::debug!(target: "app", "not yet");
     log::debug!(target: "app", "not from the log crate either");
 
     settings.filter = "debug".into();
-    let mut verbose = inputs(dir.clone(), settings.clone());
-    verbose.console = false;
-    assert!(install(verbose).is_ok());
+    assert!(install(inputs(dir.clone(), settings.clone())).is_ok());
     tracing::debug!(target: "app", "now at debug");
     log::debug!(target: "app", "and from the log crate");
 
-    let mut moved = inputs(dir.join("elsewhere"), settings.clone());
-    moved.console = false;
+    let moved = inputs(dir.join("elsewhere"), settings.clone());
     assert!(matches!(install(moved), Err(InstallError::Changed(keys)) if keys == ["log.file.dir"]));
     let mut more = settings.clone();
     more.files.push(Category {
@@ -212,7 +209,9 @@ fn the_panic_hook_logs_an_error_event_once() {
     let thread = std::thread::current();
     let expected = [
         "panic.message=\"boom\"".to_string(),
-        "panic.location=\"crates/rivium/src/log/tests.rs:".to_string(),
+        // The path separator is the platform's.
+        "panic.location=\"crates".to_string(),
+        "tests.rs:".to_string(),
         format!("thread.name=\"{}\"", thread.name().unwrap()),
     ];
     for part in expected {

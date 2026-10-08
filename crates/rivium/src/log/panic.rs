@@ -1,9 +1,10 @@
-//! The panic hook: a panic becomes an error event with target `panic`, or a line on stderr when
-//! no output takes such events (before logging is installed, for example). On Android it is
-//! also written to Android's log at once.
+//! The panic hook: a panic becomes an error event with target `panic`, or a line on stderr while
+//! no subscriber is installed. On Android it is also written to Android's log at once.
 
 use std::panic::PanicHookInfo;
 use std::sync::Once;
+
+use tracing::subscriber::NoSubscriber;
 
 static HOOK: Once = Once::new();
 
@@ -31,7 +32,11 @@ fn report(name: &str, info: &PanicHookInfo<'_>) {
         tracing::Level::ERROR,
         &format!("panic in thread '{thread}' at {location}: {message}"),
     );
-    if tracing::enabled!(target: "panic", tracing::Level::ERROR) {
+    // Not `tracing::enabled!`: once a scoped subscriber has existed in the process, the
+    // callsite's cached interest can make it report the global subscriber as enabled when
+    // none of its outputs takes the event.
+    let installed = tracing::dispatcher::get_default(|current| !current.is::<NoSubscriber>());
+    if installed {
         tracing::event!(
             target: "panic",
             tracing::Level::ERROR,
