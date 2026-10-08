@@ -4,12 +4,15 @@
 # KeepAlive, no ExitTimeOut. Asserts: a run that exits with 75 is restarted by KeepAlive; SIGTERM
 # from launchd ends a run gracefully with exit code 0; `launchctl bootout` stops the service
 # within 5 s.
-# Usage: scripts/hosting/launchd.sh <smoke binary>
+# Usage: scripts/hosting/launchd.sh <smoke binary> [extra serve arguments]
 # Checks are passed as strings and evaluated later, hence single quotes.
 # shellcheck disable=SC2016,SC2034
 set -euo pipefail
 [ "${CI:-}" = true ] || { echo "launchd.sh registers a LaunchAgent; it only runs in CI (CI=true)" >&2; exit 2; }
 bin=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+shift
+extra=""
+for arg in "$@"; do extra="$extra<string>$arg</string>"; done
 label=io.github.rivium-rs.smoke
 dir=$(mktemp -d)
 plist="$HOME/Library/LaunchAgents/$label.plist"
@@ -37,7 +40,7 @@ cat > "$plist" <<EOF
     <string>$bin</string><string>serve</string>
     <string>--log</string><string>$dir/smoke.log</string>
     <string>--exit-once</string><string>75</string>
-    <string>--marker</string><string>$dir/exited</string>
+    <string>--marker</string><string>$dir/exited</string>$extra
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

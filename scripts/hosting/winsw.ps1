@@ -4,8 +4,8 @@
 # 10 s and 20 s, no stoptimeout (WinSW's default is 15 s). For exit codes 75 and 70 it asserts that
 # the failed run is restarted by onfailure, and that `stop` delivers CTRL_C and the service stops
 # gracefully with exit code 0 within 15 s.
-# Usage: scripts/hosting/winsw.ps1 -Binary <path to smoke.exe>
-param([Parameter(Mandatory)][string]$Binary)
+# Usage: scripts/hosting/winsw.ps1 -Binary <path to smoke.exe> [-Codes 75,70] [-ExtraArgs '<serve arguments>']
+param([Parameter(Mandatory)][string]$Binary, [int[]]$Codes = @(75, 70), [string]$ExtraArgs = '')
 $ErrorActionPreference = 'Stop'
 if ($env:CI -ne 'true') { throw 'winsw.ps1 registers a Windows service; it only runs in CI (CI=true)' }
 
@@ -35,6 +35,7 @@ function Count([string]$Pattern, [string]$Path) {
 function Test-Scenario([int]$Code) {
     Write-Output "--- scenario: first run exits with $Code"
     $dir = Join-Path $env:RUNNER_TEMP "winsw-smoke-$Code"
+    Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $dir | Out-Null
     $winsw = Join-Path $dir 'smoke-service.exe'
     Invoke-WebRequest $url -OutFile $winsw
@@ -46,7 +47,7 @@ function Test-Scenario([int]$Code) {
   <name>Rivium hosting smoke</name>
   <description>Rivium hosting smoke test</description>
   <executable>%BASE%\smoke.exe</executable>
-  <arguments>serve --log "%BASE%\smoke.log" --exit-once $Code --marker "%BASE%\exited"</arguments>
+  <arguments>serve --log "%BASE%\smoke.log" --exit-once $Code --marker "%BASE%\exited" $ExtraArgs</arguments>
   <workingdirectory>%BASE%</workingdirectory>
   <logmode>rotate</logmode>
   <logpath>%BASE%\logs</logpath>
@@ -89,7 +90,6 @@ function Test-Scenario([int]$Code) {
     }
 }
 
-Test-Scenario 75
-Test-Scenario 70
+foreach ($code in $Codes) { Test-Scenario $code }
 if ($script:failures -ne 0) { Write-Output "hosting/winsw: $($script:failures) failure(s)"; exit 1 }
 Write-Output 'hosting/winsw: passed'

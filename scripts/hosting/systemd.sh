@@ -5,11 +5,13 @@
 # with 75 is restarted; `systemctl stop` stops the service gracefully (SIGTERM logged, exit status
 # 0, under 4.5 s, no SIGKILL).
 # Usage: scripts/hosting/systemd.sh <smoke binary for the Docker host; its glibc must not exceed
-#        the base image's (RIVIUM_SYSTEMD_BASE, default ubuntu:24.04)>
+#        the base image's (RIVIUM_SYSTEMD_BASE, default ubuntu:24.04)> [extra serve arguments]
 # Checks are passed as strings and evaluated later, hence single quotes.
 # shellcheck disable=SC2016
 set -euo pipefail
 bin=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+shift
+extra=${*:-}
 base=${RIVIUM_SYSTEMD_BASE:-ubuntu:24.04}
 image=rivium-systemd-smoke
 name=rivium-systemd-smoke-$$
@@ -36,13 +38,13 @@ echo "systemd in container: $state"
 # Debug level makes systemd log each main-process exit status (they are reset once a unit stops).
 ct systemd-analyze log-level debug
 
-ct sh -c 'mkdir -p /var/lib/smoke && cat > /etc/systemd/system/smoke.service' <<'EOF'
+ct sh -c 'mkdir -p /var/lib/smoke && cat > /etc/systemd/system/smoke.service' <<EOF
 [Unit]
 Description=Rivium hosting smoke
 
 [Service]
 Type=simple
-ExecStart=/opt/smoke/smoke serve --log /var/lib/smoke/smoke.log --exit-once 75 --marker /var/lib/smoke/exited
+ExecStart=/opt/smoke/smoke serve --log /var/lib/smoke/smoke.log --exit-once 75 --marker /var/lib/smoke/exited $extra
 Restart=always
 EOF
 ct systemctl daemon-reload

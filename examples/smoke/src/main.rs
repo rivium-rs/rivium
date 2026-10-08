@@ -3,7 +3,7 @@
 //! with a given code. The hosting jobs run it under systemd, WinSW and launchd.
 //!
 //! ```text
-//! smoke serve [--log FILE] [--exit-once CODE --marker FILE]
+//! smoke serve [--log FILE] [--exit-once CODE --marker FILE] [--stop-exit CODE]
 //! smoke exit CODE
 //! smoke check
 //! ```
@@ -13,7 +13,8 @@
 //!
 //! `serve` prints `ready` on stdout and to the log once its stop handlers are installed. With `--exit-once`, the
 //! first run (when MARKER does not exist yet) creates MARKER and exits with CODE, so a supervisor's
-//! restart can be observed; later runs serve normally.
+//! restart can be observed; later runs serve normally. `--stop-exit` makes a stopped run exit
+//! with CODE instead of 0: the hosting jobs use it to plant a violation their checks must catch.
 
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -34,7 +35,9 @@ fn main() -> ExitCode {
         _ => None,
     };
     parsed.unwrap_or_else(|| {
-        eprintln!("usage: smoke serve [--log FILE] [--exit-once CODE --marker FILE]");
+        eprintln!(
+            "usage: smoke serve [--log FILE] [--exit-once CODE --marker FILE] [--stop-exit CODE]"
+        );
         eprintln!("       smoke exit CODE | smoke check");
         ExitCode::from(64)
     })
@@ -64,6 +67,7 @@ fn check() -> ExitCode {
 struct Serve {
     log: Option<PathBuf>,
     exit_once: Option<(u8, PathBuf)>,
+    stop_exit: u8,
 }
 
 impl Serve {
@@ -76,6 +80,7 @@ impl Serve {
                 "--log" => serve.log = Some(value.into()),
                 "--exit-once" => code = Some(value.parse().ok()?),
                 "--marker" => marker = Some(PathBuf::from(value)),
+                "--stop-exit" => serve.stop_exit = value.parse().ok()?,
                 _ => return None,
             }
         }
@@ -111,7 +116,7 @@ impl Serve {
         self.log(&format!("stop signal={signal}"));
         runtime.shutdown_timeout(Duration::from_millis(400));
         self.log("stopped");
-        ExitCode::SUCCESS
+        ExitCode::from(self.stop_exit)
     }
 
     fn log(&self, line: &str) {

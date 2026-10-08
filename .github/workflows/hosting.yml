@@ -26,6 +26,13 @@ jobs:
       - run: rustup toolchain install stable --profile minimal && rustup default stable
       - run: cargo build --locked --release -p smoke
       - run: scripts/hosting/systemd.sh target/release/smoke
+      - name: Planted violation (a service that exits 3 when stopped must fail the exit-status check)
+        run: |
+          if scripts/hosting/systemd.sh target/release/smoke --stop-exit 3 | tee "$RUNNER_TEMP/plant.log"; then
+            echo "::error::the systemd checks accepted a service that exits 3 when stopped"
+            exit 1
+          fi
+          grep -q "^FAIL stopped run exited with status 0$" "$RUNNER_TEMP/plant.log"
 
   winsw:
     name: hosting/winsw
@@ -36,6 +43,14 @@ jobs:
       - run: cargo build --locked --release -p smoke
       - shell: pwsh
         run: scripts/hosting/winsw.ps1 -Binary target/release/smoke.exe
+      - name: Planted violation (a service that exits 3 when stopped must fail the exit-code check)
+        shell: pwsh
+        run: |
+          $out = scripts/hosting/winsw.ps1 -Binary target/release/smoke.exe -Codes 75 -ExtraArgs '--stop-exit 3'
+          $out
+          if ($LASTEXITCODE -eq 0) { throw 'the WinSW checks accepted a service that exits 3 when stopped' }
+          if (-not ($out -match '^FAIL stopped run exited with code 0$')) { throw 'the exit-code check did not fail' }
+          $global:LASTEXITCODE = 0
 
   launchd:
     name: hosting/launchd
@@ -45,3 +60,10 @@ jobs:
       - run: rustup toolchain install stable --profile minimal && rustup default stable
       - run: cargo build --locked --release -p smoke
       - run: scripts/hosting/launchd.sh target/release/smoke
+      - name: Planted violation (a service that exits 3 when stopped must fail the exit-code check)
+        run: |
+          if scripts/hosting/launchd.sh target/release/smoke --stop-exit 3 | tee "$RUNNER_TEMP/plant.log"; then
+            echo "::error::the launchd checks accepted a service that exits 3 when stopped"
+            exit 1
+          fi
+          grep -q "^FAIL last exit code is 0$" "$RUNNER_TEMP/plant.log"
