@@ -9,3 +9,5 @@ The service foundation: layered configuration with source tracking, logging with
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT)
 at your option.
+
+<!-- Planted change to a packaged crate README for #8; never merged. -->
