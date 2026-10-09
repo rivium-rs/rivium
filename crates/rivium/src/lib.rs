@@ -5,7 +5,7 @@
 //! logging with a disk budget ([`log`]), stop requests, restarts and result codes ([`Code`])
 //! handled: [`process::run`] as a program of its own, or [`embedded::Host`] inside another
 //! program, such as an Android app through rivium-jni. The [`lifecycle`] kernel supervises the
-//! services. This crate is pre-release.
+//! services. Before 1.0, a new minor version may break the API.
 
 use std::future::Future;
 use std::pin::Pin;
