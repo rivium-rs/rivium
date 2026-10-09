@@ -20,12 +20,14 @@ The minimum supported Rust version is 1.92, checked by `ci/msrv`.
 | `armv7-unknown-linux-gnueabihf` | process (systemd) | glibc ≤ 2.17 | T2 | cross build; tests under qemu-user, including process-level tests; glibc 2.17 symbol check | `cross/armv7` |
 | `loongarch64-unknown-linux-gnu` (new-world ABI) | process | glibc ≤ 2.36, Linux ≥ 5.19 | T2 | cross build; tests under qemu-user, including process-level tests; glibc 2.36 symbol check | `cross/loongarch64` |
 | `aarch64-linux-android` (arm64-v8a, minSdk 30) | embedded (JNI) | 16 KB page alignment | T2 | NDK build and LOAD-segment alignment check; non-JNI tests under the bionic runner; JNI contract on a desktop JVM | `cross/android`, `ci/test-linux` |
-| LoongArch old-world ABI 1.0 (vendor Rust 1.92 toolchain) | process | glibc ≤ 2.28, ELF flags `0x3`, interpreter `/lib64/ld.so.1` | T3 | built and tested on native hardware by an external, private validation project; `ci/msrv` is the public early warning | `ci/msrv` |
-| Android devices; armv7 and LoongArch hardware | — | — | T3 | manual checklists | — |
+| LoongArch old-world ABI 1.0 (vendor Rust 1.92 toolchain) | process | glibc ≤ 2.28, ELF flags `0x3`, interpreter `/lib64/ld.so.1` | T3 | built and tested natively from an offline bundle of the release candidate, and its builds checked against the baseline; recorded by hand before each release. `ci/msrv` is the public early warning | `ci/msrv` |
+| armv7 hardware | process | glibc ≤ 2.17 | T3 | test binaries and release programs, cross-built against glibc 2.17, run on a board; recorded by hand | — |
+| Android devices (arm64-v8a) | embedded (JNI) | 16 KB page alignment | T3 | device checklist: install, start, stop, three start-stop rounds, restart after the process is killed, logs in logcat, stop from `onDestroy` | — |
+| LoongArch new-world hardware | process | glibc ≤ 2.36, Linux ≥ 5.19 | T3 | manual checklist | — |
 
 ## Current state
 
-First edition, 2026-10-08 (CI baseline); updated on 2026-10-09 for the first release, 0.1.0, whose
+First edition, 2026-10-08 (CI baseline); finalised on 2026-10-09 for the first release, 0.1.0, whose
 release notes link to this table at its tag. Every test job runs the workspace tests: the T2 rows
 run them under qemu-user or the bionic runner, including the embedded host's tests. The JNI rows
 build the `beacon-jni` example with `rivium_jni::export!`: `ci/test-linux` runs rivium-jni's desktop
@@ -34,6 +36,22 @@ For the process form, the `udp-echo` example is the artifact: the hosting jobs r
 launchd and WinSW as a deployment installs it, the glibc checks read its builds, and the glibc 2.17
 build runs and stops on CentOS 7. A smoke program checks the TLS stack that services add on top of
 Rivium (rustls with the ring provider) on every target. The jobs listed for the T1 and T2 rows pass.
-The T3 rows have no record yet and are unverified, the LoongArch old-world ABI among them: its first
-record comes from the external validation project, after 0.1.0. The table is finalised once the
-validation slices are complete.
+The T3 rows hold for the library code they were recorded on; a release whose library code differs
+is recorded again. For 0.1.0:
+
+- **LoongArch old-world ABI**: recorded on 2026-10-09. On native hardware with glibc 2.28 and the
+  vendor toolchain, the workspace tests pass offline, and three release programs, `udp-echo` among
+  them, have ELF flags `0x3`, the interpreter `/lib64/ld.so.1` and no symbol newer than
+  `GLIBC_2.28`; each runs and stops with 0 on SIGTERM.
+- **armv7 hardware**: recorded on 2026-10-09. On a board with glibc 2.35, the test binaries pass,
+  except the few that need cargo or a JVM, and the same three programs need no symbol newer than
+  `GLIBC_2.17`, run, and stop with 0 on SIGTERM.
+- **Android devices** and **LoongArch new-world hardware**: no record yet; unverified.
+
+Two validation services, written from the template, exercised Rivium as an SNMP agent run both as
+a program and through JNI on a desktop JVM, and as an edge collector under the three hosts. They ran
+in CI on validation branches
+([#45](https://github.com/rivium-rs/rivium/pull/45),
+[#46](https://github.com/rivium-rs/rivium/pull/46),
+[#47](https://github.com/rivium-rs/rivium/pull/47)) and are not part of `main`; the programs of the
+hardware records other than `udp-echo` are theirs.
