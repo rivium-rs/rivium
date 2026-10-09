@@ -172,6 +172,8 @@ plant "detached thread" "printf '/// Planted.\npub fn detached() {\n    let _ = 
 plant 'panic = "abort"' "printf '[profile.release]\npanic = \"abort\"\n' >> Cargo.toml" 'scripts/check-panic.sh' 'keep panic = "unwind"'
 plant "stale configs/default.toml" "sed -i.bak 's/^every = \"1m\"\$/every = \"2m\"/' configs/default.toml" \
   'cargo test --locked -p plain-svc-bin --test default_config' 'is not the default configuration'
+plant "missing cargo-zigbuild" ':' 'PATH=/usr/bin:/bin scripts/package.sh --build-only linux_amd64' \
+  'cargo-zigbuild: cargo install cargo-zigbuild'
 if has cargo-deny; then
   plant "OpenSSL dependency" 'cargo add --quiet -p plain-svc openssl-sys@0.9' 'cargo deny check bans' 'openssl-sys'
 fi

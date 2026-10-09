@@ -8,6 +8,7 @@
 # Builders: Linux and Windows with cargo-zigbuild (and zig); the Linux builds link against glibc
 # 2.17, the baseline of the targets' oldest systems. linux_loong64 (new-world ABI, glibc 2.36)
 # with cross and Docker. darwin_arm64 with cargo on a macOS machine.
+# Every tool the platforms need is checked first: a missing one is reported with how to get it.
 # Usage: scripts/package.sh [--build-only] <platform>...
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -43,6 +44,40 @@ settings_of() {
 }
 
 sha256() { if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi; }
+
+# The tools of every platform asked for, before the first build: each missing one with how to get it.
+missing=()
+need() { # <what is missing> <how to get it>
+  case " ${missing[*]-} " in *" $1:"*) ;; *) missing+=("$1: $2") ;; esac
+}
+installed_targets=$(rustup target list --installed 2> /dev/null || true)
+for platform in "$@"; do
+  spec=$(target_of "$platform")
+  read -r builder target <<< "$spec"
+  target=${target%.2.17}
+  case "$builder" in
+    zigbuild)
+      command -v cargo-zigbuild > /dev/null || need cargo-zigbuild "cargo install cargo-zigbuild --locked"
+      # cargo-zigbuild finds zig on PATH or as the ziglang Python package.
+      command -v zig > /dev/null || python3 -c 'import ziglang' 2> /dev/null \
+        || need zig "brew install zig, pip install ziglang, or https://ziglang.org/download/"
+      ;;
+    cross)
+      command -v cross > /dev/null || need cross "cargo install cross --locked"
+      command -v docker > /dev/null || need docker "Docker or another engine that cross supports"
+      ;;
+    cargo) [ "$(uname -s)" = Darwin ] || need "$platform" "build it on macOS" ;;
+  esac
+  if [ "$builder" != cross ] && [ -n "$installed_targets" ] && ! grep -qx "$target" <<< "$installed_targets"; then
+    need "$target" "rustup target add $target"
+  fi
+  case "$platform" in windows_*) $build_only || command -v zip > /dev/null || need zip "your package manager" ;; esac
+done
+if [ ${#missing[@]} -gt 0 ]; then
+  echo "package.sh: missing tools for $*:" >&2
+  printf '  %s\n' "${missing[@]}" >&2
+  exit 1
+fi
 
 version=$(cargo pkgid -p "$name-bin" | sed 's/.*[@#]//')
 for platform in "$@"; do
