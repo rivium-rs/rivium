@@ -118,6 +118,13 @@ instead of working around it here.
 - `just check` before every commit: formatting, clippy, cargo-deny, the panic check, the API
   documentation and the tests. The tests include the lifecycle contract that Rivium's hosts keep (as a program{% if jni %} and
   embedded{% endif %}), the dependency closure of each package, and `configs/default.toml`.
+- New behaviour comes with a test that fails without it.
+- Do not silence a lint with `#[allow]`. Where a rule truly does not fit, use
+  `#[expect(lint, reason = "...")]` on the smallest item.
+- A change written by a coding agent is reviewed by someone else (a person or another agent)
+  before it is merged.
+- Cargo.lock is committed: CI builds and packages with it (`--locked`), and refuses to run
+  without it.
 - Rivium's crates are released together, at one version. A patch release fixes without changing
   the API: `just update-rivium` moves every Rivium crate to it (only Cargo.lock changes), then
   build and test. A new minor version is breaking in 0.x: change the versions in Cargo.toml,
