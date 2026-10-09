@@ -66,9 +66,9 @@ jobs:
       - uses: ./.github/actions/setup-zigbuild
       - name: glibc 2.17 baseline build and check
         run: |
-          cargo zigbuild --locked --release -p smoke -p beacon-jni --target armv7-unknown-linux-gnueabihf.2.17
+          cargo zigbuild --locked --release -p smoke -p udp-echo -p beacon-jni --target armv7-unknown-linux-gnueabihf.2.17
           out=target/armv7-unknown-linux-gnueabihf/release
-          scripts/check-glibc.sh 2.17 "$out/smoke" "$out/libbeacon_jni.so"
+          scripts/check-glibc.sh 2.17 "$out/smoke" "$out/udp-echo" "$out/libbeacon_jni.so"
 
   loongarch64:
     name: cross/loongarch64
@@ -85,9 +85,9 @@ jobs:
         run: cross test --locked --workspace --target loongarch64-unknown-linux-gnu
       - name: glibc 2.36 baseline (the image's sysroot)
         run: |
-          cross build --locked --release -p smoke -p beacon-jni --target loongarch64-unknown-linux-gnu
+          cross build --locked --release -p smoke -p udp-echo -p beacon-jni --target loongarch64-unknown-linux-gnu
           out=target/loongarch64-unknown-linux-gnu/release
-          scripts/check-glibc.sh 2.36 "$out/smoke" "$out/libbeacon_jni.so"
+          scripts/check-glibc.sh 2.36 "$out/smoke" "$out/udp-echo" "$out/libbeacon_jni.so"
 
   glibc:
     name: cross/glibc
@@ -100,10 +100,11 @@ jobs:
       - uses: ./.github/actions/setup-zigbuild
       - name: glibc 2.17 baseline builds and check
         run: |
-          cargo zigbuild --locked --release -p smoke -p beacon-jni \
+          cargo zigbuild --locked --release -p smoke -p udp-echo -p beacon-jni \
             --target x86_64-unknown-linux-gnu.2.17 --target aarch64-unknown-linux-gnu.2.17
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-            scripts/check-glibc.sh 2.17 "target/$target/release/smoke" "target/$target/release/libbeacon_jni.so"
+            out=target/$target/release
+            scripts/check-glibc.sh 2.17 "$out/smoke" "$out/udp-echo" "$out/libbeacon_jni.so"
           done
       - name: Planted violation (a build against the runner's glibc must fail the check)
         run: |
@@ -112,8 +113,13 @@ jobs:
             echo "::error::check-glibc.sh accepted a binary built against glibc $(ldd --version | head -n 1 | awk '{ print $NF }')"
             exit 1
           fi
-      - name: Run the 2.17 build on CentOS 7 (glibc 2.17)
-        run: docker run --rm -v "$PWD/target/x86_64-unknown-linux-gnu/release:/b" centos:7 /b/smoke check
+      - name: Run the 2.17 builds on CentOS 7 (glibc 2.17)
+        run: |
+          # udp-echo runs and stops on SIGTERM; smoke runs its TLS and HTTP round trips. Planted
+          # violation: a stop that times out (a blocking read of 10 s, a deadline of 1 s) must fail.
+          docker run --rm -v "$PWD/target/x86_64-unknown-linux-gnu/release:/b:ro" -v "$PWD/scripts:/s:ro" centos:7 \
+            sh -c '/b/smoke check && /s/check-stop.sh /b/udp-echo &&
+              ! /s/check-stop.sh /b/udp-echo --set echo.read_timeout=10s --set lifecycle.stop_timeout=1s 2> /dev/null' 
 
   android:
     name: cross/android

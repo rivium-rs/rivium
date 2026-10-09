@@ -68,7 +68,7 @@ cross *targets="armv7-unknown-linux-gnueabihf loongarch64-unknown-linux-gnu aarc
 android:
     scripts/local/android.sh
 
-# glibc 2.17 baseline builds (cargo-zigbuild), symbol check and a run on CentOS 7
+# glibc 2.17 baseline builds (cargo-zigbuild), symbol check and runs on CentOS 7
 glibc:
     scripts/local/glibc.sh
 
@@ -84,7 +84,7 @@ template:
 drills:
     scripts/drill-c.sh
 
-# systemd hosting smoke in a local systemd container
+# systemd hosting test in a local systemd container
 systemd:
     scripts/local/glibc.sh
-    RIVIUM_SYSTEMD_BASE=debian:bookworm-slim scripts/hosting/systemd.sh target/local/zig/$(uname -m | sed 's/arm64/aarch64/')-unknown-linux-gnu/release/smoke
+    RIVIUM_SYSTEMD_BASE=debian:bookworm-slim scripts/hosting/systemd.sh target/local/zig/$(uname -m | sed 's/arm64/aarch64/')-unknown-linux-gnu/release/udp-echo
