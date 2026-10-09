@@ -153,6 +153,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "edge-lite"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "rivium",
+ "rivium-http",
+ "rivium-test",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "edge-lite-bin"
+version = "0.1.0"
+dependencies = [
+ "edge-lite",
+ "rivium",
+ "rivium-test",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -14,7 +14,7 @@ docker run --rm -v "$root":/w -w /w -v "$registry":/usr/local/cargo/registry \
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends snmp openjdk-17-jdk-headless jq > /dev/null
   scripts/check-slice-deps.sh
   scripts/tests/check-slice-deps.sh
-  cargo test --locked -p snmp-lite -p snmp-lite-bin -p snmp-lite-jni
+  cargo test --locked -p snmp-lite -p snmp-lite-bin -p snmp-lite-jni -p edge-lite -p edge-lite-bin
   cargo build --locked -p snmp-lite-jni
   SNMP_LITE_JNI=$CARGO_TARGET_DIR/debug cargo test --locked -p snmp-lite-bin --test hosts -- --ignored
   examples/slices/snmp-lite/snmp-lite-jni/jvm-test/run.sh "$CARGO_TARGET_DIR/debug"

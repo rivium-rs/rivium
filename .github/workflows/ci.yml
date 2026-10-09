@@ -237,7 +237,7 @@ jobs:
           scripts/check-slice-deps.sh
           scripts/tests/check-slice-deps.sh
       - name: The slices' tests, the business tests through the process host among them
-        run: cargo test --locked -p snmp-lite -p snmp-lite-bin -p snmp-lite-jni
+        run: cargo test --locked -p snmp-lite -p snmp-lite-bin -p snmp-lite-jni -p edge-lite -p edge-lite-bin
       - name: The same business tests through the embedded host in a desktop JVM (S-2), and rivium-jni's JVM contract
         run: |
           cargo build --locked -p snmp-lite-jni

@@ -1,0 +1,24 @@
+[package]
+name = "edge-lite-bin"
+version = "0.1.0"
+description = "Validation slice: edge-lite as a program, on Rivium's process host"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "edge-lite"
+path = "src/main.rs"
+
+[dependencies]
+edge-lite = { path = "../edge-lite" }
+rivium.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+zip = { workspace = true, features = ["deflate-flate2"] }
+
+[lints]
+workspace = true

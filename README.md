@@ -37,7 +37,7 @@ Rivium works. The examples show the crates at work:
 | [`http-api`](examples/http-api) | An HTTP API with the status envelope, the probes and an HTTP binding of log export |
 | [`embedded`](examples/embedded) | One service library run as a program (`beacon-bin`) and inside an Android app (`beacon-jni`) |
 | [`multi-bin`](examples/multi-bin) | One service library and two programs, each its own composition root |
-| [`slices`](examples/slices) | Validation slices written as services are: `snmp-lite`, an SNMP agent run as a program and inside an Android app |
+| [`slices`](examples/slices) | Validation slices written as services are: `snmp-lite`, an SNMP agent run as a program and inside an Android app; `edge-lite`, an edge collector with supervised units, an HTTP API and a configuration that it replaces |
 
 ## Crates
 

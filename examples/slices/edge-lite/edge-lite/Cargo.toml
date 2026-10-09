@@ -1,0 +1,23 @@
+[package]
+name = "edge-lite"
+version = "0.1.0"
+description = "Validation slice: the service library of an edge collector with supervised units, an HTTP API and log export"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium = { workspace = true, features = ["log-export"] }
+rivium-http.workspace = true
+axum.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true
