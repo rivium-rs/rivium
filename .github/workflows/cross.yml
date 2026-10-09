@@ -7,6 +7,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The release runs it at the commit it releases.
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,8 +16,10 @@ permissions:
 concurrency:
   # Superseded pull request runs are cancelled; every commit on main gets a complete run. A group
   # keeps at most one pending run, which a newer one replaces whatever cancel-in-progress says, so
-  # on main each commit is a group of its own: commits merged in a row run side by side.
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  # on main each commit is a group of its own: commits merged in a row run side by side. Called by
+  # the release, github.workflow is the release's name: the workflow's own name in front keeps
+  # those runs apart from both the release's and this workflow's own.
+  group: cross-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
