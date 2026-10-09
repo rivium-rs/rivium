@@ -1,0 +1,19 @@
+[package]
+name = "consumer-process"
+version = "0.1.0"
+description = "Scenario A drill: a service built on Rivium that runs as a program"
+edition = "2024"
+rust-version = "1.92"
+publish = false
+
+# A workspace of its own, as a consumer's repository is.
+[workspace]
+
+[dependencies]
+# The one difference from a real consumer: Rivium's crates come from the drill's registry.
+rivium = { version = "0.1", registry = "drill" }
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+
+[dev-dependencies]
+rivium-test = { version = "0.1", registry = "drill" }

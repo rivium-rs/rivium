@@ -10,7 +10,7 @@ default:
 
 # Install the developer tools used by the recipes into .tools/
 tools:
-    cargo install --locked --root .tools cargo-hack@0.6.45
+    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-semver-checks@0.51.0
 
 # Formatting, clippy, cargo-deny, feature matrix, the panic = "abort" refusal and script self-tests (what ci/lint runs)
 lint:
@@ -80,8 +80,10 @@ jvm:
 template:
     scripts/template-smoke.sh
 
-# The drills of ci/drills: scenario C (a new service, program and section touch only the service)
+# The drills of ci/drills: scenario A (a fix reaches the consumers through cargo update, with a local
+# registry) and scenario C (a new service, program and section touch only the service)
 drills:
+    scripts/drill-a.sh
     scripts/drill-c.sh
 
 # systemd hosting smoke in a local systemd container
