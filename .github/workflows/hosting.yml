@@ -62,8 +62,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo build --locked --release -p udp-echo
+      - run: cargo build --locked --release -p udp-echo -p edge-lite-bin
       - run: scripts/hosting/systemd.sh target/release/udp-echo
+      - name: edge-lite, restarted for a new configuration that injects unit panics (a release build isolates them)
+        run: scripts/hosting/systemd.sh target/release/edge-lite
       - name: Planted violation (a service that outlives its stop deadline must fail the exit-status check)
         run: |
           # No pipe here: run steps use `bash -e` without pipefail, so `harness | tee` would hide the status.
@@ -85,9 +87,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal && rustup default stable-x86_64-pc-windows-gnu
-      - run: cargo build --locked --release -p udp-echo
+      - run: cargo build --locked --release -p udp-echo -p edge-lite-bin
       - shell: pwsh
         run: scripts/hosting/winsw.ps1 -Binary target/release/udp-echo.exe -Faults target/release/udp-echo-faults.exe
+      - name: edge-lite, restarted for a new configuration that injects unit panics (a release build isolates them)
+        shell: pwsh
+        run: scripts/hosting/winsw.ps1 -Binary target/release/edge-lite.exe -Scenarios restart
       - name: Planted violation (a service that outlives its stop deadline must fail the exit-code check)
         shell: pwsh
         run: |
@@ -107,8 +112,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo build --locked --release -p udp-echo
+      - run: cargo build --locked --release -p udp-echo -p edge-lite-bin
       - run: scripts/hosting/launchd.sh target/release/udp-echo
+      - name: edge-lite, restarted for a new configuration that injects unit panics (a release build isolates them)
+        run: scripts/hosting/launchd.sh target/release/edge-lite
       - name: Planted violation (a service that outlives its stop deadline must fail the exit-code check)
         run: |
           # No pipe here: run steps use `bash -e` without pipefail, so `harness | tee` would hide the status.
