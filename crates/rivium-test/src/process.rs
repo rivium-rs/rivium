@@ -304,7 +304,8 @@ pub struct Exited {
 ///   error, each line after the name;
 /// - `check-config` exits with 0 and writes no file;
 /// - on Unix, SIGTERM stops the program with 0 within the default stop budget of 4 seconds, and
-///   a second stop request cuts the stop short with 130 or 143.
+///   a second stop request cuts the stop short with 130 or 143, unless the program has stopped
+///   before the request reaches it: then it ends as usual, with 0.
 ///
 /// ```no_run
 /// #[test]
@@ -393,14 +394,20 @@ pub fn lifecycle_contract(bin: &Path, args: &[&str]) {
         assert_eq!(exited.code, Some(0), "SIGTERM: {}", exited.stderr);
         assert!(took < Duration::from_secs(4), "SIGTERM took {took:?}");
 
-        // Paused, so that both stop requests are waiting when it goes on.
+        // Paused, so that both stop requests are waiting when it goes on. They can still reach
+        // the program one after the other, and a program without blocking work may stop in
+        // between: its run ends `stopped`, and it exits with 0.
         let program = running();
         for signal in ["STOP", "TERM", "INT", "CONT"] {
             program.signal(signal);
         }
         let exited = program.wait();
+        let stopped = (exited.events.iter()).any(|event| {
+            let text = |key: &str| event.get(key).and_then(Value::as_str);
+            text("message") == Some("outcome") && text("outcome") == Some("stopped")
+        });
         assert!(
-            matches!(exited.code, Some(130 | 143)),
+            matches!(exited.code, Some(130 | 143)) || (exited.code == Some(0) && stopped),
             "a second stop request: {:?}: {}",
             exited.code,
             exited.stderr
