@@ -3,7 +3,7 @@
 # dependencies at this workspace with [patch.crates-io], and checks them as their own CI would:
 #   - the template's version and dependencies match the workspace's, its manifests are
 #     Cargo.toml.liquid (no Cargo.toml for cargo to parse in a git checkout), and its JVM files are
-#     rivium-jni's reference files;
+#     rivium-jni's reference files; .DS_Store files in a checkout are not generated;
 #   - two variants, plain (no HTTP, no JNI) and full (HTTP and JNI): `just check` (with the API
 #     documentation), with port 8080 taken so that the full variant's tests must pass its port
 #     override; the full variant's `just check-config` and JVM contract; packaging for
@@ -65,6 +65,20 @@ generate() { # <name> [--define key=value]...
   } >> "$out/$name/Cargo.toml"
 }
 in_project() { (cd "$out/$1" && shift && "$@"); }
+
+# Finder's .DS_Store files are git-ignored, so only a local checkout has them; Liquid cannot
+# parse them, and .genignore must keep them out at any depth.
+ds=$out/template-ds
+rm -rf "$ds" "$out/ds-svc" && cp -R "$tpl" "$ds"
+printf '\0\0\0\1Bud1\377' | tee "$ds/.DS_Store" > "$ds/crates/{{project-name}}/.DS_Store"
+if cargo generate --path "$ds" --name ds-svc --destination "$out" --vcs none --silent > "$out/ds-svc.log" 2>&1 \
+  && [ -z "$(find "$out/ds-svc" -name .DS_Store)" ]; then
+  ok ".DS_Store files are not generated"
+else
+  cat "$out/ds-svc.log"
+  fail ".DS_Store files break cargo generate"
+fi
+rm -rf "$ds" "$out/ds-svc"
 
 generate plain-svc
 generate full-svc --define http=true --define jni=true --define bridge_package=com.example.full
