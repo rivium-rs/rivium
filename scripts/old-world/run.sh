@@ -12,10 +12,9 @@ toolchain=${1:-$(cat "$here/toolchain" 2> /dev/null || true)}
 log=$here/v17-$(date +%Y%m%d-%H%M%S).log
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-# The programs: package, program, the arguments it needs to run in a test (a free port).
+# The programs built for release, checked and run once: package, program, and the arguments it
+# needs to run in a test. A validation branch adds the programs it brings.
 programs=(
-  "edge-lite-bin edge-lite --set http.addr=127.0.0.1:0"
-  "snmp-lite-bin snmp-lite --set snmp.addr=127.0.0.1:0"
   "udp-echo udp-echo"
 )
 summary=()
