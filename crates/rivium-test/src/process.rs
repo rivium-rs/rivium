@@ -294,7 +294,10 @@ pub struct Exited {
 }
 
 /// Checks the lifecycle contract that every program built on Rivium keeps, on the program
-/// `bin`, which must run with its defaults below an empty root directory:
+/// `bin`, which must run below an empty root directory with its defaults and `args`. Every run
+/// that loads a configuration gets `args` after `--root DIR`: where a deployment's defaults
+/// cannot run in a test, such as a privileged port or a device, `args` set what can, such as
+/// `["--set", "snmp.addr=127.0.0.1:0"]`. The contract:
 ///
 /// - `--version` prints one line, `<name> <version>`, and exits with 0;
 /// - an invalid configuration exits with 78 before anything starts, and says why on standard
@@ -306,17 +309,18 @@ pub struct Exited {
 /// ```no_run
 /// #[test]
 /// fn the_lifecycle_contract() {
-///     rivium_test::process::lifecycle_contract(env!("CARGO_BIN_EXE_my-service").as_ref());
+///     let bin = env!("CARGO_BIN_EXE_my-service").as_ref();
+///     rivium_test::process::lifecycle_contract(bin, &["--set", "http.addr=127.0.0.1:0"]);
 /// }
 /// ```
 ///
 /// # Panics
 ///
 /// When the program breaks the contract.
-pub fn lifecycle_contract(bin: &Path) {
+pub fn lifecycle_contract(bin: &Path, args: &[&str]) {
     let root = Root::new();
-    let run = |args: &[&str]| {
-        let output = command(bin).args(args).output();
+    let run = |cli: &[&str]| {
+        let output = command(bin).args(cli).output();
         output.unwrap_or_else(|error| panic!("cannot run {}: {error}", bin.display()))
     };
 
@@ -332,7 +336,14 @@ pub fn lifecycle_contract(bin: &Path) {
     let name = words[0];
 
     let root_arg = root.0.to_str().expect("a UTF-8 temporary directory");
-    let invalid = run(&["--root", root_arg, "--set", "lifecycle.stop_timeout=0s"]);
+    // `args` come before the contract's own settings, which therefore win.
+    let rooted = |cli: &[&'static str], more: &[&'static str]| -> Vec<&str> {
+        let all = cli.iter().copied().chain(["--root", root_arg]);
+        all.chain(args.iter().copied())
+            .chain(more.iter().copied())
+            .collect()
+    };
+    let invalid = run(&rooted(&[], &["--set", "lifecycle.stop_timeout=0s"]));
     let stderr = String::from_utf8_lossy(&invalid.stderr);
     assert_eq!(
         invalid.status.code(),
@@ -354,7 +365,7 @@ pub fn lifecycle_contract(bin: &Path) {
         "nothing starts with an invalid configuration"
     );
 
-    let check = run(&["check-config", "--root", root_arg]);
+    let check = run(&rooted(&["check-config"], &[]));
     let stderr = String::from_utf8_lossy(&check.stderr);
     assert!(
         check.status.success(),
@@ -369,12 +380,12 @@ pub fn lifecycle_contract(bin: &Path) {
 
     #[cfg(unix)]
     {
-        let running = |args: &[&str]| {
-            let program = spawn(bin, args);
+        let running = || {
+            let program = spawn(bin, &rooted(&[], &[]));
             program.wait_for("phase changed", &[("phase", "running")]);
             program
         };
-        let program = running(&["--root", root_arg]);
+        let program = running();
         let asked = Instant::now();
         program.signal("TERM");
         let exited = program.wait();
@@ -383,7 +394,7 @@ pub fn lifecycle_contract(bin: &Path) {
         assert!(took < Duration::from_secs(4), "SIGTERM took {took:?}");
 
         // Paused, so that both stop requests are waiting when it goes on.
-        let program = running(&["--root", root_arg]);
+        let program = running();
         for signal in ["STOP", "TERM", "INT", "CONT"] {
             program.signal(signal);
         }
