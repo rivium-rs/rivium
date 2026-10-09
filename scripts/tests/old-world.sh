@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Self-test of scripts/old-world/check-elf.sh, run by cross/loongarch64 on its new-world build of
 # a program: the program must fail the three ABI checks, and a copy patched to look like an
-# old-world build (flags 0x3, interpreter /lib64/ld.so.1, symbol versions GLIBC_2.27) must pass.
+# old-world build (flags 0x3, interpreter /lib64/ld.so.1, symbol versions GLIBC_2.27) must pass,
+# also under a readelf that translates its header the way binutils does in a zh_CN locale.
 # The real old-world record comes from the machine (scripts/old-world/run.sh).
 # Usage: scripts/tests/old-world.sh <new-world loongarch64 program>
 set -euo pipefail
@@ -29,4 +30,18 @@ data = data.replace(new, old.ljust(len(new), b'\0'))
 open(sys.argv[2], 'wb').write(re.sub(rb'GLIBC_2\.3[0-9]\0', b'GLIBC_2.27\0', bytes(data)))
 EOF
 "$scripts/old-world/check-elf.sh" "$work/old-world" || { echo "old-world self-test: an old-world build was rejected"; exit 1; }
+
+# The vendor machine runs in zh_CN, where binutils prints "系统架构:" and "标志：" for "Machine:"
+# and "Flags:"; a readelf that does so unless LC_ALL=C must still give a pass.
+readelf=$(command -v readelf || command -v llvm-readelf)
+cat > "$work/readelf" <<EOF
+#!/usr/bin/env bash
+if [ "\${LC_ALL:-}" = C ]; then exec "$readelf" "\$@"; fi
+"$readelf" "\$@" | sed -e 's/^  Machine:/  系统架构:/' -e 's/^  Flags:/  标志：/'
+EOF
+chmod +x "$work/readelf"
+env -u LC_ALL "$work/readelf" -h "$work/old-world" | grep -q '系统架构' \
+  || { echo "old-world self-test: the translating readelf does not translate"; exit 1; }
+env -u LC_ALL READELF="$work/readelf" "$scripts/old-world/check-elf.sh" "$work/old-world" \
+  || { echo "old-world self-test: an old-world build was rejected under a translating readelf"; exit 1; }
 echo "old-world self-test: passed"

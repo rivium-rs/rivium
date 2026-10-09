@@ -42,7 +42,7 @@ say "full log: $log"
   echo "cpus $(nproc 2> /dev/null), page size $(getconf PAGESIZE 2> /dev/null)"
   ldd --version 2> /dev/null | head -n 1
   ls -l /lib64/ld.so.1 2> /dev/null
-  readelf -h /bin/ls 2> /dev/null | grep -E 'Machine|Flags'
+  LC_ALL=C readelf -h /bin/ls 2> /dev/null | grep -E 'Machine|Flags'
   df -h "$here" 2> /dev/null | tail -n 1
   env | grep -E '^(CARGO|RUST)' || true
   ls -l "$HOME/.cargo/config.toml" "$HOME/.cargo/config" 2> /dev/null || true
