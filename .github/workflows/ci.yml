@@ -74,7 +74,7 @@ jobs:
       - name: Lint scripts and run their self-tests (planted violations)
         run: |
           shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh \
-            crates/rivium-jni/tests/jvm/run.sh
+            scripts/old-world/*.sh crates/rivium-jni/tests/jvm/run.sh
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
           scripts/tests/docs-only.sh

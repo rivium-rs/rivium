@@ -94,6 +94,8 @@ jobs:
           cross build --locked --release -p smoke -p udp-echo -p beacon-jni --target loongarch64-unknown-linux-gnu
           out=target/loongarch64-unknown-linux-gnu/release
           scripts/check-glibc.sh 2.36 "$out/smoke" "$out/udp-echo" "$out/libbeacon_jni.so"
+      - name: The old-world ABI check of the manual record (a new-world build fails it; one patched to the old-world ABI passes)
+        run: scripts/tests/old-world.sh target/loongarch64-unknown-linux-gnu/release/udp-echo
 
   glibc:
     name: cross/glibc
