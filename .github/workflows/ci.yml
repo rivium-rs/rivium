@@ -192,8 +192,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy \
+            --target armv7-unknown-linux-gnueabihf
+          rustup default stable
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: cargo-generate@0.25.0
-      - run: scripts/template-smoke.sh "$RUNNER_TEMP"
+          tool: cargo-generate@0.25.0,cargo-deny@0.20.2,just@1.58.0
+      - uses: ./.github/actions/setup-zigbuild
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Generate projects from the template and check them as their CI would (planted violations included)
+        run: scripts/template-smoke.sh "$RUNNER_TEMP/template"
