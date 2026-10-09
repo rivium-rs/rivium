@@ -19,7 +19,7 @@ lint:
     cargo deny --locked check
     cargo hack check --each-feature --workspace --locked
     scripts/check-panic-abort.sh
-    shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh crates/rivium-jni/tests/jvm/run.sh
+    shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh crates/rivium-jni/tests/jvm/run.sh examples/slices/*/*/jvm-test/run.sh
     scripts/tests/check-public.sh
     scripts/tests/check-commit-msg.sh
     scripts/tests/docs-only.sh
@@ -80,6 +80,10 @@ glibc:
 # Desktop JVM: rivium-jni's contract on the beacon-jni library in a JDK 17
 jvm:
     scripts/local/jvm.sh
+
+# ci/slices in a Linux container with a JDK and net-snmp: package rules, both hosts, interop
+slices:
+    scripts/local/slices.sh
 
 # Generate projects from the template and check them against this workspace, as ci/template does
 template:

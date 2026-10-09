@@ -5,6 +5,7 @@ members = [
     "examples/embedded/*",
     "examples/http-api",
     "examples/multi-bin",
+    "examples/slices/*/*",
     "examples/smoke",
     "examples/udp-echo",
     "fixtures/jni-forbid",

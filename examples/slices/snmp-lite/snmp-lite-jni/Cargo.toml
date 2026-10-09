@@ -1,0 +1,18 @@
+[package]
+name = "snmp-lite-jni"
+version = "0.1.0"
+description = "Validation slice: snmp-lite inside an Android app, through rivium-jni"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+snmp-lite = { path = "../snmp-lite" }
+rivium-jni.workspace = true
+
+[lints]
+workspace = true

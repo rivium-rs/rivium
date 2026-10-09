@@ -11,6 +11,8 @@ cd "$root"
 : "${RIVIUM_ZIG_IMAGE:=ghcr.io/rust-cross/cargo-zigbuild:0.23.4}"
 # Any linux/amd64 image with a JDK 17 (javac and java) and bash.
 : "${RIVIUM_JDK_IMAGE:=eclipse-temurin:17-jdk}"
+# Any Debian image with Rust; scripts install what else they need with apt-get.
+: "${RIVIUM_RUST_IMAGE:=rust:1-bookworm}"
 # Toolchain whose x86_64-unknown-linux-gnu build cross mounts into its images.
 : "${RIVIUM_CROSS_TOOLCHAIN:=stable}"
 # Crate cache for containers, so they never write to ~/.cargo.

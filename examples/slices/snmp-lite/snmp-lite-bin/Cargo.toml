@@ -1,0 +1,22 @@
+[package]
+name = "snmp-lite-bin"
+version = "0.1.0"
+description = "Validation slice: snmp-lite as a program of its own, on Rivium's process host"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "snmp-lite"
+path = "src/main.rs"
+
+[dependencies]
+snmp-lite = { path = "../snmp-lite" }
+rivium.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true

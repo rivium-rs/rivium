@@ -1,0 +1,20 @@
+[package]
+name = "snmp-lite"
+version = "0.1.0"
+description = "Validation slice: the service library of an SNMP agent that runs as a program and inside an Android app"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true

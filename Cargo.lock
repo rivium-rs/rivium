@@ -887,6 +887,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "snmp-lite"
+version = "0.1.0"
+dependencies = [
+ "rivium",
+ "rivium-test",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "snmp-lite-bin"
+version = "0.1.0"
+dependencies = [
+ "rivium",
+ "rivium-test",
+ "snmp-lite",
+]
+
+[[package]]
+name = "snmp-lite-jni"
+version = "0.1.0"
+dependencies = [
+ "rivium-jni",
+ "snmp-lite",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
