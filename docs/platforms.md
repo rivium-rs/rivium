@@ -25,14 +25,15 @@ The minimum supported Rust version is 1.92, checked by `ci/msrv`.
 
 ## Current state
 
-First edition, 2026-10-08 (CI baseline), updated as the crates are implemented. Every test job
-runs the workspace tests: the T2 rows run them under qemu-user or the bionic runner, including
-the embedded host's tests. The JNI rows build the `beacon-jni` example with `rivium_jni::export!`:
-`ci/test-linux` runs rivium-jni's desktop JVM contract on it, `cross/android` checks its 16 KB
-page alignment, and the glibc checks cover it. For the process form, the `udp-echo` example is
-the artifact: the hosting jobs run it under systemd, launchd and WinSW as a deployment installs
-it, the glibc checks read its builds, and the glibc 2.17 build runs and stops on CentOS 7. A
-smoke program checks the TLS stack that services add on top of Rivium (rustls with the ring
-provider) on every target. The jobs listed for the T1 and T2 rows pass; the T3 rows have no
-record yet and are unverified. The table is finalised once the library and the validation slices
-are complete.
+First edition, 2026-10-08 (CI baseline); updated on 2026-10-09 for the first release, 0.1.0, whose
+release notes link to this table at its tag. Every test job runs the workspace tests: the T2 rows
+run them under qemu-user or the bionic runner, including the embedded host's tests. The JNI rows
+build the `beacon-jni` example with `rivium_jni::export!`: `ci/test-linux` runs rivium-jni's desktop
+JVM contract on it, `cross/android` checks its 16 KB page alignment, and the glibc checks cover it.
+For the process form, the `udp-echo` example is the artifact: the hosting jobs run it under systemd,
+launchd and WinSW as a deployment installs it, the glibc checks read its builds, and the glibc 2.17
+build runs and stops on CentOS 7. A smoke program checks the TLS stack that services add on top of
+Rivium (rustls with the ring provider) on every target. The jobs listed for the T1 and T2 rows pass.
+The T3 rows have no record yet and are unverified, the LoongArch old-world ABI among them: its first
+record comes from the external validation project, after 0.1.0. The table is finalised once the
+validation slices are complete.
