@@ -5,6 +5,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
+use tracing_subscriber::field::RecordFields;
+use tracing_subscriber::fmt::FormatFields;
+use tracing_subscriber::fmt::format::{DefaultFields, Writer};
 use tracing_subscriber::fmt::writer::{BoxMakeWriter, MakeWriter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -12,7 +15,7 @@ use tracing_subscriber::{EnvFilter, Layer, Registry, fmt, reload};
 
 use super::BoxedLayer;
 use super::files::{Files, FilesConfig, SinkSender};
-use super::settings::{Format, LogSettings};
+use super::settings::{Color, Format, LogSettings};
 
 /// What logging is installed with; the host resolves the directory against the root.
 pub(crate) struct LogInputs {
@@ -208,10 +211,18 @@ pub(super) fn build(
         })
         .collect();
     if inputs.console {
-        let text = fmt::layer().with_ansi(false).with_writer(console);
         let layer = match settings.console.format {
-            Format::Text => text.boxed(),
-            Format::Json => text.json().flatten_event(true).boxed(),
+            Format::Text => fmt::layer()
+                .fmt_fields(ConsoleFields::default())
+                .with_ansi(console_ansi(settings.console.color))
+                .with_writer(console)
+                .boxed(),
+            Format::Json => fmt::layer()
+                .with_ansi(false)
+                .with_writer(console)
+                .json()
+                .flatten_event(true)
+                .boxed(),
         };
         layers.push(filtered(layer, sinks));
     }
@@ -225,6 +236,52 @@ pub(super) fn build(
         layers.push(filtered(layer.boxed(), sinks + 1));
     }
     Ok((files, layers, handles))
+}
+
+/// Whether the console's text lines are colored, from `log.console.color` and the process's
+/// standard output and environment.
+fn console_ansi(color: Color) -> bool {
+    let no_color = std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty());
+    let dumb = std::env::var_os("TERM").is_some_and(|term| term == "dumb");
+    ansi(color, io::stdout().is_terminal(), no_color, dumb) && escapes_work(color)
+}
+
+/// `auto` colors a terminal, unless `NO_COLOR` is set to a value (no-color.org) or `TERM` is
+/// `dumb`.
+pub(super) fn ansi(color: Color, terminal: bool, no_color: bool, dumb: bool) -> bool {
+    match color {
+        Color::Always => true,
+        Color::Never => false,
+        Color::Auto => terminal && !no_color && !dumb,
+    }
+}
+
+/// A Windows console shows escape codes as text until it is switched to accept them; when that
+/// fails, `auto` writes plain text and `always` keeps the codes, for output read elsewhere.
+#[cfg(windows)]
+fn escapes_work(color: Color) -> bool {
+    nu_ansi_term::enable_ansi_support().is_ok() || color == Color::Always
+}
+
+#[cfg(not(windows))]
+fn escapes_work(_: Color) -> bool {
+    true
+}
+
+/// The console's field formatter: [`DefaultFields`] under a type of its own. A span keeps its
+/// fields formatted once per formatter type, so the console's colored copy never reaches the
+/// files, logcat or a service's own layers, which format theirs with [`DefaultFields`].
+#[derive(Default)]
+struct ConsoleFields(DefaultFields);
+
+impl<'writer> FormatFields<'writer> for ConsoleFields {
+    fn format_fields<R: RecordFields>(
+        &self,
+        writer: Writer<'writer>,
+        fields: R,
+    ) -> std::fmt::Result {
+        self.0.format_fields(writer, fields)
+    }
 }
 
 impl<'a> MakeWriter<'a> for SinkSender {

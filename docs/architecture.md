@@ -175,7 +175,7 @@ directory.
 
 | Output | Where |
 | --- | --- |
-| Console | A program's standard output: the log filter when it is a terminal, warnings and errors otherwise; text or JSON |
+| Console | A program's standard output: the log filter when it is a terminal, warnings and errors otherwise; text or JSON. Text is colored on a terminal unless `NO_COLOR` is set or `TERM` is `dumb`; `log.console.color` (`auto`, `always`, `never`) overrides it |
 | Main file | `logs/<name>/<name>.log` below the root |
 | Category files | `[[log.files]]` with a name and a filter of their own |
 | logcat | Android, embedded |

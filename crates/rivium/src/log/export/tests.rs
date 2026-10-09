@@ -358,16 +358,18 @@ fn cancelling_stops_an_export_or_removes_its_archive() {
     let request = request("2026-10-02", "2026-10-02", &[]);
     let id = exporter.start(request.clone()).unwrap();
     let asked = Instant::now();
-    // As the hosts do when they tear down.
+    // As the hosts do when they tear down: the wait is bounded, and an export that has not
+    // ended by then ends on its own thread, so the state is read once it has.
     exports.cancel_running(Duration::from_millis(100));
-    let progress = exporter.progress(id).unwrap();
-    assert_eq!(progress.state, ExportState::Cancelled, "{progress:?}");
     assert!(
         asked.elapsed() < Duration::from_millis(500),
         "{:?}",
         asked.elapsed()
     );
-    assert!(progress.percent < 100);
+    let progress = finished(&exporter, id);
+    assert_eq!(progress.state, ExportState::Cancelled, "{progress:?}");
+    // Stopped while packing the 16 MiB, not cancelled as the archive was finished (99 %).
+    assert!(progress.percent < 50, "{progress:?}");
     assert_eq!(exports_in(&dir), Vec::<String>::new());
     assert_eq!(exporter.archive(id).unwrap_err().class(), Class::NotFound);
 

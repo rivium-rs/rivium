@@ -32,6 +32,8 @@ pub(crate) struct Console {
     #[serde(deserialize_with = "optional_filter")]
     pub(crate) filter: String,
     pub(crate) format: Format,
+    /// Whether text lines are colored; JSON lines never are.
+    pub(crate) color: Color,
 }
 
 /// The format of console lines.
@@ -40,6 +42,16 @@ pub(crate) struct Console {
 pub(crate) enum Format {
     Text,
     Json,
+}
+
+/// Whether console lines are colored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Color {
+    /// On a terminal, unless `NO_COLOR` is set or `TERM` is `dumb`.
+    Auto,
+    Always,
+    Never,
 }
 
 /// `[log.file]`: the main log file `<name>.log` and the disk budget of the log directory.
@@ -106,6 +118,7 @@ impl LogSettings {
             console: Console {
                 filter: String::new(),
                 format: Format::Text,
+                color: Color::Auto,
             },
             file: File {
                 // Written with `/`, so the default configuration is the same on every platform.
@@ -149,6 +162,10 @@ impl LogSettings {
             (
                 "log.console.format",
                 self.console.format != installed.console.format,
+            ),
+            (
+                "log.console.color",
+                self.console.color != installed.console.color,
             ),
             #[cfg(feature = "log-export")]
             (
