@@ -14,10 +14,12 @@ permissions:
   contents: read
 
 concurrency:
-  # Called by the release, github.workflow is the release's name: the group stays apart from
-  # both the release's and this workflow's own runs.
-  group: public-${{ github.workflow }}-${{ github.ref }}
-  # Superseded pull request runs are cancelled; every commit on main gets a complete run.
+  # Superseded pull request runs are cancelled; every commit on main gets a complete run. A group
+  # keeps at most one pending run, which a newer one replaces whatever cancel-in-progress says, so
+  # on main each commit is a group of its own: commits merged in a row run side by side. Called by
+  # the release, github.workflow is the release's name: the workflow's own name in front keeps
+  # those runs apart from both the release's and this workflow's own.
+  group: public-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
