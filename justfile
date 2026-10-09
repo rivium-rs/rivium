@@ -10,7 +10,7 @@ default:
 
 # Install the developer tools used by the recipes into .tools/
 tools:
-    cargo install --locked --root .tools cargo-hack@0.6.45
+    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-generate@0.25.0
 
 # Formatting, clippy, cargo-deny, feature matrix, the panic = "abort" refusal and script self-tests (what ci/lint runs)
 lint:
@@ -76,7 +76,7 @@ glibc:
 jvm:
     scripts/local/jvm.sh
 
-# Generate a project from the template and test it against this workspace
+# Generate projects from the template and check them against this workspace, as ci/template does
 template:
     scripts/template-smoke.sh
 
