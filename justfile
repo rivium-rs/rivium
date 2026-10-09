@@ -19,7 +19,7 @@ lint:
     cargo deny --locked check
     cargo hack check --each-feature --workspace --locked
     scripts/check-panic-abort.sh
-    shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh crates/rivium-jni/tests/jvm/run.sh examples/slices/*/*/jvm-test/run.sh
+    shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh scripts/old-world/*.sh crates/rivium-jni/tests/jvm/run.sh examples/slices/*/*/jvm-test/run.sh
     scripts/tests/check-public.sh
     scripts/tests/check-commit-msg.sh
     scripts/tests/docs-only.sh
@@ -94,6 +94,11 @@ template:
 drills:
     scripts/drill-a.sh
     scripts/drill-c.sh
+
+# The machine's toolchain directory is RIVIUM_V17_TOOLCHAIN, set in .tools/local.env.
+# Offline bundle of the old-world LoongArch record (V-17) at <commit>; on the machine: bash run.sh
+old-world commit="HEAD":
+    scripts/old-world/bundle.sh {{ commit }}
 
 # systemd hosting test in a local systemd container
 systemd:
