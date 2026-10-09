@@ -59,16 +59,41 @@ use rivium::{App, Code};
 ///
 /// rivium_jni::export!(class = "com/example/svc/RiviumBridge", app = my_svc::App);
 /// ```
+///
+/// `JNI_OnLoad` is an `unsafe` function, for the JVM to call with a pointer to itself; Rust
+/// code cannot call it without `unsafe`:
+///
+/// ```compile_fail,E0133
+/// # struct Svc;
+/// # impl rivium::App for Svc {
+/// #     const NAME: &'static str = "svc";
+/// #     const VERSION: &'static str = "0.1.0";
+/// #     type Config = ();
+/// #     fn services(_: &(), _: &rivium::AppContext) -> rivium::Result<Vec<Box<dyn rivium::Service>>> {
+/// #         Ok(Vec::new())
+/// #     }
+/// # }
+/// rivium_jni::export!(class = "com/example/svc/RiviumBridge", app = Svc);
+///
+/// fn main() {
+///     JNI_OnLoad(std::ptr::dangling_mut(), std::ptr::null_mut());
+/// }
+/// ```
 #[macro_export]
 macro_rules! export {
     (class = $class:literal, app = $app:ty $(,)?) => {
         /// Registers the native methods of the bridge class when the JVM loads this library.
+        ///
+        /// # Safety
+        ///
+        /// Only the JVM calls it, with a pointer to itself.
         #[unsafe(no_mangle)]
-        pub extern "system" fn JNI_OnLoad(
+        pub unsafe extern "system" fn JNI_OnLoad(
             vm: *mut $crate::__private::JavaVM,
             _reserved: *mut ::core::ffi::c_void,
         ) -> $crate::__private::jint {
-            $crate::__private::on_load::<$app>(vm, $class)
+            // SAFETY: only the JVM calls this function, with its pointer to itself.
+            unsafe { $crate::__private::on_load::<$app>(vm, $class) }
         }
     };
 }
@@ -78,10 +103,28 @@ macro_rules! export {
 pub mod __private {
     pub use jni::sys::{JavaVM, jint};
 
-    /// The body of `JNI_OnLoad`, for [`export!`](crate::export) only: `vm` must be the
-    /// pointer the JVM passes to it.
-    pub fn on_load<A: rivium::App>(vm: *mut JavaVM, class: &str) -> jint {
-        super::on_load::<A>(vm, class)
+    /// The body of `JNI_OnLoad`, for [`export!`](crate::export) only.
+    ///
+    /// # Safety
+    ///
+    /// `vm` is the pointer the JVM passes to `JNI_OnLoad`.
+    ///
+    /// ```compile_fail,E0133
+    /// # struct Svc;
+    /// # impl rivium::App for Svc {
+    /// #     const NAME: &'static str = "svc";
+    /// #     const VERSION: &'static str = "0.1.0";
+    /// #     type Config = ();
+    /// #     fn services(_: &(), _: &rivium::AppContext) -> rivium::Result<Vec<Box<dyn rivium::Service>>> {
+    /// #         Ok(Vec::new())
+    /// #     }
+    /// # }
+    /// rivium_jni::__private::on_load::<Svc>(std::ptr::dangling_mut(), "x/RiviumBridge");
+    /// ```
+    #[expect(unsafe_code, reason = "the JVM's pointer to itself")]
+    pub unsafe fn on_load<A: rivium::App>(vm: *mut JavaVM, class: &str) -> jint {
+        // SAFETY: the caller passes the JVM's pointer to itself.
+        unsafe { super::on_load::<A>(vm, class) }
     }
 }
 
@@ -100,14 +143,17 @@ fn bridge() -> &'static Bridge {
     BRIDGE.get().expect("JNI_OnLoad has run")
 }
 
-fn on_load<A: App>(vm: *mut jni::sys::JavaVM, class: &str) -> jint {
+/// # Safety
+///
+/// `vm` is the pointer the JVM passes to `JNI_OnLoad`.
+#[expect(unsafe_code, reason = "the JVM's pointer to itself")]
+unsafe fn on_load<A: App>(vm: *mut jni::sys::JavaVM, class: &str) -> jint {
     BRIDGE.get_or_init(|| Bridge {
         host: Host::new::<A>(),
         version: format!("{} {}", A::NAME, A::VERSION),
     });
     let registered = panic::catch_unwind(|| {
-        #[expect(unsafe_code, reason = "the JVM's pointer to itself")]
-        // SAFETY: the JVM passes JNI_OnLoad a valid pointer to itself.
+        // SAFETY: the caller passes the JVM's pointer to itself.
         let vm = unsafe { JavaVM::from_raw(vm) };
         // An exception still pending when JNI_OnLoad returns is what loading the library throws.
         let pending = || AttachConfig::new().exceptions_policy(AttachmentExceptionPolicy::Ignore);

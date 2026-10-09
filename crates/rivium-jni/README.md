@@ -8,12 +8,12 @@ The JNI adapter for Rivium's embedded host: a macro that generates `JNI_OnLoad` 
 rivium_jni::export!(class = "com/example/svc/RiviumBridge", app = my_svc::App);
 ```
 
-The generated `JNI_OnLoad` registers `nativeStart`, `nativeStop`, `nativeStatus`,
-`nativeLastError` and `nativeVersion` on the bridge class, which drive the application's
-embedded host; a class that declares them otherwise fails to load. A panic in a native method
-returns -99 or an empty string, and the crate refuses `panic = "abort"`.
-`tests/jvm/RiviumBridge.java` is the reference declaration, and `tests/jvm/run.sh` checks a
-library on a desktop JVM.
+The generated `JNI_OnLoad`, an `unsafe` function that only the JVM calls, registers
+`nativeStart`, `nativeStop`, `nativeStatus`, `nativeLastError` and `nativeVersion` on the bridge
+class, which drive the application's embedded host; a class that declares them otherwise fails
+to load. A panic in a native method returns -99 or an empty string, and the crate refuses
+`panic = "abort"`. `tests/jvm/RiviumBridge.java` is the reference declaration, and
+`tests/jvm/run.sh` checks a library on a desktop JVM.
 
 **Status:** pre-release, not published yet. See the
 [repository README](https://github.com/rivium-rs/rivium).
