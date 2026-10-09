@@ -60,7 +60,10 @@ instead of working around it here.
   remaining work with `ctx.deadline()`, such as `tokio::time::timeout_at(deadline, flush())`.
 - **Never exit the process** (`std::process::exit`), write a PID file or daemonize: the host
   owns the process. To restart after a new configuration, check it with `ctx.check_config(..)`,
-  write it with `rivium::fs::atomic_write(path, bytes, true)` and call `ctx.restarter().request(..)`.
+  write it with `rivium::fs::atomic_write(ctx.paths().config_file(), bytes, true)` and call
+  `ctx.restarter().request(..)`. The configuration arrives after `services()` has returned, so
+  whatever takes it, such as a request handler's state, keeps a clone of the context
+  (`ctx.clone()`).
 
 ## Errors, configuration and logs
 

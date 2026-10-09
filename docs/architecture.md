@@ -80,6 +80,7 @@ the service's own code.
 | Tasks | `ctx.spawn` and `ctx.spawn_blocking` start tasks that belong to the service: they get its stop request and deadline, and their first failure is the service's |
 | Stopping | `ctx.stopped()` completes when it is the service's turn to stop; `ctx.deadline()` says when it must be done. A blocking task checks `is_stopping()` between calls, each shorter than the stop budget |
 | Restart | `ctx.restarter().request(reason)` stops the run gracefully for a restart, for example once a new configuration is written |
+| New configuration | Whatever takes one, such as a request handler, keeps a clone of the `AppContext`: `ctx.check_config(text)` checks it as the next start would load it, `rivium::fs::atomic_write(ctx.paths().config_file(), ..)` writes it, and a restart request loads it |
 
 ## The lifecycle
 

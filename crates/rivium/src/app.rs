@@ -1,6 +1,7 @@
 //! The application: what a service program is made of, and what building its services gets.
 
 use std::fmt;
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -74,6 +75,10 @@ pub trait App: 'static {
 /// What building the services gets from the host: where the files are, who the service is,
 /// the health items and readiness of the run, restart requests, and the check for a new
 /// configuration.
+///
+/// Clones share the run they were made for. A service or a request handler that takes a new
+/// configuration keeps a clone, since the configuration arrives after `services()` has returned.
+#[derive(Clone)]
 pub struct AppContext {
     paths: Paths,
     identity: Identity,
@@ -86,7 +91,7 @@ pub struct AppContext {
 }
 
 /// Checks a candidate configuration file.
-pub(crate) type Check = Box<dyn Fn(&str) -> std::result::Result<(), Report> + Send + Sync>;
+pub(crate) type Check = Arc<dyn Fn(&str) -> std::result::Result<(), Report> + Send + Sync>;
 
 impl AppContext {
     /// The context of the run `supervisor` is about to supervise.
@@ -143,6 +148,18 @@ impl AppContext {
     /// start: the same environment and `--set` overrides, with `candidate` as the file. A
     /// host that restarts in the process cannot change logging but for its filters, so then
     /// any other change to `[log]` is a problem too.
+    ///
+    /// A new configuration takes three steps: check it, write it, and ask for a restart, which
+    /// loads it.
+    ///
+    /// ```no_run
+    /// # fn apply(ctx: &rivium::AppContext, candidate: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// ctx.check_config(candidate)?;
+    /// rivium::fs::atomic_write(ctx.paths().config_file(), candidate.as_bytes(), true)?;
+    /// ctx.restarter().request("configuration changed");
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
