@@ -47,6 +47,18 @@ fn stderr(exited: &Exited) -> Vec<&str> {
     exited.stderr.lines().collect()
 }
 
+/// The lines of standard error after a stop that did not finish, where the `abandoned` line may
+/// start with `echo`, the service's own future. That future ends as soon as `echo` is asked to
+/// stop, but only once it is polled again, and tokio does not order the tasks it schedules: the
+/// run may end first, and then the future is listed before its blocking task `echo/socket`,
+/// which is what holds the stop up. The order of the list is fixed; what still runs is not.
+fn stderr_of_an_unfinished_stop(exited: &Exited) -> Vec<String> {
+    let lines = stderr(exited).into_iter();
+    lines
+        .map(|line| line.replacen("abandoned: echo, echo/socket", "abandoned: echo/socket", 1))
+        .collect()
+}
+
 /// The main log file of the program below `root`.
 fn log(root: &Path, name: &str) -> String {
     let file = root.join(format!("logs/{name}/{name}.log"));
@@ -184,7 +196,7 @@ fn a_second_signal_cuts_the_stop_short_with_128_plus_its_number() {
     let exited = program.wait();
     assert_eq!(exited.code, Some(130));
     assert_eq!(
-        stderr(&exited),
+        stderr_of_an_unfinished_stop(&exited),
         [
             "udp-echo: the stop was cut short by a second stop request (SIGINT)",
             // `stats` is a background service: asked to stop once `echo` has stopped. The list
@@ -217,7 +229,7 @@ fn a_service_still_running_at_the_deadline_is_abandoned_with_124() {
         asked.elapsed()
     );
     assert_eq!(
-        stderr(&exited),
+        stderr_of_an_unfinished_stop(&exited),
         [
             "udp-echo: stop timed out",
             "udp-echo: abandoned: echo/socket, stats"
