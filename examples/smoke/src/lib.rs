@@ -1,6 +1,7 @@
-//! Platform smoke checks shared by the tests and by `smoke check`, so that the binary links the
-//! same dependencies as a real service (tokio, axum, rustls with ring) and the artifact checks
-//! (glibc baseline, page alignment) see them.
+//! Platform smoke checks shared by the tests and by `smoke check`: an axum round trip and a TLS
+//! handshake with rustls and the ring provider, the TLS stack that services built on Rivium use
+//! (Rivium itself has no TLS). The tests run on every target, under emulation for the
+//! cross-compiled ones, and the glibc checks read the binary.
 
 use std::error::Error;
 use std::io::{Read, Write};
