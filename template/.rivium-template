@@ -1,0 +1,12 @@
+# Written by the Rivium template when it generated this project. `just template-diff <version>`
+# generates the template at this version and at <version> with these answers and shows what
+# changed, to merge by hand.
+version = "0.1.0"
+
+[answers]
+project-name = "{{project-name}}"
+http = {{http}}
+jni = {{jni}}{% if jni %}
+bridge_package = "{{bridge_package}}"{% endif %}
+platforms = "{{platforms}}"
+component = "{{component}}"

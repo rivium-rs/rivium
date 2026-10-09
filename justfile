@@ -10,7 +10,7 @@ default:
 
 # Install the developer tools used by the recipes into .tools/
 tools:
-    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-semver-checks@0.51.0
+    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-generate@0.25.0 cargo-semver-checks@0.51.0
 
 # Formatting, clippy, cargo-deny, feature matrix, the panic = "abort" refusal and script self-tests (what ci/lint runs)
 lint:
@@ -68,7 +68,7 @@ cross *targets="armv7-unknown-linux-gnueabihf loongarch64-unknown-linux-gnu aarc
 android:
     scripts/local/android.sh
 
-# glibc 2.17 baseline builds (cargo-zigbuild), symbol check and a run on CentOS 7
+# glibc 2.17 baseline builds (cargo-zigbuild), symbol check and runs on CentOS 7
 glibc:
     scripts/local/glibc.sh
 
@@ -76,7 +76,7 @@ glibc:
 jvm:
     scripts/local/jvm.sh
 
-# Generate a project from the template and test it against this workspace
+# Generate projects from the template and check them against this workspace, as ci/template does
 template:
     scripts/template-smoke.sh
 
@@ -86,7 +86,7 @@ drills:
     scripts/drill-a.sh
     scripts/drill-c.sh
 
-# systemd hosting smoke in a local systemd container
+# systemd hosting test in a local systemd container
 systemd:
     scripts/local/glibc.sh
-    RIVIUM_SYSTEMD_BASE=debian:bookworm-slim scripts/hosting/systemd.sh target/local/zig/$(uname -m | sed 's/arm64/aarch64/')-unknown-linux-gnu/release/smoke
+    RIVIUM_SYSTEMD_BASE=debian:bookworm-slim scripts/hosting/systemd.sh target/local/zig/$(uname -m | sed 's/arm64/aarch64/')-unknown-linux-gnu/release/udp-echo

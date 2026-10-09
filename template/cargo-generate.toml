@@ -1,4 +1,36 @@
-# Placeholder template for the CI baseline: proves that a generated project builds and tests
-# against the current workspace through [patch.crates-io]. The real template replaces it.
+# The Rivium template: `cargo generate --git https://github.com/rivium-rs/rivium --tag v<version> template`.
+# The answers are kept in .rivium-template, which `just template-diff` reads.
 [template]
 cargo_generate_version = ">=0.25"
+
+[placeholders.http]
+type = "bool"
+prompt = "Does the service answer HTTP (rivium-http)?"
+default = false
+
+[placeholders.jni]
+type = "bool"
+prompt = "Does it also run embedded in an Android app (a JNI library with rivium-jni)?"
+default = false
+
+[conditional.'jni'.placeholders.bridge_package]
+type = "string"
+prompt = "Java package of the app's bridge class RiviumBridge"
+default = "com.example.app"
+regex = "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+
+[placeholders.platforms]
+type = "string"
+prompt = "Platforms to package, separated by spaces"
+default = "linux_amd64 linux_arm64 linux_arm32hf linux_loong64 windows_amd64 darwin_arm64"
+
+[placeholders.component]
+type = "string"
+prompt = "Component name of the archives (empty: the project name)"
+default = ""
+
+[conditional.'!jni']
+ignore = ["crates/{{project-name}}-jni", "crates/{{project-name}}/tests/embedded.rs"]
+
+[conditional.'!http']
+ignore = ["crates/{{project-name}}/src/api.rs"]
