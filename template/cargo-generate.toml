@@ -36,3 +36,6 @@ ignore = ["crates/{{project-name}}-jni", "crates/{{project-name}}/tests/embedded
 
 [conditional.'!http']
 ignore = ["crates/{{project-name}}/src/api.rs"]
+
+[hooks]
+pre = ["hooks/pre.rhai"]

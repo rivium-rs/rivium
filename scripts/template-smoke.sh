@@ -4,6 +4,7 @@
 #   - the template's version and dependencies match the workspace's, its manifests are
 #     Cargo.toml.liquid (no Cargo.toml for cargo to parse in a git checkout), and its JVM files are
 #     rivium-jni's reference files;
+#   - project names that would not build, such as a dependency's, are rejected;
 #   - two variants, plain (no HTTP, no JNI) and full (HTTP and JNI): `just check` (with the API
 #     documentation), with port 8080 taken so that the full variant's tests must pass its port
 #     override; the full variant's `just check-config` and JVM contract; packaging for
@@ -71,6 +72,24 @@ generate full-svc --define http=true --define jni=true --define bridge_package=c
 deps=$(grep -cE "^rivium(-[a-z]+)? = \"$minor\"\$" "$out/full-svc/Cargo.toml" || true)
 if [ "$deps" -eq 4 ]; then ok "the projects depend on rivium $minor"; else fail "the full project's rivium dependencies are not \"$minor\""; fi
 for name in plain-svc full-svc; do (cd "$out/$name" && cargo generate-lockfile --quiet); done
+
+# The pre hook rejects names whose workspace cargo or rustc cannot build, every dependency of the
+# workspace among them, and leaves nothing of itself in a project.
+deps=$(sed -n '/^\[workspace.dependencies\]$/,/^\[/s/^\([a-z][a-z0-9-]*\) = .*/\1/p' "$out/full-svc/Cargo.toml")
+rejected=0
+for name in 9lives fn std build con $deps; do
+  rm -rf "${out:?}/$name"
+  if ! cargo generate --path "$tpl" --name "$name" --destination "$out" --vcs none --silent > "$out/name.log" 2>&1 \
+    && grep -q "invalid project name '$name'" "$out/name.log"; then
+    rejected=$((rejected + 1))
+  else
+    cat "$out/name.log"
+    fail "the project name $name was not rejected"
+  fi
+  rm -rf "${out:?}/$name"
+done
+ok "$rejected project names rejected"
+if [ -e "$out/plain-svc/hooks" ]; then fail "the hooks were generated"; else ok "the hooks are not generated"; fi
 if has shellcheck; then
   if (cd "$out/full-svc" && shellcheck scripts/*.sh crates/*/jvm-test/run.sh); then ok "the projects' scripts pass shellcheck"; else fail "shellcheck"; fi
 fi
