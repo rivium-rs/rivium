@@ -12,7 +12,8 @@
 #     process); `template-diff` against a repository with two tags; at most 300 lines of Rust
 #     besides the business samples;
 #   - planted violations that must fail: a detached thread (clippy), panic = "abort", a stale
-#     configs/default.toml, an OpenSSL dependency (cargo-deny), packaging without cargo-zigbuild.
+#     configs/default.toml, an OpenSSL dependency (cargo-deny), packaging without cargo-zigbuild,
+#     CI without Cargo.lock.
 # Needs cargo-generate, just, cargo-deny and shellcheck; packaging needs cargo-zigbuild (and zig),
 # the JVM contract a JDK 17. Outside CI, steps whose tools are missing are skipped; in CI they fail.
 # Usage: scripts/template-smoke.sh [<output dir>]
@@ -197,6 +198,10 @@ plant "stale configs/default.toml" "sed -i.bak 's/^every = \"1m\"\$/every = \"2m
   'cargo test --locked -p plain-svc-bin --test default_config' 'is not the default configuration'
 plant "missing cargo-zigbuild" ':' 'PATH=/usr/bin:/bin scripts/package.sh --build-only linux_amd64' \
   'cargo-zigbuild: cargo install cargo-zigbuild'
+# The CI's before_script, run as GitLab runs it.
+ci_lock=$(sed -n 's/^    - \(test -f Cargo.lock .*\)$/\1/p' "$out/plain-svc/.gitlab-ci.yml")
+if [ -n "$ci_lock" ] && (cd "$out/plain-svc" && sh -c "$ci_lock"); then ok "CI runs with Cargo.lock"; else fail "CI's Cargo.lock check"; fi
+plant "missing Cargo.lock" 'rm Cargo.lock' "sh -c '$ci_lock'" 'Cargo.lock is not committed'
 if has cargo-deny; then
   plant "OpenSSL dependency" 'cargo add --quiet -p plain-svc openssl-sys@0.9' 'cargo deny check bans' 'openssl-sys'
 fi

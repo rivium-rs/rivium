@@ -12,6 +12,10 @@ default:
   cache:
     key: cargo
     paths: [.cargo-home/registry, target]
+  # The jobs build with the committed Cargo.lock, which `just lockfile` creates, so that a
+  # release is built from the dependencies that were tested.
+  before_script:
+    - test -f Cargo.lock || (echo "Cargo.lock is not committed; run just lockfile and commit it" >&2; exit 1)
 
 check:
   stage: check
