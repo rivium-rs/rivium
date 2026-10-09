@@ -9,6 +9,7 @@ use std::ffi::OsString;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::pin::pin;
+use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::Duration;
 
@@ -342,7 +343,7 @@ pub(crate) fn check<C: Serialize + DeserializeOwned + Default>(
     overrides: Overrides,
     installed: Option<LogSettings>,
 ) -> Check {
-    Box::new(move |candidate| {
+    Arc::new(move |candidate| {
         let inputs = Inputs {
             name,
             file: FileLayer::Text {
