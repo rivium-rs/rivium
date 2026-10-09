@@ -1,4 +1,4 @@
-//! The outputs: filters, category files, console formats, installation and reloading, the
+//! The outputs: filters, category files, console formats and colors, installation and reloading, the
 //! panic hook.
 
 use std::io::{self, IsTerminal};
@@ -10,9 +10,9 @@ use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{Registry, fmt};
 
-use super::install::{InstallError, LogInputs, build, filters, install};
+use super::install::{InstallError, LogInputs, ansi, build, filters, install};
 use super::logcat::pieces;
-use super::settings::{Category, Format, LogSettings};
+use super::settings::{Category, Color, Format, LogSettings};
 use super::{flush, install_panic_hook};
 
 /// Lines written to memory instead of standard output.
@@ -62,7 +62,7 @@ fn inputs(dir: PathBuf, settings: LogSettings) -> LogInputs {
 fn each_output_has_its_own_filter_and_each_category_its_own_file() {
     let dir = dir("filters");
     let mut settings = LogSettings::new("app");
-    settings.console.filter = "warn".into();
+    (settings.console.filter, settings.console.color) = ("warn".into(), Color::Never);
     settings.files.push(Category {
         name: "proto".into(),
         filter: "proto=debug".into(),
@@ -119,6 +119,60 @@ fn the_console_can_write_json_with_the_fields_at_the_top() {
     }
     files.stop();
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn colored_console_lines_leave_the_files_plain() {
+    // A span's fields are formatted by the first layer that sees the span and kept for the
+    // layers that share its field formatter: in either order, the console colors its own copy.
+    for console_first in [false, true] {
+        let dir = dir(&format!("color-{console_first}"));
+        let mut settings = LogSettings::new("app");
+        (settings.console.filter, settings.console.color) = ("info".into(), Color::Always);
+        let console = Buffer::default();
+        let (files, mut layers, _) =
+            build(&inputs(dir.clone(), settings), console.writer()).unwrap();
+        if console_first {
+            layers.rotate_right(1);
+        }
+        // A plain layer of the service's own, as `App::layers` adds them.
+        let own = Buffer::default();
+        let own_layer = fmt::layer().with_ansi(false).with_writer(own.writer());
+        let subscriber = Registry::default().with(layers).with(own_layer);
+        tracing::subscriber::with_default(subscriber, || {
+            let _unit = tracing::info_span!("unit", unit.id = 7).entered();
+            tracing::info!(target: "app", reading = 12, "polled");
+        });
+        assert!(files.flush(Duration::from_secs(10)));
+        let main = std::fs::read_to_string(dir.join("app.log")).unwrap();
+        let console = console.text();
+        // The span's field name in italics, as tracing-subscriber writes field names.
+        assert!(console.contains("\x1b[3munit.id"), "{console:?}");
+        for plain in [&main, &own.text()] {
+            assert!(!plain.contains('\x1b'), "{plain:?}");
+            assert!(
+                plain.contains("unit{unit.id=7}: app: polled reading=12"),
+                "{plain}"
+            );
+        }
+        files.stop();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[test]
+fn auto_colors_a_terminal_unless_no_color_or_a_dumb_terminal() {
+    // (terminal, NO_COLOR set, TERM=dumb) → auto
+    for (terminal, no_color, dumb, colored) in [
+        (true, false, false, true),
+        (false, false, false, false),
+        (true, true, false, false),
+        (true, false, true, false),
+    ] {
+        assert_eq!(ansi(Color::Auto, terminal, no_color, dumb), colored);
+        assert!(ansi(Color::Always, terminal, no_color, dumb));
+        assert!(!ansi(Color::Never, terminal, no_color, dumb));
+    }
 }
 
 #[test]

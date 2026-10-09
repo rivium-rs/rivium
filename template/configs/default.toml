@@ -15,6 +15,7 @@ files = []
 [log.console]
 filter = ""
 format = "text"
+color = "auto"
 
 [log.file]
 dir = "logs/{{project-name}}"
