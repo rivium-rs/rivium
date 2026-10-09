@@ -10,8 +10,8 @@
 #     tags; at most 300 lines of Rust besides the business samples;
 #   - planted violations that must fail: a detached thread (clippy), panic = "abort", a stale
 #     configs/default.toml, an OpenSSL dependency (cargo-deny).
-# Needs cargo-generate, just, cargo-deny and shellcheck; packaging needs cargo-zigbuild and zig, the
-# JVM contract a JDK 17. Outside CI, steps whose tools are missing are skipped; in CI they fail.
+# Needs cargo-generate, just, cargo-deny and shellcheck; packaging needs cargo-zigbuild (and zig),
+# the JVM contract a JDK 17. Outside CI, steps whose tools are missing are skipped; in CI they fail.
 # Usage: scripts/template-smoke.sh [<output dir>]
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -99,7 +99,8 @@ if jdk; then
   if in_project full-svc just jvm > "$out/jvm.log" 2>&1; then ok "full-svc: just jvm"; else cat "$out/jvm.log"; fail "full-svc: just jvm"; fi
 fi
 
-if has cargo-zigbuild zig; then
+# cargo-zigbuild finds zig on PATH or as the ziglang Python package (as CI installs it).
+if has cargo-zigbuild; then
   if in_project plain-svc just package linux_amd64 linux_arm32hf > "$out/package.log" 2>&1; then
     dist=$out/plain-svc/dist/plain-svc
     for platform in linux_amd64 linux_arm32hf; do
