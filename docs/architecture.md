@@ -188,6 +188,53 @@ file per output. Before a stop returns, a flush barrier puts every event in its 
 feature `log-export`, `ctx.log_exporter()` packs the log files of chosen days into a zip archive
 to download; the service binds it to its own protocol.
 
+### Splitting the log by module
+
+Each output filters on its own, in `RUST_LOG` syntax, so a category file takes the events of the
+modules named in its filter, and the main file takes what its own filter lets through. To move a
+module's events into a file of their own, name the module in the category's filter and turn it
+off in the main file's:
+
+```toml
+[log]
+filter = "info"
+
+[log.file]
+# Everything else; the modules of the category files are off here.
+filter = "info,my_service::snmp=off,my_service::vendor=off"
+
+[[log.files]]
+name = "snmp"
+filter = "my_service::snmp=info"
+
+[[log.files]]
+name = "device"
+# The longer prefix wins: modbus gets a file of its own.
+filter = "my_service::vendor=info,my_service::vendor::modbus=off"
+
+[[log.files]]
+name = "modbus"
+filter = "my_service::vendor::modbus=info"
+
+[[log.files]]
+name = "error"
+filter = "error"
+```
+
+- **Split by target, not by span.** A target is the module that logs, wherever its event runs.
+  Spans do not reach everywhere: a service's span is missing from the tasks it spawns, and from
+  axum's request tasks. A span directive (`[service{service.name=http}]=info`) can turn events on
+  but not off, so it cannot take them out of the main file.
+- **Rivium's own events**, such as the lifecycle (`rivium`) and the access log (`rivium_http`),
+  stay in the main file unless a filter names their targets.
+- **Names**: a category's name is letters, digits, `_` and `-`, and it is not the main file's
+  name. The file is `<log.file.dir>/<name>.log`.
+- **Budget**: every file shares `log.file.max_total_size`, which must be at least
+  (files + 2) × `log.file.max_file_size`, plus `log.export.max_size` with log export.
+  `check-config` reports a smaller budget.
+- **Changes**: when the configuration changes in a running process, the filters take effect at
+  once. Adding, removing or renaming a category file takes a restart.
+
 ## Errors and HTTP
 
 An error kind is a constant: `const DEVICE: ErrorType = &ErrorKind::new("DeviceError",
