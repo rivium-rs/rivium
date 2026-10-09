@@ -38,4 +38,18 @@
 
 - New checks are shown to fail once on a planted violation before they are relied on.
 - Developer tools are installed under `.tools/` (`just tools`), never globally.
-- Releases are tagged by the maintainer only.
+
+## Releases
+
+Releases are made by the maintainer only. Every crate and the template share one version.
+
+1. On a branch: set the version in the workspace `Cargo.toml` (`[workspace.package]` and the
+   `rivium-*` entries of `[workspace.dependencies]`) and in `template/.rivium-template`, and
+   the template's `rivium-* = "0.<minor>"` requirements for a new minor version. Write the
+   release's section in `CHANGELOG.md`, `## [<version>] - <date>`, with its five parts (Added,
+   Changed, Fixed, Breaking, Template); a new minor version also gets its steps in
+   `docs/upgrading.md`. `scripts/release-check.sh --dry-run <version> <notes file>` checks all
+   of this; the `release` workflow runs it as a dry run on the pull request.
+2. Once that pull request is merged and `main` is green, tag the merge commit `v<version>` and
+   push the tag. The `release` workflow checks again, runs the whole matrix, publishes the crates
+   in dependency order and creates the GitHub release from the changelog section.
