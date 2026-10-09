@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ci/template: generates projects from template/ with cargo-generate, points their rivium
 # dependencies at this workspace with [patch.crates-io], and checks them as their own CI would:
-#   - the template's version and dependencies match the workspace's, and its JVM files are
+#   - the template's version and dependencies match the workspace's, its manifests are
+#     Cargo.toml.liquid (no Cargo.toml for cargo to parse in a git checkout), and its JVM files are
 #     rivium-jni's reference files;
 #   - two variants, plain (no HTTP, no JNI) and full (HTTP and JNI): `just check` (with the API
 #     documentation), with port 8080 taken so that the full variant's tests must pass its port
@@ -38,6 +39,9 @@ version=$(sed -n -E 's/^version = "([^"]+)"$/\1/p' "$root/Cargo.toml" | head -n 
 minor=${version%.*}
 tpl=$root/template
 if grep -q "^version = \"$version\"$" "$tpl/.rivium-template"; then ok "template version $version"; else fail "template version is not $version"; fi
+# cargo parses every Cargo.toml in a git dependency's checkout: the template's are .liquid.
+manifests=$(find "$tpl" -name Cargo.toml)
+if [ -z "$manifests" ]; then ok "the template's manifests are Cargo.toml.liquid"; else fail "rename to Cargo.toml.liquid: $manifests"; fi
 for file in RiviumBridge.java Contract.java; do
   if cmp -s "$tpl/crates/{{project-name}}-jni/jvm-test/$file" "$root/crates/rivium-jni/tests/jvm/$file"; then
     ok "$file is rivium-jni's"
