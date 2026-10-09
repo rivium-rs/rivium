@@ -18,7 +18,10 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 server=""
 cleanup() {
-  if [ -n "$server" ]; then kill "$server" 2> /dev/null && wait "$server" 2> /dev/null || true; fi
+  if [ -n "$server" ]; then
+    kill "$server" 2> /dev/null || true
+    wait "$server" 2> /dev/null || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
