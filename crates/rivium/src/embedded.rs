@@ -33,7 +33,7 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -106,18 +106,26 @@ struct State {
     last_error: Option<String>,
     /// The number of the last start.
     run: u64,
+    /// What the last start came to.
+    results: Arc<Results>,
     /// The stop requests to the last start's rounds, until its thread ends.
     stops: Option<mpsc::UnboundedSender<StopReason>>,
     /// The thread of the last start, until it is joined.
     thread: Option<JoinHandle<()>>,
-    /// What the first round of the last start came to, once that is known.
-    first: Option<Code>,
     /// When the waiting start stops waiting for the first round.
     guard: Option<Instant>,
     /// The host asked the last start's services to stop.
     stopping: bool,
-    /// The start that ended last, and what `stop` returns for it.
-    ended: Option<(u64, Code)>,
+}
+
+/// What a start came to, each part set once. The start's callers keep a reference of their own:
+/// the next start may begin before they get the lock back.
+#[derive(Debug, Default)]
+struct Results {
+    /// What the first round came to: what `start` returns.
+    first: OnceLock<Code>,
+    /// What `stop` returns, once the thread has ended.
+    ended: OnceLock<Code>,
 }
 
 impl Host {
@@ -165,9 +173,9 @@ impl Host {
             last_error: state.last_error.take(),
             run,
             stops: Some(stop),
-            ended: state.ended.take(),
             ..State::default()
         };
+        let results = Arc::clone(&state.results);
         let (shared, main) = (Arc::clone(&self.shared), self.main);
         let thread = thread::Builder::new()
             .name(format!("{}-main", self.name))
@@ -180,10 +188,11 @@ impl Host {
             }
         }
         loop {
-            if let Some(code) = state.first {
+            if let Some(&code) = results.first.get() {
                 self.shared.reap(state, run);
                 return code;
             }
+            // Until then, the state is this start's: the next start begins after this one ended.
             let left = state
                 .guard
                 .map(|at| at.saturating_duration_since(Instant::now()));
@@ -207,11 +216,9 @@ impl Host {
             return code;
         }
         self.shared.changed.notify_all();
-        let run = state.run;
+        let (run, results) = (state.run, Arc::clone(&state.results));
         loop {
-            if let Some((ended, code)) = state.ended
-                && ended == run
-            {
+            if let Some(&code) = results.ended.get() {
                 self.shared.reap(state, run);
                 return code;
             }
@@ -281,12 +288,11 @@ impl Shared {
         }
     }
 
-    /// Joins the thread of start `run` once it has ended, after letting go of the lock.
+    /// Joins the thread of start `run` once it has ended, after letting go of the lock; a later
+    /// start joined it already.
     fn reap(&self, mut state: MutexGuard<'_, State>, run: u64) {
-        let thread = match state.ended {
-            Some((ended, _)) if ended == run => state.thread.take(),
-            _ => None,
-        };
+        let ended = state.run == run && state.results.ended.get().is_some();
+        let thread = if ended { state.thread.take() } else { None };
         drop(state);
         if let Some(thread) = thread {
             let _ = thread.join();
@@ -313,7 +319,7 @@ impl State {
             Status::Stopping => {}
             Status::Starting | Status::Running | Status::Restarting => {
                 (self.status, self.stopping) = (Status::Stopping, true);
-                self.first.get_or_insert(Code::Cancelled);
+                let _ = self.results.first.set(Code::Cancelled);
                 if let Some(stops) = &self.stops {
                     let _ = stops.send(StopReason::Host { budget });
                 }
@@ -324,8 +330,8 @@ impl State {
 
     /// The first round had no result within the guard: its services are stopped at once.
     fn overdue(&mut self) -> Code {
+        let _ = self.results.first.set(Code::StartupFailed);
         let _ = self.stop(Duration::ZERO);
-        self.first = Some(Code::StartupFailed);
         let why = "no result within the startup and stop timeouts plus 2s; stopping the services";
         self.failed(Code::StartupFailed, why)
     }
@@ -345,13 +351,15 @@ impl State {
         match event {
             Event::Phase(Phase::Running) if own && self.status == Status::Starting => {
                 self.status = Status::Running;
-                if self.first.is_none() {
-                    (self.first, self.last_error) = (Some(Code::Ok), None);
+                if self.results.first.set(Code::Ok).is_ok() {
+                    self.last_error = None;
                 }
             }
             // A round stops on its own, for a failure or a restart request. Before the first
             // round runs, the waiting start reports that instead.
-            Event::Phase(Phase::Stopping) if own && starting_or_running && self.first.is_some() => {
+            Event::Phase(Phase::Stopping)
+                if own && starting_or_running && self.results.first.get().is_some() =>
+            {
                 self.status = Status::Restarting;
             }
             Event::Failed(failure) => {
@@ -367,15 +375,15 @@ impl State {
         }
     }
 
-    /// The thread of start `run` ends with `end`; `flushed` says whether the last logs reached
-    /// the files in time.
-    fn ended(&mut self, run: u64, end: End, flushed: bool) {
+    /// The thread of the last start ends with `end`; `flushed` says whether the last logs
+    /// reached the files in time.
+    fn ended(&mut self, end: End, flushed: bool) {
         let failed = end.code != Code::Ok;
-        let gave_up = failed && !self.stopping && self.first == Some(Code::Ok);
+        let gave_up = failed && !self.stopping && self.results.first.get() == Some(&Code::Ok);
         if let Some(message) = end.message.filter(|_| failed) {
             self.failed(end.code, &message);
         }
-        self.first.get_or_insert(end.code);
+        let _ = self.results.first.set(end.code);
         self.status = if gave_up {
             Status::Failed
         } else {
@@ -383,14 +391,12 @@ impl State {
         };
         self.stops = None;
         let timed_out = end.code == Code::StopTimedOut || !flushed;
-        self.ended = Some((
-            run,
-            if timed_out {
-                Code::StopTimedOut
-            } else {
-                Code::Ok
-            },
-        ));
+        let stopped = if timed_out {
+            Code::StopTimedOut
+        } else {
+            Code::Ok
+        };
+        let _ = self.results.ended.set(stopped);
     }
 }
 
@@ -415,7 +421,7 @@ fn main<A: App>(
         Some(why) => tracing::warn!(code, reason = %why, "stopped"),
     }
     let flushed = log::flush(FLUSH).is_ok();
-    shared.update(run, |state| state.ended(run, end, flushed));
+    shared.update(run, |state| state.ended(end, flushed));
 }
 
 fn serve<A: App>(
