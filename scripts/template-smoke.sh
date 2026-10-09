@@ -4,13 +4,14 @@
 #   - the template's version and dependencies match the workspace's, its manifests are
 #     Cargo.toml.liquid (no Cargo.toml for cargo to parse in a git checkout), and its JVM files are
 #     rivium-jni's reference files;
-#   - two variants, plain (no HTTP, no JNI) and full (HTTP and JNI): `just check`, with port 8080
-#     taken so that the full variant's tests must pass its port override; the full variant's
-#     JVM contract; packaging for linux_amd64 and linux_arm32hf (glibc 2.17, and the arm32hf
-#     configuration restarting in the process); `template-diff` against a repository with two
-#     tags; at most 300 lines of Rust besides the business samples;
+#   - two variants, plain (no HTTP, no JNI) and full (HTTP and JNI): `just check` (with the API
+#     documentation), with port 8080 taken so that the full variant's tests must pass its port
+#     override; the full variant's `just check-config` and JVM contract; packaging for
+#     linux_amd64 and linux_arm32hf (glibc 2.17, and the arm32hf configuration restarting in the
+#     process); `template-diff` against a repository with two tags; at most 300 lines of Rust
+#     besides the business samples;
 #   - planted violations that must fail: a detached thread (clippy), panic = "abort", a stale
-#     configs/default.toml, an OpenSSL dependency (cargo-deny).
+#     configs/default.toml, an OpenSSL dependency (cargo-deny), packaging without cargo-zigbuild.
 # Needs cargo-generate, just, cargo-deny and shellcheck; packaging needs cargo-zigbuild (and zig),
 # the JVM contract a JDK 17. Outside CI, steps whose tools are missing are skipped; in CI they fail.
 # Usage: scripts/template-smoke.sh [<output dir>]
@@ -91,6 +92,13 @@ if has just cargo-deny; then
     [ -z "$taker" ] || kill "$taker" 2> /dev/null || true
   done
   if in_project full-svc just update-rivium > "$out/update.log" 2>&1; then ok "full-svc: just update-rivium"; else cat "$out/update.log"; fail "full-svc: just update-rivium"; fi
+  if in_project full-svc just check-config > "$out/check-config.log" 2>&1 \
+    && grep -q '^http.addr = "127.0.0.1:8080" (file .*/configs/default.toml)$' "$out/check-config.log"; then
+    ok "full-svc: just check-config reads configs/default.toml"
+  else
+    cat "$out/check-config.log"
+    fail "full-svc: just check-config"
+  fi
 fi
 
 jdk() { # a JDK that runs: macOS has a javac stub that only offers to install one
@@ -168,6 +176,8 @@ plant "detached thread" "printf '/// Planted.\npub fn detached() {\n    let _ = 
 plant 'panic = "abort"' "printf '[profile.release]\npanic = \"abort\"\n' >> Cargo.toml" 'scripts/check-panic.sh' 'keep panic = "unwind"'
 plant "stale configs/default.toml" "sed -i.bak 's/^every = \"1m\"\$/every = \"2m\"/' configs/default.toml" \
   'cargo test --locked -p plain-svc-bin --test default_config' 'is not the default configuration'
+plant "missing cargo-zigbuild" ':' 'PATH=/usr/bin:/bin scripts/package.sh --build-only linux_amd64' \
+  'cargo-zigbuild: cargo install cargo-zigbuild'
 if has cargo-deny; then
   plant "OpenSSL dependency" 'cargo add --quiet -p plain-svc openssl-sys@0.9' 'cargo deny check bans' 'openssl-sys'
 fi

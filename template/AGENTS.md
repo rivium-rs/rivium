@@ -112,8 +112,8 @@ instead of working around it here.
 
 ## Checks and upgrades
 
-- `just check` before every commit: formatting, clippy, cargo-deny, the panic check, and the
-  tests. The tests include the lifecycle contract that Rivium's hosts keep (as a program{% if jni %} and
+- `just check` before every commit: formatting, clippy, cargo-deny, the panic check, the API
+  documentation and the tests. The tests include the lifecycle contract that Rivium's hosts keep (as a program{% if jni %} and
   embedded{% endif %}), the dependency closure of each package, and `configs/default.toml`.
 - Rivium's crates are released together, at one version. A patch release fixes without changing
   the API: `just update-rivium` moves every Rivium crate to it (only Cargo.lock changes), then
