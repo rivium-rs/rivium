@@ -41,15 +41,17 @@
 
 ## Releases
 
-Releases are made by the maintainer only. Every crate and the template share one version.
+Releases are made by the maintainer only. Every crate and the template share one version, and
+the release notes are generated, never written by hand.
 
 1. On a branch: set the version in the workspace `Cargo.toml` (`[workspace.package]` and the
-   `rivium-*` entries of `[workspace.dependencies]`) and in `template/.rivium-template`, and
-   the template's `rivium-* = "0.<minor>"` requirements for a new minor version. Write the
-   release's section in `CHANGELOG.md`, `## [<version>] - <date>`, with its five parts (Added,
-   Changed, Fixed, Breaking, Template); a new minor version also gets its steps in
-   `docs/upgrading.md`. `scripts/release-check.sh --dry-run <version> <notes file>` checks all
-   of this; the `release` workflow runs it as a dry run on the pull request.
+   `rivium-*` entries of `[workspace.dependencies]`) and in `template/.rivium-template`, and for
+   a new minor version the template's `rivium-* = "0.<minor>"` requirements and its steps in
+   `docs/upgrading.md`. The `release` workflow checks it all as a dry run on the pull request
+   (`scripts/release-check.sh`) and prints the release notes, which git-cliff renders from the
+   commits since the previous tag (`cliff.toml`); `just release-notes <version>` shows them
+   locally. The commits on `main` are the pull requests' titles, so a title is also the line
+   that the release notes show.
 2. Once that pull request is merged and `main` is green, tag the merge commit `v<version>` and
    push the tag. The `release` workflow checks again, runs the whole matrix, publishes the crates
-   in dependency order and creates the GitHub release from the changelog section.
+   in dependency order and creates the GitHub release with the notes.

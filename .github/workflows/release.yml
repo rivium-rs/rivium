@@ -1,11 +1,11 @@
 name: release
 
 # A tag v<version> releases the library crates to crates.io once everything has passed:
-# release/check (versions, release notes, crates.io, the content of the packaged crates),
-# release/semver, the whole matrix (the ci, cross, hosting and public workflows), then
-# release/publish, in the environment crates-io. Pull requests that change the release files,
-# and manual runs, do all of it as a dry run: `cargo publish --dry-run`, no upload, no GitHub
-# release.
+# release/check (versions, crates.io, the release notes that git-cliff renders from the commits
+# since the previous tag, the content of the packaged crates), release/semver, the whole matrix
+# (the ci, cross, hosting and public workflows), then release/publish, in the environment
+# crates-io. Pull requests that change the release files, and manual runs, do all of it as a dry
+# run: `cargo publish --dry-run`, no upload, no GitHub release; the notes are printed.
 on:
   push:
     tags: ["v*"]
@@ -13,7 +13,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/release-check.sh
-      - CHANGELOG.md
+      - cliff.toml
   workflow_dispatch:
 
 permissions:
@@ -36,17 +36,17 @@ jobs:
         with:
           fetch-depth: 0
       - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: git-cliff@2.14.2
       - name: Versions, release notes and crates.io
         env:
           EVENT: ${{ github.event_name }}
           TAG: ${{ github.ref_name }}
         run: |
-          if [ "$EVENT" = push ]; then
-            scripts/release-check.sh "${TAG#v}" "$RUNNER_TEMP/notes.md"
-          else
-            version=$(sed -n -E 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n 1)
-            scripts/release-check.sh --dry-run "$version" "$RUNNER_TEMP/notes.md"
-          fi
+          version=$(sed -n -E 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "$EVENT" = push ]; then version=${TAG#v}; fi
+          scripts/release-check.sh "$version" "$RUNNER_TEMP/notes.md"
           echo "--- the GitHub release's notes"
           cat "$RUNNER_TEMP/notes.md"
       - name: The packaged crates hold nothing of the private denylist (planted entry included)
@@ -140,6 +140,9 @@ jobs:
         with:
           fetch-depth: 0
       - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: git-cliff@2.14.2
       - id: auth
         name: A token from Trusted Publishing
         if: env.FIRST_RELEASE_TOKEN == ''
@@ -148,7 +151,7 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ env.FIRST_RELEASE_TOKEN || steps.auth.outputs.token }}
         run: cargo publish --workspace --locked
-      - name: The GitHub release, with the release notes
+      - name: The GitHub release, with the release notes that git-cliff renders
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
