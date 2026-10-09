@@ -1,4 +1,0 @@
-# Placeholder template for the CI baseline: proves that a generated project builds and tests
-# against the current workspace through [patch.crates-io]. The real template replaces it.
-[template]
-cargo_generate_version = ">=0.25"
