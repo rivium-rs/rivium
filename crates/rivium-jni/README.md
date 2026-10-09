@@ -15,8 +15,8 @@ to load. A panic in a native method returns -99 or an empty string, and the crat
 `panic = "abort"`. `tests/jvm/RiviumBridge.java` is the reference declaration, and
 `tests/jvm/run.sh` checks a library on a desktop JVM.
 
-**Status:** pre-release, not published yet. See the
-[repository README](https://github.com/rivium-rs/rivium).
+Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
+version, and the repository has the template, the examples and the documentation.
 
 ## License
 

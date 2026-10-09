@@ -23,8 +23,8 @@ fn main() {
 `error.type`, `error.class`, `error.source`, `error.retry`, `error.context`, `error.chain` and
 `error.cause`.
 
-**Status:** pre-release, not published yet; see the
-[repository README](https://github.com/rivium-rs/rivium).
+Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
+version, and the repository has the template, the examples and the documentation.
 
 ## License
 
