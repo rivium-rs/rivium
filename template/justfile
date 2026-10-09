@@ -6,8 +6,12 @@ platforms := "{{platforms}}"
 default:
     @just --list
 
-# Formatting, clippy, cargo-deny, the panic check and the tests
-check: lint test
+# Formatting, clippy, cargo-deny, the panic check, the API documentation and the tests
+check: lint doc test
+
+# Formats the code
+fmt:
+    cargo fmt --all
 
 # Formatting, clippy (with clippy.toml's rules), cargo-deny (deny.toml) and the panic check
 lint: lockfile
@@ -16,9 +20,29 @@ lint: lockfile
     cargo deny --locked check bans licenses sources
     scripts/check-panic.sh
 
+# The libraries' API documentation, without warnings
+doc: lockfile
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --lib --no-deps --locked
+
 # The tests, including the lifecycle contract and the default configuration
 test: lockfile
     cargo test --workspace --locked
+
+# Builds every target with Rust 1.92, the MSRV (`rustup toolchain install 1.92`)
+msrv: lockfile
+    cargo +1.92 check --workspace --all-targets --locked
+
+# Security advisories of the dependencies (fetches the advisory database; not part of `check`)
+audit: lockfile
+    cargo deny --locked check advisories
+
+# Runs the program with this directory as its root: configs/default.toml, logs/ (`just run --set log.filter=debug`)
+run *args: lockfile
+    cargo run --locked -q -p {{ name }}-bin -- run --root . {{ args }}
+
+# Checks the configuration and prints every key with its value and source
+check-config *args: lockfile
+    cargo run --locked -q -p {{ name }}-bin -- check-config --root . {{ args }}
 
 # Creates Cargo.lock in a new project (commit it); the other recipes use it as it is (--locked)
 lockfile:
