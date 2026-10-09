@@ -8,8 +8,11 @@ use rivium::embedded::{Host, Status};
 use rivium::{App, Code};
 
 /// Checks the lifecycle contract that every program built on Rivium keeps when it runs
-/// embedded, by driving a [`Host`] of `A` below `root`, an empty directory that every start
-/// uses; the program must run with its defaults there:
+/// embedded, by driving a [`Host`] of `A` below `root`, a directory that every start uses:
+/// empty, or with just the configuration file that an app would ship. The program must run
+/// there with its defaults and `args`, which every start gets after `--root`, as the app would
+/// pass them: where the defaults cannot run in a test, such as a privileged port, `args` set
+/// what can, such as `["--set", "snmp.addr=127.0.0.1:0"]`. The contract:
 ///
 /// - `start` without `--root`, or with an unknown argument, returns `Usage`; with an invalid
 ///   configuration it returns `Config` before anything starts; `last_error` says why;
@@ -37,18 +40,19 @@ use rivium::{App, Code};
 /// fn the_lifecycle_contract() {
 ///     let root = std::env::temp_dir().join(format!("agent-contract-{}", std::process::id()));
 ///     std::fs::create_dir_all(&root).unwrap();
-///     rivium_test::embedded::lifecycle_contract::<Agent>(&root);
+///     rivium_test::embedded::lifecycle_contract::<Agent>(&root, &[]);
 /// }
 /// ```
 ///
 /// # Panics
 ///
 /// When the program breaks the contract.
-pub fn lifecycle_contract<A: App>(root: &Path) {
+pub fn lifecycle_contract<A: App>(root: &Path, args: &[&str]) {
     let host = Host::new::<A>();
-    let rooted = |args: &[&str]| -> Vec<String> {
+    // `args` come before the contract's own settings, which therefore win.
+    let rooted = |more: &[&str]| -> Vec<String> {
         let root = root.display().to_string();
-        (["--root", root.as_str()].iter().chain(args))
+        (["--root", root.as_str()].iter().chain(args).chain(more))
             .map(|arg| (*arg).to_string())
             .collect()
     };
