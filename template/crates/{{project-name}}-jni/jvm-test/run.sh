@@ -4,7 +4,8 @@
 # calls them (Contract.java). Both files come from rivium-jni, without a package: this script adds
 # the app's. The arguments after the library directory go to every start, as `--set` overrides
 # that the defaults need in a test.
-# Usage: crates/{{project-name}}-jni/jvm-test/run.sh <directory of lib{{crate_name}}_jni> [start argument]...
+# Usage: bash crates/{{project-name}}-jni/jvm-test/run.sh <directory of lib{{crate_name}}_jni> [start argument]...
+# (`just jvm` runs it.)
 set -euo pipefail
 [ $# -ge 1 ] || { echo "usage: run.sh <library dir> [start argument]..." >&2; exit 2; }
 lib_dir=$(cd "$1" && pwd)

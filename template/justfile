@@ -57,5 +57,5 @@ template-diff version:
 # The JNI library's contract on a desktop JVM (needs a JDK 17): start, stop, status, as an app calls them
 jvm:
     cargo build --locked -p {% raw %}{{ name }}{% endraw %}-jni
-    crates/{{project-name}}-jni/jvm-test/run.sh "${CARGO_TARGET_DIR:-target}/debug"{% if http %} --set http.addr=127.0.0.1:0{% endif %}
+    bash crates/{{project-name}}-jni/jvm-test/run.sh "${CARGO_TARGET_DIR:-target}/debug"{% if http %} --set http.addr=127.0.0.1:0{% endif %}
 {% endif %}
