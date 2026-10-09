@@ -1,0 +1,61 @@
+# {{project-name}}: tasks; `just` lists them.
+
+name := "{{project-name}}"
+platforms := "{{platforms}}"
+{% raw %}
+default:
+    @just --list
+
+# Formatting, clippy, cargo-deny, the panic check and the tests
+check: lint test
+
+# Formatting, clippy (with clippy.toml's rules), cargo-deny (deny.toml) and the panic check
+lint: lockfile
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo deny --locked check bans licenses sources
+    scripts/check-panic.sh
+
+# The tests, including the lifecycle contract and the default configuration
+test: lockfile
+    cargo test --workspace --locked
+
+# Creates Cargo.lock in a new project (commit it); the other recipes use it as it is (--locked)
+lockfile:
+    @test -f Cargo.lock || cargo generate-lockfile
+
+# Builds the service library with each feature of `variants` on its own: list the features
+# that exclude each other, such as one per vendor (`just variants="a b" check-variants`)
+variants := ""
+check-variants:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for feature in {{ variants }}; do
+      cargo clippy --locked -p {{ name }} --no-default-features --features "$feature" -- -D warnings
+    done
+
+# Builds the program for the platforms (default: all of them; see scripts/package.sh)
+cross *only:
+    scripts/package.sh --build-only {{ if only == "" { platforms } else { only } }}
+
+# Archives for the installer, with the configuration for each platform: dist/<component>/<platform>/<version>/
+package *only:
+    scripts/package.sh {{ if only == "" { platforms } else { only } }}
+
+# Takes the latest compatible release of every Rivium crate, which moves them together
+update-rivium:
+    cargo update -p rivium-error -p rivium -p rivium-test{% endraw %}{% if http %} -p rivium-http{% endif %}{% if jni %} -p rivium-jni{% endif %}{% raw %}
+
+# Rewrites configs/default.toml with the program's defaults
+default-config:
+    cargo run --locked -q -p {{ name }}-bin -- default-config > configs/default.toml
+
+# Shows what changed in the template between the version that generated this project and <version>
+template-diff version:
+    scripts/template-diff.sh {{ version }}
+{% endraw %}{% if jni %}
+# The JNI library's contract on a desktop JVM (needs a JDK 17): start, stop, status, as an app calls them
+jvm:
+    cargo build --locked -p {% raw %}{{ name }}{% endraw %}-jni
+    crates/{{project-name}}-jni/jvm-test/run.sh "${CARGO_TARGET_DIR:-target}/debug"{% if http %} --set http.addr=127.0.0.1:0{% endif %}
+{% endif %}
