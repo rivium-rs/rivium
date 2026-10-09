@@ -10,7 +10,7 @@ default:
 
 # Install the developer tools used by the recipes into .tools/
 tools:
-    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-generate@0.25.0
+    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-generate@0.25.0 git-cliff@2.14.2
 
 # Formatting, clippy, cargo-deny, feature matrix, the panic = "abort" refusal and script self-tests (what ci/lint runs)
 lint:
@@ -49,6 +49,11 @@ deps:
       n=$(cargo tree --locked -p "$crate" -e normal --prefix none | sed -E 's/ \(.*\)$//' | sort -u | grep -vc "^$crate v" || true)
       printf '%-14s %4s\n' "$crate" "$n"
     done
+
+# The release notes of <version>, as the release will render them from the commits since the
+# previous tag (cliff.toml)
+release-notes version:
+    git cliff --config cliff.toml --unreleased --tag v{{ version }} --strip all
 
 # Public-content check of the whole history against the private denylist
 public denylist=`git config --get rivium.denylist || true`:

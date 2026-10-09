@@ -1,0 +1,160 @@
+name: release
+
+# A tag v<version> releases the library crates to crates.io once everything has passed:
+# release/check (versions, crates.io, the release notes that git-cliff renders from the commits
+# since the previous tag, the content of the packaged crates), release/semver, the whole matrix
+# (the ci, cross, hosting and public workflows), then release/publish, in the environment
+# crates-io. Pull requests that change the release files, and manual runs, do all of it as a dry
+# run: `cargo publish --dry-run`, no upload, no GitHub release; the notes are printed.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release-check.sh
+      - cliff.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  check:
+    name: release/check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: git-cliff@2.14.2
+      - name: Versions, release notes and crates.io
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n -E 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "$EVENT" = push ]; then version=${TAG#v}; fi
+          scripts/release-check.sh "$version" "$RUNNER_TEMP/notes.md"
+          echo "--- the GitHub release's notes"
+          cat "$RUNNER_TEMP/notes.md"
+      - name: The packaged crates hold nothing of the private denylist (planted entry included)
+        env:
+          PUBLIC_DENYLIST: ${{ secrets.PUBLIC_DENYLIST }}
+        run: |
+          if [ -z "$PUBLIC_DENYLIST" ]; then
+            echo "::error::secret PUBLIC_DENYLIST is missing or empty"
+            exit 1
+          fi
+          list="$RUNNER_TEMP/denylist.txt"
+          printf '%s\n' "$PUBLIC_DENYLIST" > "$list"
+          cargo package --locked --no-verify -p rivium-error -p rivium -p rivium-http -p rivium-jni -p rivium-test
+          for crate in target/package/*.crate; do
+            dir="$RUNNER_TEMP/crates/$(basename "$crate" .crate)"
+            mkdir -p "$dir"
+            tar -xzf "$crate" -C "$dir"
+            echo "$(basename "$crate"):"
+            find "$dir" -type f | sed "s|^$dir/|  |" | sort
+            scripts/check-public.sh "$list" --dir "$dir"
+          done
+          # Planted violation: the list's first entry in a packaged file must be reported. Output
+          # is discarded; entries are never printed.
+          plant="$RUNNER_TEMP/plant"
+          cp -R "$RUNNER_TEMP/crates" "$plant"
+          awk '{ sub(/\r$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") } $0 != "" && substr($0, 1, 1) != "#" { print; exit }' \
+            "$list" >> "$(find "$plant" -name lib.rs | head -n 1)"
+          if scripts/check-public.sh "$list" --dir "$plant" > /dev/null 2>&1; then
+            echo "::error::the planted denylist entry in a packaged file was not detected"
+            exit 1
+          fi
+
+  semver:
+    name: release/semver
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-semver-checks@0.51.0
+      - name: API compatibility with the latest release on crates.io
+        run: |
+          for crate in rivium-error rivium rivium-http rivium-jni rivium-test; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' -A "rivium-release (https://github.com/rivium-rs/rivium)" \
+              "https://crates.io/api/v1/crates/$crate")
+            if [ "$status" = 404 ]; then
+              echo "::notice::$crate is not on crates.io yet: its first release has no baseline"
+              continue
+            fi
+            cargo semver-checks -p "$crate"
+          done
+
+  # The whole matrix, at the commit being released.
+  public:
+    uses: ./.github/workflows/public.yml
+    secrets: inherit
+  ci:
+    uses: ./.github/workflows/ci.yml
+  cross:
+    uses: ./.github/workflows/cross.yml
+  hosting:
+    uses: ./.github/workflows/hosting.yml
+
+  dry-run:
+    name: release/publish (dry run)
+    if: github.event_name != 'push'
+    needs: [check, semver, public, ci, cross, hosting]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Pack and verify every library crate in dependency order, without uploading
+        run: cargo publish --dry-run --workspace --locked
+
+  publish:
+    name: release/publish
+    if: github.event_name == 'push'
+    needs: [check, semver, public, ci, cross, hosting]
+    runs-on: ubuntu-24.04
+    # Its protection rules (a required reviewer) are the maintainer's to set.
+    environment: crates-io
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # Trusted Publishing
+    env:
+      # Only for the first release, which creates the crates: Trusted Publishing cannot.
+      FIRST_RELEASE_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: git-cliff@2.14.2
+      - id: auth
+        name: A token from Trusted Publishing
+        if: env.FIRST_RELEASE_TOKEN == ''
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+      - name: Publish the library crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ env.FIRST_RELEASE_TOKEN || steps.auth.outputs.token }}
+        run: cargo publish --workspace --locked
+      - name: The GitHub release, with the release notes that git-cliff renders
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          scripts/release-check.sh --notes-only "${TAG#v}" "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"

@@ -38,4 +38,20 @@
 
 - New checks are shown to fail once on a planted violation before they are relied on.
 - Developer tools are installed under `.tools/` (`just tools`), never globally.
-- Releases are tagged by the maintainer only.
+
+## Releases
+
+Releases are made by the maintainer only. Every crate and the template share one version, and
+the release notes are generated, never written by hand.
+
+1. On a branch: set the version in the workspace `Cargo.toml` (`[workspace.package]` and the
+   `rivium-*` entries of `[workspace.dependencies]`) and in `template/.rivium-template`, and for
+   a new minor version the template's `rivium-* = "0.<minor>"` requirements and its steps in
+   `docs/upgrading.md`. The `release` workflow checks it all as a dry run on the pull request
+   (`scripts/release-check.sh`) and prints the release notes, which git-cliff renders from the
+   commits since the previous tag (`cliff.toml`); `just release-notes <version>` shows them
+   locally. The commits on `main` are the pull requests' titles, so a title is also the line
+   that the release notes show.
+2. Once that pull request is merged and `main` is green, tag the merge commit `v<version>` and
+   push the tag. The `release` workflow checks again, runs the whole matrix, publishes the crates
+   in dependency order and creates the GitHub release with the notes.
