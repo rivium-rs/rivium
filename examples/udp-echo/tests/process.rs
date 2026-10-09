@@ -265,6 +265,28 @@ fn a_fault_of_a_ready_service_exits_with_70() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn only_the_first_runs_fail_when_the_faults_say_so() {
+    // As a supervisor restarts the program: the hosting tests count on it.
+    let root = root("fail-runs");
+    let faults = [
+        "--set",
+        "faults.fail_after_ms=200",
+        "--set",
+        "faults.fail_runs=2",
+    ];
+    for _ in 0..2 {
+        assert_eq!(exit(FAULTS, &root, &faults).code, Some(70));
+    }
+    let program = start(FAULTS, &root, &faults);
+    program.wait_for("phase changed", &[("phase", "running")]);
+    std::thread::sleep(Duration::from_millis(400));
+    program.signal("TERM");
+    assert_eq!(program.wait().code, Some(0));
+    assert_eq!(std::fs::read_to_string(root.join("runs")).unwrap(), "3");
+}
+
 #[test]
 fn an_invalid_configuration_exits_with_78_and_one_line_per_problem() {
     let root = root("config");

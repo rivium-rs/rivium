@@ -2,18 +2,16 @@
 
 The service foundation: layered configuration with source tracking, logging with a disk budget, the service lifecycle kernel, the process host (signals, exit codes) and the embedded host (explicit start/stop for FFI callers).
 
-**Status:** pre-release, not published yet. Implemented so far: configuration loading (defaults,
-a TOML file, environment variables and `--set` overrides, with every problem reported at once),
-`config::Paths`, the value checks in `config::de`, logging (console, files with rolling,
-compression and a disk budget, Android's log, the flush barrier, the panic hook), the service
-contract (`Service`, `ServiceContext`, `service()`, `periodic()`, readiness), the lifecycle
-kernel that supervises services (`lifecycle::Supervisor`), the process host (`App`,
-`process::run`, the exit codes of `Code`, in-process restarts), the embedded host
-(`embedded::Host`: start and stop on a thread of their own, result codes for FFI callers,
-restarts in the process), `fs::atomic_write`, `stats()` and, with the feature `log-export`,
-log export (`log::LogExporter`: log files of chosen days packed into a zip archive to download,
-within a share of the log directory's budget). See the
-[repository README](https://github.com/rivium-rs/rivium).
+A service implements `App`, its composition root: the configuration type and the services
+(`Service`, or `service()` and `periodic()`). `process::run` runs it as a program of its own, with
+signals, exit codes and restarts handled; `embedded::Host` runs it inside another program, such
+as an Android app through rivium-jni. Configuration comes from defaults, a TOML file, environment
+variables and `--set`, with every problem reported at once; logging goes to the console, files
+with a disk budget and, on Android, logcat; with the feature `log-export`, log files can be
+packed into an archive to download.
+
+Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
+version, and the repository has the template, the examples and the documentation.
 
 ## License
 
