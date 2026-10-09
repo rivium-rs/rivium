@@ -1,5 +1,7 @@
 # The Rivium template: `cargo generate --git https://github.com/rivium-rs/rivium --tag v<version> template`.
 # The answers are kept in .rivium-template, which `just template-diff` reads.
+# The manifests are named Cargo.toml.liquid, which cargo-generate renames to Cargo.toml: cargo
+# parses every Cargo.toml of a git dependency's checkout, and Liquid is not TOML.
 [template]
 cargo_generate_version = ">=0.25"
 
