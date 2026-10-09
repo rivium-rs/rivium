@@ -1,0 +1,20 @@
+[package]
+name = "multi-bin"
+version = "0.1.0"
+description = "Example: one service library and two programs, a station and a collector, on Rivium's process host"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rivium.workspace = true
+serde = { workspace = true, features = ["std", "derive"] }
+tokio = { workspace = true, features = ["net", "sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+
+[lints]
+workspace = true

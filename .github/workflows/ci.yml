@@ -185,6 +185,28 @@ jobs:
           done
           exit "$status"
 
+  drills:
+    name: ci/drills
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Scenario C, a new service, program and section touch only the service (V-12)
+        run: scripts/drill-c.sh
+      - name: Planted violation (a scenario that changes rivium must fail the path check)
+        run: |
+          # No pipe here: run steps use `bash -e` without pipefail, so `drill | tee` would hide the status.
+          status=0
+          scripts/drill-c.sh --plant > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/plant.log"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::drill-c accepted a scenario that changes rivium"
+            exit 1
+          fi
+          grep -q "^drill-c: the scenario changes more than the example's code and tests:$" "$RUNNER_TEMP/plant.log"
+
   template:
     name: ci/template
     needs: changes

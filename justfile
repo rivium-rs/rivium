@@ -80,6 +80,10 @@ jvm:
 template:
     scripts/template-smoke.sh
 
+# The drills of ci/drills: scenario C (a new service, program and section touch only the service)
+drills:
+    scripts/drill-c.sh
+
 # systemd hosting test in a local systemd container
 systemd:
     scripts/local/glibc.sh
