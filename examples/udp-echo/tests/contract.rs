@@ -4,5 +4,5 @@
 
 #[test]
 fn udp_echo_keeps_the_lifecycle_contract() {
-    rivium_test::process::lifecycle_contract(env!("CARGO_BIN_EXE_udp-echo").as_ref());
+    rivium_test::process::lifecycle_contract(env!("CARGO_BIN_EXE_udp-echo").as_ref(), &[]);
 }

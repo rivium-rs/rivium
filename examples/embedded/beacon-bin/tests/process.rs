@@ -11,7 +11,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_beacon");
 
 #[test]
 fn beacon_keeps_the_lifecycle_contract() {
-    rivium_test::process::lifecycle_contract(BIN.as_ref());
+    rivium_test::process::lifecycle_contract(BIN.as_ref(), &[]);
 }
 
 /// Sends a query and returns the answer.

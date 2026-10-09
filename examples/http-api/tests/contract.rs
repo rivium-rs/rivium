@@ -4,5 +4,5 @@
 
 #[test]
 fn http_api_keeps_the_lifecycle_contract() {
-    rivium_test::process::lifecycle_contract(env!("CARGO_BIN_EXE_http-api").as_ref());
+    rivium_test::process::lifecycle_contract(env!("CARGO_BIN_EXE_http-api").as_ref(), &[]);
 }
