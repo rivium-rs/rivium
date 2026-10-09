@@ -7,7 +7,7 @@ use rivium_http::{ApiResponse, ApiResult};
 use serde::Serialize;
 
 /// The API's routes; `HttpServer` adds the probes `/livez` and `/readyz`.
-pub fn router() -> Router {
+pub(crate) fn router() -> Router {
     Router::new().route("/hello", get(hello))
 }
 

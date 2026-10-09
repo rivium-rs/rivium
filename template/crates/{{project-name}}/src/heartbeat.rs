@@ -26,7 +26,7 @@ impl Default for Settings {
 }
 
 /// The service: a tick right away, then every `settings.every`.
-pub fn service(settings: &Settings) -> Box<dyn Service> {
+pub(crate) fn service(settings: &Settings) -> Box<dyn Service> {
     let started = Instant::now();
     rivium::periodic("heartbeat", settings.every, move || {
         let up_secs = started.elapsed().as_secs();
