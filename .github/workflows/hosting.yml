@@ -56,16 +56,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo build --locked --release -p smoke
-      - run: scripts/hosting/systemd.sh target/release/smoke
-      - name: Planted violation (a service that exits 3 when stopped must fail the exit-status check)
+      - run: cargo build --locked --release -p udp-echo
+      - run: scripts/hosting/systemd.sh target/release/udp-echo
+      - name: Planted violation (a service that outlives its stop deadline must fail the exit-status check)
         run: |
           # No pipe here: run steps use `bash -e` without pipefail, so `harness | tee` would hide the status.
+          # A blocking read of 10 s against a stop deadline of 1 s: the stop times out with 124.
           status=0
-          scripts/hosting/systemd.sh target/release/smoke --stop-exit 3 > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
+          scripts/hosting/systemd.sh target/release/udp-echo --set echo.read_timeout=10s --set lifecycle.stop_timeout=1s > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/plant.log"
           if [ "$status" -eq 0 ]; then
-            echo "::error::the systemd checks accepted a service that exits 3 when stopped"
+            echo "::error::the systemd checks accepted a service whose stop timed out"
             exit 1
           fi
           grep -q "^FAIL stopped run exited with status 0$" "$RUNNER_TEMP/plant.log"
@@ -78,15 +79,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal && rustup default stable-x86_64-pc-windows-gnu
-      - run: cargo build --locked --release -p smoke
+      - run: cargo build --locked --release -p udp-echo
       - shell: pwsh
-        run: scripts/hosting/winsw.ps1 -Binary target/release/smoke.exe
-      - name: Planted violation (a service that exits 3 when stopped must fail the exit-code check)
+        run: scripts/hosting/winsw.ps1 -Binary target/release/udp-echo.exe -Faults target/release/udp-echo-faults.exe
+      - name: Planted violation (a service that outlives its stop deadline must fail the exit-code check)
         shell: pwsh
         run: |
-          $out = scripts/hosting/winsw.ps1 -Binary target/release/smoke.exe -Codes 75 -ExtraArgs '--stop-exit 3'
+          # A blocking read of 10 s against a stop deadline of 1 s: the stop times out with 124.
+          $out = scripts/hosting/winsw.ps1 -Binary target/release/udp-echo.exe -Faults target/release/udp-echo-faults.exe `
+            -Scenarios restart -ExtraArgs '--set echo.read_timeout=10s --set lifecycle.stop_timeout=1s'
           $out
-          if ($LASTEXITCODE -eq 0) { throw 'the WinSW checks accepted a service that exits 3 when stopped' }
+          if ($LASTEXITCODE -eq 0) { throw 'the WinSW checks accepted a service whose stop timed out' }
           if (-not ($out -match '^FAIL stopped run exited with code 0$')) { throw 'the exit-code check did not fail' }
           $global:LASTEXITCODE = 0
 
@@ -98,16 +101,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo build --locked --release -p smoke
-      - run: scripts/hosting/launchd.sh target/release/smoke
-      - name: Planted violation (a service that exits 3 when stopped must fail the exit-code check)
+      - run: cargo build --locked --release -p udp-echo
+      - run: scripts/hosting/launchd.sh target/release/udp-echo
+      - name: Planted violation (a service that outlives its stop deadline must fail the exit-code check)
         run: |
           # No pipe here: run steps use `bash -e` without pipefail, so `harness | tee` would hide the status.
+          # A blocking read of 10 s against a stop deadline of 1 s: the stop times out with 124.
           status=0
-          scripts/hosting/launchd.sh target/release/smoke --stop-exit 3 > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
+          scripts/hosting/launchd.sh target/release/udp-echo --set echo.read_timeout=10s --set lifecycle.stop_timeout=1s > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/plant.log"
           if [ "$status" -eq 0 ]; then
-            echo "::error::the launchd checks accepted a service that exits 3 when stopped"
+            echo "::error::the launchd checks accepted a service whose stop timed out"
             exit 1
           fi
           grep -q "^FAIL last exit code is 0$" "$RUNNER_TEMP/plant.log"

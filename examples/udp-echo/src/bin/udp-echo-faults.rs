@@ -1,9 +1,10 @@
-//! `udp-echo` with faults to inject, for the process tests: the same services, and
-//! `[faults]` to make the composition root panic or a service fail once it is ready.
+//! `udp-echo` with faults to inject, for the process tests and the hosting tests: the same
+//! services, and `[faults]` to make the composition root panic or a service fail once it is
+//! ready, in every run or in the first runs only.
 
 use std::time::Duration;
 
-use rivium::error::{Error, kinds};
+use rivium::error::{Error, OrErr, kinds};
 use rivium::{App, AppContext, Result, Service, ServiceKind};
 use serde::{Deserialize, Serialize};
 use udp_echo::{EchoSettings, StatsSettings};
@@ -24,6 +25,9 @@ struct Faults {
     panic_in_services: bool,
     /// Milliseconds after which a ready service fails; 0 for never.
     fail_after_ms: u64,
+    /// With `fail_after_ms`, only the first runs fail, this many; 0 for every run. The runs are
+    /// counted in the file `runs` below the root, across restarts of the program.
+    fail_runs: u32,
 }
 
 impl App for Faulty {
@@ -38,7 +42,7 @@ impl App for Faulty {
             "a panic injected in the composition root"
         );
         let mut services = udp_echo::services(&config.echo, &config.stats, ctx.log_exporter());
-        if faults.fail_after_ms > 0 {
+        if faults.fail_after_ms > 0 && (faults.fail_runs == 0 || run(ctx)? <= faults.fail_runs) {
             let after = Duration::from_millis(faults.fail_after_ms);
             let fault = rivium::service("fault", ServiceKind::Background, move |ctx| async move {
                 ctx.spawn_blocking("timer", move || {
@@ -53,6 +57,15 @@ impl App for Faulty {
         }
         Ok(services)
     }
+}
+
+/// Counts this run in the file `runs` below the root and returns its number, from 1.
+fn run(ctx: &AppContext) -> Result<u32> {
+    let file = ctx.paths().resolve("runs");
+    let runs = std::fs::read_to_string(&file).unwrap_or_default();
+    let run = runs.trim().parse::<u32>().unwrap_or(0) + 1;
+    std::fs::write(&file, run.to_string()).or_err(kinds::INTERNAL, "counting the runs")?;
+    Ok(run)
 }
 
 fn main() -> std::process::ExitCode {
