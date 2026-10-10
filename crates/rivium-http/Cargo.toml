@@ -1,6 +1,6 @@
 [package]
 name = "rivium-http"
-description = "axum integration for Rivium: HTTP server service, status envelope, probes, access log"
+description = "axum integration for Rivium: the HTTP contract as a layer and its primitives, and an HTTP server service"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,11 +17,17 @@ axum = { workspace = true, features = ["tokio", "http1", "matched-path", "query"
 serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true, features = ["std"] }
 serde_path_to_error.workspace = true
-tokio = { workspace = true, features = ["net", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 tower = { workspace = true, features = ["util"] }
 tower-http = { workspace = true, features = ["fs"] }
 tracing.workspace = true
 uuid = { workspace = true, features = ["std", "v7"] }
+
+[dev-dependencies]
+futures-util.workspace = true
+# Without a version, so that publishing rivium-http does not wait for rivium-test.
+rivium-test = { path = "../rivium-test" }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [lints]
 workspace = true

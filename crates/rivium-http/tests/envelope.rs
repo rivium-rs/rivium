@@ -1,46 +1,51 @@
-//! The HTTP contract (V-8): every row of the status envelope, the mapping of error classes to
-//! statuses, the errors of the framework, request ids in the response and the logs, the access
-//! log and its observers, the probes and file downloads. The servers run in an embedded host in
-//! this process, as a service would run them; one test checks everything in order, because a
-//! process installs logging once.
+//! `HttpServer` over real connections: its settings reach the contract layer, responses carry
+//! request ids and the access log is written with them, each server tells only its own
+//! observers, requests carry the peer's address and the stop signal and run in the service's
+//! span, layers added to the server run outside the contract layer, an acceptor is called for
+//! each connection without one handshake holding back another, the probes answer, and files
+//! download with ranges. The contract itself is checked rule by rule on the contract layer
+//! (`layer.rs`). The servers run in an embedded host in this process, as a service would run
+//! them; one test checks everything in order, because a process installs logging once.
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use axum::Router;
-use axum::extract::Request;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::extract::{ConnectInfo, Request};
+use axum::http::HeaderValue;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
+use axum::{Extension, Router};
 use rivium::embedded::Host;
-use rivium::error::{Class, Error, ErrorKind, ErrorType};
-use rivium::{App, AppContext, Code, Health, HealthHandle, Result, Service};
-use rivium_http::extract::{Json, Path as UrlPath, Query};
+use rivium::error::{Error, kinds};
+use rivium::{App, AppContext, Code, Health, HealthHandle, Result, Service, StopSignal};
+use rivium_http::extract::Json;
 use rivium_http::{
-    ApiResponse, ApiResult, HttpObserver, HttpServer, HttpSettings, ResponseInfo, file_response,
+    Acceptor, ApiResponse, ApiResult, HttpObserver, HttpServer, HttpSettings, ResponseInfo,
+    file_response,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// The file that `/file` serves.
 static FILE: OnceLock<PathBuf> = OnceLock::new();
 /// The health item that `/readyz` reports.
 static HEALTH: Mutex<Option<HealthHandle>> = Mutex::new(None);
-/// What the observer of the `http` server saw.
-static SEEN: Mutex<Vec<Seen>> = Mutex::new(Vec::new());
-
-/// A response as the observer saw it: method, route, status, request id, error type.
-type Seen = (String, Option<String>, u16, String, Option<String>);
+/// The request ids that the observer of the `http` server saw.
+static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// The calls of the `tls` server's acceptor.
+static ACCEPTED: AtomicUsize = AtomicUsize::new(0);
 
 struct Api;
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Config {
     http: HttpSettings,
     admin: HttpSettings,
+    tls: HttpSettings,
 }
 
 impl Default for Config {
@@ -51,7 +56,9 @@ impl Default for Config {
         http.body_limit = 64;
         let mut admin = http.clone();
         (admin.probes, admin.expose_internal_detail) = (false, true);
-        Config { http, admin }
+        let mut tls = http.clone();
+        tls.probes = false;
+        Config { http, admin, tls }
     }
 }
 
@@ -63,8 +70,11 @@ impl App for Api {
     fn services(config: &Config, ctx: &AppContext) -> Result<Vec<Box<dyn Service>>> {
         *HEALTH.lock().unwrap() = Some(ctx.health().register("store"));
         let http = HttpServer::new(&config.http, routes(), ctx).observe(Arc::new(Observer));
+        let http = http.layer(middleware::from_fn(mark));
         let admin = HttpServer::new(&config.admin, routes(), ctx).named("admin");
-        Ok(vec![Box::new(http), Box::new(admin)])
+        let tls = HttpServer::new(&config.tls, routes(), ctx).named("tls");
+        let tls = tls.accept_with(Peek);
+        Ok(vec![Box::new(http), Box::new(admin), Box::new(tls)])
     }
 }
 
@@ -72,85 +82,59 @@ struct Observer;
 
 impl HttpObserver for Observer {
     fn on_response(&self, info: &ResponseInfo<'_>) {
-        let error = info.error.map(|error| error.etype().name().to_string());
-        let route = info.route.map(String::from);
-        let seen = (
-            info.method.to_string(),
-            route,
-            info.status.as_u16(),
-            info.request_id.to_string(),
-            error,
-        );
-        SEEN.lock().unwrap().push(seen);
+        SEEN.lock().unwrap().push(info.request_id.to_string());
     }
 }
 
-const TOKEN_EXPIRED: ErrorType =
-    &ErrorKind::new("TokenExpired", Class::Unauthenticated).titled("token expired");
-
-#[derive(Deserialize)]
-struct Failure {
-    #[serde(default)]
-    upstream: bool,
-    #[serde(default)]
-    retry: bool,
-    #[serde(default)]
-    titled: bool,
+/// A layer added to the `http` server: it marks every response it sees.
+async fn mark(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let mark = HeaderValue::from_static("seen");
+    response.headers_mut().insert("x-outer", mark);
+    response
 }
 
-#[derive(Serialize, Deserialize)]
-struct Device {
-    name: String,
-    port: u16,
-}
+/// An acceptor whose "handshake" waits for the client's first byte and leaves it for HTTP, as
+/// a TLS handshake waits for the client's hello.
+struct Peek;
 
-#[derive(Deserialize)]
-struct Page {
-    page: u32,
-}
+impl Acceptor for Peek {
+    type Stream = tokio::net::TcpStream;
 
-/// A handler failing with an error of `class`, whose context is a secret for server errors.
-async fn failing(UrlPath(class): UrlPath<String>, Query(how): Query<Failure>) -> ApiResult {
-    let class = match class.as_str() {
-        "InvalidInput" => Class::InvalidInput,
-        "InvalidBody" => Class::InvalidBody,
-        "Unauthenticated" => Class::Unauthenticated,
-        "Forbidden" => Class::Forbidden,
-        "NotFound" => Class::NotFound,
-        "Conflict" => Class::Conflict,
-        "TooManyRequests" => Class::TooManyRequests,
-        "Unavailable" => Class::Unavailable,
-        "Timeout" => Class::Timeout,
-        _ => Class::Internal,
-    };
-    let kind: ErrorType = match how.titled {
-        true => TOKEN_EXPIRED,
-        false => Box::leak(Box::new(ErrorKind::new("Failing", class))),
-    };
-    let mut error = Error::explain(kind, format!("secret detail of {class}"));
-    error.set_retry(how.retry);
-    Err(match how.upstream {
-        true => error.into_up().into(),
-        false => error.into(),
-    })
+    async fn accept(&self, stream: tokio::net::TcpStream) -> io::Result<tokio::net::TcpStream> {
+        ACCEPTED.fetch_add(1, Ordering::SeqCst);
+        stream.peek(&mut [0; 1]).await?;
+        Ok(stream)
+    }
 }
 
 async fn panicking() -> ApiResult {
     panic!("a handler panicked")
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Device {
+    name: String,
+}
+
 fn routes() -> Router {
     Router::new()
-        .route("/ok", get(|| async { ApiResult::<()>::Ok(ApiResponse::Ok) }))
         .route(
-            "/data",
-            get(|| async { ApiResult::Ok(ApiResponse::Data(json!({"id": 7}))) }),
+            "/ok",
+            get(|| async { ApiResult::<()>::Ok(ApiResponse::Ok) }),
         )
         .route(
-            "/created",
-            post(|| async { ApiResult::Ok(ApiResponse::Created(json!({"id": 8}))) }),
+            "/missing-device",
+            get(|| async {
+                ApiResult::<()>::Err(Error::explain(kinds::NOT_FOUND, "no device 7").into())
+            }),
         )
-        .route("/error/{class}", get(failing))
+        .route(
+            "/broken",
+            get(|| async {
+                ApiResult::<()>::Err(Error::explain(kinds::INTERNAL, "secret detail").into())
+            }),
+        )
         .route(
             "/slow",
             get(|| async {
@@ -164,12 +148,16 @@ fn routes() -> Router {
             post(|Json(device): Json<Device>| async { ApiResult::Ok(ApiResponse::Data(device)) }),
         )
         .route(
-            "/query",
-            get(|Query(page): Query<Page>| async move { ApiResult::Ok(ApiResponse::Data(page.page)) }),
+            "/peer",
+            get(|ConnectInfo(peer): ConnectInfo<SocketAddr>| async move {
+                ApiResult::Ok(ApiResponse::Data(peer.to_string()))
+            }),
         )
         .route(
-            "/path/{n}",
-            get(|UrlPath(n): UrlPath<u32>| async move { ApiResult::Ok(ApiResponse::Data(n)) }),
+            "/stopping",
+            get(|Extension(stop): Extension<StopSignal>| async move {
+                ApiResult::Ok(ApiResponse::Data(stop.is_stopping()))
+            }),
         )
         .route(
             "/log",
@@ -177,10 +165,6 @@ fn routes() -> Router {
                 tracing::info!("inside the handler");
                 ApiResult::<()>::Ok(ApiResponse::Ok)
             }),
-        )
-        .route(
-            "/teapot",
-            get(|| async { (StatusCode::IM_A_TEAPOT, "short and stout").into_response() }),
         )
         .route(
             "/file",
@@ -201,6 +185,8 @@ struct Reply {
     status: u16,
     headers: Vec<(String, String)>,
     body: String,
+    /// The client's end of the connection.
+    local: SocketAddr,
 }
 
 impl Reply {
@@ -216,7 +202,7 @@ impl Reply {
     /// The envelope's status, code and description.
     fn envelope(&self) -> (String, u16, String) {
         let json = self.json();
-        let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
+        let keys = json.as_object().unwrap().keys();
         assert_eq!(
             keys.len(),
             3,
@@ -241,6 +227,7 @@ fn send(addr: SocketAddr, method: &str, path: &str, headers: &[(&str, &str)], bo
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
+    let local = stream.local_addr().unwrap();
     let mut head = format!("{method} {path} HTTP/1.1\r\nHost: test\r\nConnection: close\r\n");
     head += &format!("Content-Length: {}\r\n", body.len());
     for (name, value) in headers {
@@ -272,6 +259,7 @@ fn send(addr: SocketAddr, method: &str, path: &str, headers: &[(&str, &str)], bo
         status,
         headers,
         body: body.to_string(),
+        local,
     };
     assert!(
         reply.header("transfer-encoding").is_none(),
@@ -331,7 +319,7 @@ fn failures_to_stderr() {
 }
 
 #[test]
-fn the_http_contract() {
+fn http_servers_keep_the_contract_over_connections() {
     let root = std::env::temp_dir().join(format!("rivium-http-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -353,100 +341,57 @@ fn the_http_contract() {
     );
     failures_to_stderr();
     let (http, admin) = (addr_of(&root, "http"), addr_of(&root, "admin"));
+    let tls = addr_of(&root, "tls");
 
-    // §2.1: success without data is the envelope; data is bare JSON.
+    // The settings of each server reach its contract layer: the request timeout, the body
+    // limit and whether server errors show their detail.
+    let slow = get_(http, "/slow");
+    let id = slow.request_id().to_string();
+    let expected = format!("service unavailable (request_id={id})");
+    assert_eq!(slow.envelope(), ("error".into(), 503, expected));
+    assert_eq!(slow.header("retry-after"), Some("1"));
+    assert!(access_line(&root, &id).contains("error.type=\"RequestTimedOut\""));
+    let json_type = [("content-type", "application/json")];
+    let large = format!("{{\"name\":\"{}\"}}", "x".repeat(80));
+    let large = send(http, "POST", "/json", &json_type, &large);
+    assert_eq!(
+        large.envelope(),
+        ("error".into(), 413, "Payload Too Large".into())
+    );
+    let small = send(http, "POST", "/json", &json_type, r#"{"name":"printer"}"#);
+    assert_eq!(
+        (small.status, small.body.as_str()),
+        (200, r#"{"name":"printer"}"#)
+    );
+    let hidden = get_(http, "/broken");
+    let id = hidden.request_id().to_string();
+    let expected = format!("internal error (request_id={id})");
+    assert_eq!(hidden.envelope(), ("error".into(), 500, expected));
+    let line = access_line(&root, &id);
+    assert!(
+        line.contains(" ERROR ") && line.contains("error.context=\"secret detail\""),
+        "{line}"
+    );
+    let exposed = get_(admin, "/broken");
+    assert_eq!(
+        exposed.envelope().2,
+        "secret detail",
+        "expose_internal_detail"
+    );
+    let unobserved = exposed.request_id().to_string();
+
+    // Answers through the envelope, with request ids in the response and in every line the
+    // request logs.
     let ok = get_(http, "/ok");
     assert_eq!(
         (ok.status, ok.body.as_str()),
         (200, r#"{"status":"success","code":200,"description":""}"#)
     );
-    assert_eq!(ok.header("content-type"), Some("application/json"));
-    let data = get_(http, "/data");
-    assert_eq!((data.status, data.body.as_str()), (200, r#"{"id":7}"#));
-    let created = send(http, "POST", "/created", &[], "");
+    let missing = get_(http, "/missing-device");
     assert_eq!(
-        (created.status, created.body.as_str()),
-        (201, r#"{"id":8}"#)
+        missing.envelope(),
+        ("error".into(), 404, "no device 7".into())
     );
-
-    // §2.2: each class, its status, and what the caller is told.
-    let cases: [(&str, u16, &str, &str); 14] = [
-        ("InvalidInput", 400, "secret detail of InvalidInput", "INFO"),
-        ("InvalidBody", 406, "secret detail of InvalidBody", "INFO"),
-        ("Unauthenticated", 401, "unauthenticated", "INFO"),
-        ("Unauthenticated?titled=true", 401, "token expired", "INFO"),
-        ("Forbidden", 403, "forbidden", "INFO"),
-        ("NotFound", 404, "secret detail of NotFound", "INFO"),
-        ("Conflict", 409, "secret detail of Conflict", "INFO"),
-        (
-            "TooManyRequests",
-            429,
-            "secret detail of TooManyRequests",
-            "WARN",
-        ),
-        (
-            "Unavailable",
-            503,
-            "service unavailable (request_id=",
-            "WARN",
-        ),
-        ("Timeout", 504, "timeout (request_id=", "WARN"),
-        ("Internal", 500, "internal error (request_id=", "ERROR"),
-        (
-            "NotFound?upstream=true",
-            500,
-            "internal error (request_id=",
-            "ERROR",
-        ),
-        (
-            "TooManyRequests?upstream=true",
-            503,
-            "service unavailable (request_id=",
-            "WARN",
-        ),
-        ("Timeout?upstream=true", 504, "timeout (request_id=", "WARN"),
-    ];
-    for (path, status, description, level) in cases {
-        let reply = get_(http, &format!("/error/{path}"));
-        let (outcome, code, said) = reply.envelope();
-        assert_eq!((outcome.as_str(), code), ("error", status), "{path}");
-        let id = reply.request_id().to_string();
-        match description.ends_with('=') {
-            true => assert_eq!(said, format!("{description}{id})"), "{path}"),
-            false => assert_eq!(said, description, "{path}"),
-        }
-        assert_eq!(reply.header("retry-after"), None, "{path}");
-        let line = access_line(&root, &id);
-        assert!(line.contains(&format!(" {level} ")), "{path}: {line}");
-        assert!(
-            line.contains("error.type=\"Failing\"") || path.contains("titled"),
-            "{line}"
-        );
-        assert!(line.contains("error.context=\"secret detail of"), "{line}");
-    }
-    for path in [
-        "TooManyRequests?",
-        "Unavailable?",
-        "TooManyRequests?upstream=true&",
-    ] {
-        let reply = get_(http, &format!("/error/{path}retry=true"));
-        assert_eq!(reply.header("retry-after"), Some("1"), "{path}");
-    }
-    let reply = get_(http, "/error/Timeout?retry=true");
-    assert_eq!(
-        reply.header("retry-after"),
-        None,
-        "only 429 and 503 carry Retry-After"
-    );
-    let exposed = get_(admin, "/error/Internal");
-    assert_eq!(
-        exposed.envelope().2,
-        "secret detail of Internal",
-        "expose_internal_detail"
-    );
-    let unobserved = exposed.request_id().to_string();
-
-    // §2.3: errors of the framework.
     let unmatched = get_(http, "/nope");
     assert_eq!(
         unmatched.envelope(),
@@ -458,115 +403,6 @@ fn the_http_contract() {
         ("error".into(), 405, "Method Not Allowed".into())
     );
     assert_eq!(method.header("allow"), Some("GET,HEAD"));
-    let json_type = [("content-type", "application/json")];
-    let large = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        &format!("{{\"name\":\"{}\"}}", "x".repeat(80)),
-    );
-    assert_eq!(
-        large.envelope(),
-        ("error".into(), 413, "Payload Too Large".into())
-    );
-    let device = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        r#"{"name":"printer","port":9100}"#,
-    );
-    assert_eq!(
-        (device.status, device.body.as_str()),
-        (200, r#"{"name":"printer","port":9100}"#)
-    );
-    let bad = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        r#"{"name":"printer","port":"x"}"#,
-    );
-    let (_, code, said) = bad.envelope();
-    assert_eq!(code, 406);
-    assert!(
-        said.starts_with("port: invalid type: string \"x\", expected u16 at line 1 column"),
-        "{said}"
-    );
-    let missing = send(http, "POST", "/json", &json_type, r#"{"name":"printer"}"#);
-    assert!(
-        missing
-            .envelope()
-            .2
-            .starts_with("missing field `port` at line 1"),
-        "{}",
-        missing.body
-    );
-    let trailing = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        r#"{"name":"p","port":1} x"#,
-    );
-    assert!(
-        trailing.envelope().2.starts_with("trailing characters"),
-        "{}",
-        trailing.body
-    );
-    let untyped = send(
-        http,
-        "POST",
-        "/json",
-        &[],
-        r#"{"name":"printer","port":9100}"#,
-    );
-    let said = untyped.envelope();
-    assert_eq!(
-        (said.1, said.2.as_str()),
-        (
-            406,
-            "expected a JSON body, with Content-Type: application/json"
-        )
-    );
-    let query = get_(http, "/query?page=two");
-    let (_, code, said) = query.envelope();
-    assert_eq!(code, 400);
-    assert!(
-        said.contains("page: invalid digit found in string"),
-        "{said}"
-    );
-    let path = get_(http, "/path/seven");
-    let (_, code, said) = path.envelope();
-    assert_eq!(code, 400);
-    assert!(said.contains("Cannot parse `seven` to a `u32`"), "{said}");
-    let slow = get_(http, "/slow");
-    let id = slow.request_id().to_string();
-    assert_eq!(
-        slow.envelope().2,
-        format!("service unavailable (request_id={id})")
-    );
-    assert_eq!((slow.status, slow.header("retry-after")), (503, Some("1")));
-    assert!(access_line(&root, &id).contains("error.type=\"RequestTimedOut\""));
-    let panicked = get_(http, "/panic");
-    let id = panicked.request_id().to_string();
-    assert_eq!(
-        panicked.envelope(),
-        (
-            "error".into(),
-            500,
-            format!("internal error (request_id={id})")
-        )
-    );
-    assert!(log(&root).contains("panic.message=\"a handler panicked\""));
-    let teapot = get_(http, "/teapot");
-    assert_eq!(
-        teapot.envelope(),
-        ("error".into(), 418, "I'm a teapot".into())
-    );
-
-    // §2.4: request ids, in the response and in every line the request logs.
     let given = send(http, "GET", "/log", &[("x-request-id", "abc-123")], "");
     assert_eq!(given.request_id(), "abc-123");
     let log_text = log(&root);
@@ -587,30 +423,72 @@ fn the_http_contract() {
         line.contains(" INFO ") && !line.contains("error."),
         "{line}"
     );
-    for invalid in ["has space", &"x".repeat(129)] {
-        let reply = send(http, "GET", "/ok", &[("x-request-id", invalid)], "");
-        let id = reply.request_id();
-        assert!(
-            id.len() == 36 && id.as_bytes()[14] == b'7',
-            "a UUIDv7, not {id}"
-        );
-    }
-    let seen = SEEN.lock().unwrap();
-    let last = seen.iter().find(|seen| seen.3 == "abc-123").unwrap();
-    assert_eq!(last.0, "GET");
-    assert_eq!(
-        (last.1.as_deref(), last.2, last.4.as_deref()),
-        (Some("/log"), 200, None)
-    );
-    let failed = seen.iter().find(|seen| seen.2 == 409).unwrap();
-    assert_eq!(
-        (failed.1.as_deref(), failed.4.as_deref()),
-        (Some("/error/{class}"), Some("Failing"))
-    );
-    let unrouted = seen.iter().find(|seen| seen.2 == 404 && seen.1.is_none());
-    assert!(unrouted.is_some(), "an unknown route has no route");
+    let generated = get_(http, "/ok");
+    let id = generated.request_id();
     assert!(
-        !seen.iter().any(|seen| seen.3 == unobserved),
+        id.len() == 36 && id.as_bytes()[14] == b'7',
+        "a UUIDv7, not {id}"
+    );
+
+    // Requests run in the service's span, and carry the peer's address and the stop signal.
+    for (name, line) in [("http", line), ("admin", access_line(&root, &unobserved))] {
+        let span = format!(" service{{service.name={name}}}: rivium_http::access: request ");
+        assert!(line.contains(&span), "{name}: {line}");
+    }
+    let inside = log_text
+        .lines()
+        .find(|line| line.contains("inside the handler"));
+    let inside = inside.unwrap_or_default();
+    let spans = "service{service.name=http}:request{request_id=abc-123}: ";
+    assert!(inside.contains(spans), "{inside}");
+    let peer = get_(http, "/peer");
+    assert_eq!(peer.body, format!("\"{}\"", peer.local));
+    let stopping = get_(http, "/stopping");
+    assert_eq!((stopping.status, stopping.body.as_str()), (200, "false"));
+
+    // Layers added to the server run outside the contract layer: they see its answers to
+    // timeouts and panics too.
+    for path in ["/ok", "/slow", "/panic"] {
+        let reply = get_(http, path);
+        assert_eq!(reply.header("x-outer"), Some("seen"), "{path}");
+    }
+    assert_eq!(
+        get_(admin, "/ok").header("x-outer"),
+        None,
+        "only on its server"
+    );
+
+    // An acceptor is called for each connection, and a connection that never finishes its
+    // handshake holds back no other.
+    let stalled = TcpStream::connect(tls).unwrap();
+    let started = Instant::now();
+    while ACCEPTED.load(Ordering::SeqCst) == 0 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "no call of the acceptor"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let started = Instant::now();
+    let peer = get_(tls, "/peer");
+    assert_eq!(
+        peer.body,
+        format!("\"{}\"", peer.local),
+        "connect info with an acceptor"
+    );
+    let waited = started.elapsed();
+    assert!(waited < Duration::from_secs(5), "held back for {waited:?}");
+    assert!(ACCEPTED.load(Ordering::SeqCst) >= 2);
+    drop(stalled);
+
+    // Each server tells its own observers only.
+    let seen = SEEN.lock().unwrap();
+    assert!(
+        seen.iter().any(|seen| seen == "abc-123"),
+        "the observer sees its server"
+    );
+    assert!(
+        !seen.contains(&unobserved),
         "only the observed server reports"
     );
     drop(seen);
