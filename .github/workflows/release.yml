@@ -5,7 +5,9 @@ name: release
 # since the previous tag, the content of the packaged crates), release/semver, the whole matrix
 # (the ci, cross, hosting and public workflows), then release/publish, in the environment
 # crates-io. Pull requests that change the release files, and manual runs, do all of it as a dry
-# run: `cargo publish --dry-run`, no upload, no GitHub release; the notes are printed.
+# run: `cargo publish --dry-run`, no upload, no GitHub release; the notes are printed. Between
+# releases, while the workspace keeps the released version, a dry run renders the next patch
+# release's notes instead of checking versions and crates.io.
 on:
   push:
     tags: ["v*"]
@@ -46,7 +48,16 @@ jobs:
         run: |
           version=$(sed -n -E 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n 1)
           if [ "$EVENT" = push ]; then version=${TAG#v}; fi
-          scripts/release-check.sh "$version" "$RUNNER_TEMP/notes.md"
+          if [ "$EVENT" != push ] && git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            # Between releases the workspace keeps the released version: render the notes of
+            # the next patch release only. The pull request that sets the next version gets
+            # the version and crates.io checks.
+            next=${version%.*}.$((${version##*.} + 1))
+            echo "::notice::v$version is released already: the dry run renders the notes of $next"
+            scripts/release-check.sh --notes-only "$next" "$RUNNER_TEMP/notes.md"
+          else
+            scripts/release-check.sh "$version" "$RUNNER_TEMP/notes.md"
+          fi
           echo "--- the GitHub release's notes"
           cat "$RUNNER_TEMP/notes.md"
       - name: The packaged crates hold nothing of the private denylist (planted entry included)
