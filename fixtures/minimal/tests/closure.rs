@@ -1,7 +1,7 @@
 //! A consumer that needs neither HTTP nor JNI does not compile them, and the library crates keep
-//! to their dependency rules: rivium compiles no C code and rivium-error depends on the tracing
-//! facade only. The closures are computed for the target platform this test is compiled for, so
-//! every test job checks its own target.
+//! to their dependency rules: rivium compiles no C code, rivium-http brings no TLS library and
+//! rivium-error depends on the tracing facade only. The closures are computed for the target
+//! platform this test is compiled for, so every test job checks its own target.
 
 use std::path::Path;
 
@@ -39,6 +39,24 @@ fn rivium_compiles_no_c_code() {
         "libz-ng-sys",
     ];
     assert_closure_excludes(manifest(), "rivium", &banned);
+}
+
+#[test]
+fn rivium_http_brings_no_tls() {
+    // A service brings its own TLS library, through `HttpServer::accept_with`.
+    let banned = [
+        "rustls*",
+        "tokio-rustls",
+        "openssl*",
+        "native-tls",
+        "tokio-native-tls",
+        "boring*",
+        "aws-lc*",
+        "ring",
+        "schannel",
+        "security-framework*",
+    ];
+    assert_closure_excludes(manifest(), "rivium-http", &banned);
 }
 
 #[test]

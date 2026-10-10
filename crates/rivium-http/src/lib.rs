@@ -8,7 +8,7 @@
 //! | Vocabulary | [`ApiResponse`], [`ApiError`], [`ApiResult`], [`status_of`], [`extract`], [`file_response`] | what handlers return and extract |
 //! | Primitives | [`render`], [`error_of`], [`RequestId`], [`NoEnvelope`] | middleware of a server's own that keeps the contract |
 //! | Contract layer | [`contract`], [`ContractSettings`], [`HttpObserver`], [`ResponseInfo`] | the whole contract on any axum router, also in `oneshot` tests |
-//! | Server | [`HttpServer`], [`HttpSettings`] | a frontline Rivium service: the contract layer, the probes and the listener |
+//! | Server | [`HttpServer`], [`HttpSettings`], [`Acceptor`] | a frontline Rivium service: the contract layer, the probes and the listener, with hooks for outer layers and TLS |
 //!
 //! The status envelope:
 //!
@@ -37,6 +37,7 @@
 //! | Request ids made, checked, returned and extracted | no | with `RequestId` | yes | yes |
 //! | 503 for a timeout, 500 for a panic, the body limit | no | own code | yes | yes |
 //! | Probes | no | own code | own code | yes |
+//! | The stop signal and `ConnectInfo` in requests, a TLS hook, layers outside the contract | own code | own code | own code | yes |
 //!
 //! ```no_run
 //! use axum::Router;
@@ -70,5 +71,5 @@ mod vocabulary;
 
 pub use access::{ContractSettings, HttpObserver, ResponseInfo, contract};
 pub use primitives::{NoEnvelope, RequestId, error_of, render};
-pub use server::{HttpServer, HttpSettings};
+pub use server::{Acceptor, HttpServer, HttpSettings};
 pub use vocabulary::{ApiError, ApiResponse, ApiResult, file_response, status_of};

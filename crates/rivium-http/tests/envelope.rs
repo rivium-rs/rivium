@@ -1,25 +1,32 @@
 //! `HttpServer` over real connections: its settings reach the contract layer, responses carry
 //! request ids and the access log is written with them, each server tells only its own
-//! observers, the probes answer, and files download with ranges. The contract itself is checked
-//! row by row on the contract layer (`layer.rs`). The servers run in an embedded host in this
-//! process, as a service would run them; one test checks everything in order, because a process
-//! installs logging once.
+//! observers, requests carry the peer's address and the stop signal and run in the service's
+//! span, layers added to the server run outside the contract layer, an acceptor is called for
+//! each connection without one handshake holding back another, the probes answer, and files
+//! download with ranges. The contract itself is checked rule by rule on the contract layer
+//! (`layer.rs`). The servers run in an embedded host in this process, as a service would run
+//! them; one test checks everything in order, because a process installs logging once.
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use axum::Router;
-use axum::extract::Request;
+use axum::extract::{ConnectInfo, Request};
+use axum::http::HeaderValue;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
+use axum::{Extension, Router};
 use rivium::embedded::Host;
 use rivium::error::{Error, kinds};
-use rivium::{App, AppContext, Code, Health, HealthHandle, Result, Service};
+use rivium::{App, AppContext, Code, Health, HealthHandle, Result, Service, StopSignal};
 use rivium_http::extract::Json;
 use rivium_http::{
-    ApiResponse, ApiResult, HttpObserver, HttpServer, HttpSettings, ResponseInfo, file_response,
+    Acceptor, ApiResponse, ApiResult, HttpObserver, HttpServer, HttpSettings, ResponseInfo,
+    file_response,
 };
 use serde_json::{Value, json};
 
@@ -29,6 +36,8 @@ static FILE: OnceLock<PathBuf> = OnceLock::new();
 static HEALTH: Mutex<Option<HealthHandle>> = Mutex::new(None);
 /// The request ids that the observer of the `http` server saw.
 static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// The calls of the `tls` server's acceptor.
+static ACCEPTED: AtomicUsize = AtomicUsize::new(0);
 
 struct Api;
 
@@ -36,6 +45,7 @@ struct Api;
 struct Config {
     http: HttpSettings,
     admin: HttpSettings,
+    tls: HttpSettings,
 }
 
 impl Default for Config {
@@ -46,7 +56,9 @@ impl Default for Config {
         http.body_limit = 64;
         let mut admin = http.clone();
         (admin.probes, admin.expose_internal_detail) = (false, true);
-        Config { http, admin }
+        let mut tls = http.clone();
+        tls.probes = false;
+        Config { http, admin, tls }
     }
 }
 
@@ -58,8 +70,11 @@ impl App for Api {
     fn services(config: &Config, ctx: &AppContext) -> Result<Vec<Box<dyn Service>>> {
         *HEALTH.lock().unwrap() = Some(ctx.health().register("store"));
         let http = HttpServer::new(&config.http, routes(), ctx).observe(Arc::new(Observer));
+        let http = http.layer(middleware::from_fn(mark));
         let admin = HttpServer::new(&config.admin, routes(), ctx).named("admin");
-        Ok(vec![Box::new(http), Box::new(admin)])
+        let tls = HttpServer::new(&config.tls, routes(), ctx).named("tls");
+        let tls = tls.accept_with(Peek);
+        Ok(vec![Box::new(http), Box::new(admin), Box::new(tls)])
     }
 }
 
@@ -69,6 +84,32 @@ impl HttpObserver for Observer {
     fn on_response(&self, info: &ResponseInfo<'_>) {
         SEEN.lock().unwrap().push(info.request_id.to_string());
     }
+}
+
+/// A layer added to the `http` server: it marks every response it sees.
+async fn mark(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let mark = HeaderValue::from_static("seen");
+    response.headers_mut().insert("x-outer", mark);
+    response
+}
+
+/// An acceptor whose "handshake" waits for the client's first byte and leaves it for HTTP, as
+/// a TLS handshake waits for the client's hello.
+struct Peek;
+
+impl Acceptor for Peek {
+    type Stream = tokio::net::TcpStream;
+
+    async fn accept(&self, stream: tokio::net::TcpStream) -> io::Result<tokio::net::TcpStream> {
+        ACCEPTED.fetch_add(1, Ordering::SeqCst);
+        stream.peek(&mut [0; 1]).await?;
+        Ok(stream)
+    }
+}
+
+async fn panicking() -> ApiResult {
+    panic!("a handler panicked")
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -101,9 +142,22 @@ fn routes() -> Router {
                 ApiResult::<()>::Ok(ApiResponse::Ok)
             }),
         )
+        .route("/panic", get(panicking))
         .route(
             "/json",
             post(|Json(device): Json<Device>| async { ApiResult::Ok(ApiResponse::Data(device)) }),
+        )
+        .route(
+            "/peer",
+            get(|ConnectInfo(peer): ConnectInfo<SocketAddr>| async move {
+                ApiResult::Ok(ApiResponse::Data(peer.to_string()))
+            }),
+        )
+        .route(
+            "/stopping",
+            get(|Extension(stop): Extension<StopSignal>| async move {
+                ApiResult::Ok(ApiResponse::Data(stop.is_stopping()))
+            }),
         )
         .route(
             "/log",
@@ -131,6 +185,8 @@ struct Reply {
     status: u16,
     headers: Vec<(String, String)>,
     body: String,
+    /// The client's end of the connection.
+    local: SocketAddr,
 }
 
 impl Reply {
@@ -171,6 +227,7 @@ fn send(addr: SocketAddr, method: &str, path: &str, headers: &[(&str, &str)], bo
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
+    let local = stream.local_addr().unwrap();
     let mut head = format!("{method} {path} HTTP/1.1\r\nHost: test\r\nConnection: close\r\n");
     head += &format!("Content-Length: {}\r\n", body.len());
     for (name, value) in headers {
@@ -202,6 +259,7 @@ fn send(addr: SocketAddr, method: &str, path: &str, headers: &[(&str, &str)], bo
         status,
         headers,
         body: body.to_string(),
+        local,
     };
     assert!(
         reply.header("transfer-encoding").is_none(),
@@ -283,6 +341,7 @@ fn http_servers_keep_the_contract_over_connections() {
     );
     failures_to_stderr();
     let (http, admin) = (addr_of(&root, "http"), addr_of(&root, "admin"));
+    let tls = addr_of(&root, "tls");
 
     // The settings of each server reach its contract layer: the request timeout, the body
     // limit and whether server errors show their detail.
@@ -370,6 +429,57 @@ fn http_servers_keep_the_contract_over_connections() {
         id.len() == 36 && id.as_bytes()[14] == b'7',
         "a UUIDv7, not {id}"
     );
+
+    // Requests run in the service's span, and carry the peer's address and the stop signal.
+    for (name, line) in [("http", line), ("admin", access_line(&root, &unobserved))] {
+        let span = format!(" service{{service.name={name}}}: rivium_http::access: request ");
+        assert!(line.contains(&span), "{name}: {line}");
+    }
+    let inside = log_text
+        .lines()
+        .find(|line| line.contains("inside the handler"));
+    let inside = inside.unwrap_or_default();
+    let spans = "service{service.name=http}:request{request_id=abc-123}: ";
+    assert!(inside.contains(spans), "{inside}");
+    let peer = get_(http, "/peer");
+    assert_eq!(peer.body, format!("\"{}\"", peer.local));
+    let stopping = get_(http, "/stopping");
+    assert_eq!((stopping.status, stopping.body.as_str()), (200, "false"));
+
+    // Layers added to the server run outside the contract layer: they see its answers to
+    // timeouts and panics too.
+    for path in ["/ok", "/slow", "/panic"] {
+        let reply = get_(http, path);
+        assert_eq!(reply.header("x-outer"), Some("seen"), "{path}");
+    }
+    assert_eq!(
+        get_(admin, "/ok").header("x-outer"),
+        None,
+        "only on its server"
+    );
+
+    // An acceptor is called for each connection, and a connection that never finishes its
+    // handshake holds back no other.
+    let stalled = TcpStream::connect(tls).unwrap();
+    let started = Instant::now();
+    while ACCEPTED.load(Ordering::SeqCst) == 0 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "no call of the acceptor"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let started = Instant::now();
+    let peer = get_(tls, "/peer");
+    assert_eq!(
+        peer.body,
+        format!("\"{}\"", peer.local),
+        "connect info with an acceptor"
+    );
+    let waited = started.elapsed();
+    assert!(waited < Duration::from_secs(5), "held back for {waited:?}");
+    assert!(ACCEPTED.load(Ordering::SeqCst) >= 2);
+    drop(stalled);
 
     // Each server tells its own observers only.
     let seen = SEEN.lock().unwrap();
