@@ -23,5 +23,10 @@ tower-http = { workspace = true, features = ["fs"] }
 tracing.workspace = true
 uuid = { workspace = true, features = ["std", "v7"] }
 
+[dev-dependencies]
+# Without a version, so that publishing rivium-http does not wait for rivium-test.
+rivium-test = { path = "../rivium-test" }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+
 [lints]
 workspace = true

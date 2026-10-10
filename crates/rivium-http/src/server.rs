@@ -1,4 +1,4 @@
-//! The HTTP server service and its settings.
+//! The HTTP server service and its settings: the contract layer, the probes and the listener.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -7,10 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::State;
 use axum::http::StatusCode;
-use axum::middleware;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use rivium::config::de::{bytes, duration, serialize_bytes, serialize_duration};
 use rivium::error::{OrErr, kinds};
@@ -20,9 +19,7 @@ use rivium::{
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
-use crate::HttpObserver;
-use crate::access::{Access, Guard, access as log_requests, guard as guard_requests};
-use crate::response::{Plain, json};
+use crate::{ApiResponse, ContractSettings, HttpObserver, NoEnvelope, contract};
 
 /// `[http]`: an HTTP server's settings, for the service's own configuration; the defaults:
 ///
@@ -30,10 +27,12 @@ use crate::response::{Plain, json};
 /// [http]
 /// addr = "127.0.0.1:8080"      # where to listen
 /// request_timeout = "30s"      # a slower handler is answered with 503 and Retry-After
-/// body_limit = "1MiB"          # a larger request body is answered with 413
+/// body_limit = "1MiB"          # a larger request body read by an extractor is answered with 413
 /// expose_internal_detail = false  # server errors show the whole error, not a fixed phrase
 /// probes = true                # serve /livez and /readyz
 /// ```
+///
+/// The three keys in the middle are the contract layer's [`ContractSettings`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct HttpSettings {
@@ -45,7 +44,9 @@ pub struct HttpSettings {
         deserialize_with = "duration::<_, 1, 3600>"
     )]
     pub request_timeout: Duration,
-    /// The largest request body, in bytes, at most 1 GiB.
+    /// The largest request body, in bytes, at most 1 GiB, for the extractors that read a
+    /// limited body (`Bytes`, `String`, `Json`, `Multipart`); a handler that reads the
+    /// `Request` or its `Body` itself is not limited.
     #[serde(
         serialize_with = "serialize_bytes",
         deserialize_with = "bytes::<_, 0, { 1 << 30 }>"
@@ -69,16 +70,20 @@ impl Default for HttpSettings {
     }
 }
 
-/// An HTTP server, as a frontline service named `http` unless [named](Self::named) otherwise.
+/// An HTTP server, as a frontline service named `http` unless [named](Self::named) otherwise:
+/// the router with the probes, in the [contract layer](crate::contract).
 ///
 /// It binds `addr` while it starts, logs the `listening` event, and serves the router until the
-/// service is asked to stop; requests still running then may finish by the stop deadline. Every
-/// route of the router, its fallback and the probes `/livez` (always 200) and `/readyz` (200
-/// once the service runs and every health item is healthy, else 503) pass through the same
-/// middleware: the request id and span, the access log, the request timeout, the status
-/// envelope for errors, panics, and the body limit. With probes on, the router must not have
-/// these two routes itself. Static files can be served with tower-http's `ServeDir` as a nested
-/// service or the router's fallback.
+/// service is asked to stop. Then it stops listening at once, closes idle connections and waits
+/// for the requests in flight. Requests still running at the stop deadline, and a connection
+/// whose first request head has not fully arrived, make the stop time out; their connections
+/// end when the host shuts the runtime down, except across an in-process restart, which keeps
+/// the runtime: there they may run past the deadline, bounded by the request timeout.
+///
+/// With probes on, it serves `/livez` (always 200) and `/readyz` (200 once the service runs and
+/// every health item is healthy, else 503), and the router must not have these two routes
+/// itself. Static files can be served with tower-http's `ServeDir` as a nested service or the
+/// router's fallback.
 pub struct HttpServer {
     name: Cow<'static, str>,
     settings: HttpSettings,
@@ -109,37 +114,27 @@ impl HttpServer {
         }
     }
 
-    /// Adds an observer of every response.
+    /// Adds an observer of every response, to the contract layer's.
     #[must_use]
     pub fn observe(mut self, observer: Arc<dyn HttpObserver>) -> Self {
         self.observers.push(observer);
         self
     }
 
-    /// The router with the probes and the middleware.
+    /// The router with the probes, in the contract layer.
     fn app(self) -> Router {
         let mut router = self.router;
         if self.settings.probes {
-            let live = || async { json(StatusCode::OK, &BTreeMap::from([("status", "live")])) };
+            let live = || async { ApiResponse::Data(BTreeMap::from([("status", "live")])) };
             router = router
                 .route("/livez", get(live))
                 .route("/readyz", get(ready).with_state(self.readiness));
         }
-        let limit = usize::try_from(self.settings.body_limit).unwrap_or(usize::MAX);
-        let guard = Arc::new(Guard {
-            timeout: self.settings.request_timeout,
-            expose: self.settings.expose_internal_detail,
-        });
-        let access = Arc::new(Access {
-            probes: self.settings.probes,
-            observers: self.observers,
-        });
-        // Layers on a router run after routing, so they know the matched route; the last one
-        // added runs first.
-        router
-            .layer(DefaultBodyLimit::max(limit))
-            .layer(middleware::from_fn_with_state(guard, guard_requests))
-            .layer(middleware::from_fn_with_state(access, log_requests))
+        let mut settings = ContractSettings::default();
+        settings.request_timeout = self.settings.request_timeout;
+        settings.body_limit = self.settings.body_limit;
+        settings.expose_internal_detail = self.settings.expose_internal_detail;
+        contract(router, &settings, self.observers)
     }
 }
 
@@ -195,10 +190,8 @@ async fn ready(State(readiness): State<Readiness>) -> Response {
         phase,
         checks,
     };
-    let mut response = json(status, &ready);
     // Not the envelope, even when not ready.
-    response.extensions_mut().insert(Plain);
-    response
+    (status, NoEnvelope, ApiResponse::Data(ready)).into_response()
 }
 
 #[cfg(test)]
