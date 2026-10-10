@@ -39,11 +39,11 @@ Rivium (rustls with the ring provider) on every target. The jobs listed for the 
 The T3 rows hold for the library code they were recorded on; a release whose library code differs
 is recorded again. For 0.1.0:
 
-- **LoongArch old-world ABI**: recorded on 2026-10-09. On native hardware with glibc 2.28 and the
+- **LoongArch old-world ABI**: recorded on 2026-10-10. On native hardware with glibc 2.28 and the
   vendor toolchain, the workspace tests pass offline, and three release programs, `udp-echo` among
   them, have ELF flags `0x3`, the interpreter `/lib64/ld.so.1` and no symbol newer than
   `GLIBC_2.28`; each runs and stops with 0 on SIGTERM.
-- **armv7 hardware**: recorded on 2026-10-09. On a board with glibc 2.35, the test binaries pass,
+- **armv7 hardware**: recorded on 2026-10-10. On a board with glibc 2.35, the test binaries pass,
   except the few that need cargo or a JVM, and the same three programs need no symbol newer than
   `GLIBC_2.17`, run, and stop with 0 on SIGTERM.
 - **Android devices** and **LoongArch new-world hardware**: no record yet; unverified.
