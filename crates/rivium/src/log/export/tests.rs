@@ -391,13 +391,19 @@ fn cancelling_stops_an_export_or_removes_its_archive() {
 fn a_finished_archive_expires() {
     let dir = dir("expire");
     file(&dir, "app.2026-10-02.1.log", b"rolled\n", NOON);
-    let (exporter, _) = exporter(&dir, 1 << 20, Duration::from_millis(200));
+    // `finished` must see the archive before it expires: a loaded machine can keep this thread
+    // from running for longer than 200 ms (a LoongArch run of the whole suite did), so the
+    // archive lives for 2 s, and the test then waits for its expiry instead of a fixed time.
+    let (exporter, _) = exporter(&dir, 1 << 20, Duration::from_secs(2));
     let id = exporter
         .start(request("2026-10-02", "2026-10-02", &[]))
         .unwrap();
     assert_eq!(finished(&exporter, id).state, ExportState::Done);
     assert_eq!(exports_in(&dir).len(), 1);
-    std::thread::sleep(Duration::from_millis(600));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while exporter.progress(id).is_ok() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     assert_eq!(exporter.progress(id).unwrap_err().class(), Class::NotFound);
     assert_eq!(exports_in(&dir), Vec::<String>::new());
     fs::remove_dir_all(&dir).unwrap();
