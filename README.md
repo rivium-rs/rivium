@@ -12,10 +12,13 @@ versioned crates, so a fix reaches every service through a dependency update.
 
 > [!NOTE]
 >
-> **Status: 0.1.0 is being prepared.** Nothing is published yet: the crates, the template and
-> the release process are complete and checked in CI, and the first release follows once the
-> maintainer confirms it. Before 1.0, a new minor version may break the API;
-> [docs/upgrading.md](docs/upgrading.md) lists the steps of each one.
+> **Status: 0.1.0, the first release.** The crates are on crates.io
+> ([rivium](https://crates.io/crates/rivium), [rivium-error](https://crates.io/crates/rivium-error),
+> [rivium-http](https://crates.io/crates/rivium-http), [rivium-jni](https://crates.io/crates/rivium-jni),
+> [rivium-test](https://crates.io/crates/rivium-test)); each
+> [release](https://github.com/rivium-rs/rivium/releases) lists its changes, and
+> [docs/platforms.md](docs/platforms.md) how far each target is verified. Before 1.0, a new minor
+> version may break the API; [docs/upgrading.md](docs/upgrading.md) lists the steps of each one.
 
 ## Getting started
 
@@ -27,9 +30,9 @@ checks and the packaging for each platform:
 cargo generate --git https://github.com/rivium-rs/rivium --tag v0.1.0 template
 ```
 
-(before the first release: `--branch main` in place of `--tag v0.1.0`). The generated AGENTS.md
-describes the rules for services; [docs/architecture.md](docs/architecture.md) describes how
-Rivium works. The examples show the crates at work:
+The tag is the release the project starts from; `just template-diff <version>` in the project
+later shows what a newer template changes. The generated AGENTS.md describes the rules for
+services; [docs/architecture.md](docs/architecture.md) describes how Rivium works. The examples show the crates at work:
 
 | Example | What it shows |
 | --- | --- |
