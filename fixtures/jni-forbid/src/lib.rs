@@ -2,7 +2,7 @@
 //! `rivium_jni::export!` keeps `#![forbid(unsafe_code)]`, because rustc does not report the
 //! unsafe code that a macro of another crate expands to: `#[unsafe(no_mangle)]`, the
 //! `unsafe extern "system" fn JNI_OnLoad` and the `unsafe` block in it. If rustc starts to, this
-//! fixture stops building, and the template's JNI library moves to `deny` while the macro gains
+//! fixture stops building, and applications' JNI libraries move to `deny` while the macro gains
 //! an `allow`. Built with `panic = "abort"` it must not build either: rivium-jni refuses it
 //! (`ci/lint`).
 #![forbid(unsafe_code)]

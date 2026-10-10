@@ -12,7 +12,6 @@ instead of an edit in every copy.
 | Part | What it holds | How it changes |
 | --- | --- | --- |
 | Library crates (crates.io) | What is the same in every service and costly to get wrong: lifecycle, signals and exit codes, FFI, the log budget, the error model | Released together at one version; consumers take fixes with `cargo update` |
-| The template | What every service needs but tailors: the workspace layout, the composition root, configuration files, packaging for each platform, CI, checks, AGENTS.md | Generated once and then owned by the service; `just template-diff` shows later changes to merge by hand |
 | Examples (`examples/`) | How to use the crates, and what the tests and drills run against | Not published |
 | The service | Its business: domain logic, configuration schema, adapters, protocol bindings such as the HTTP endpoints of log export | Its own |
 
@@ -163,8 +162,7 @@ defaults, the file, environment variables (`<PREFIX>_<SECTION>__<KEY>`, where th
 service's name in upper snake case; `RUST_LOG` for `log.filter`), and `--set section.key=value`.
 `Option` fields and maps work from every source. Every problem is reported at once, one line
 each with the key and its source, and unknown keys are problems. `check-config` lists every key
-with its value and source; `default-config` prints the defaults, which the template keeps in
-`configs/default.toml`.
+with its value and source; `default-config` prints the defaults.
 
 The root directory is `--root` (or `WorkDir=`), else `<PREFIX>_ROOT`, else the program's
 directory; paths in the configuration are relative to it. The configuration file is `--config`,
@@ -305,8 +303,6 @@ leaves before the answer, or that is still running at the stop deadline has neit
 [platforms.md](platforms.md) lists each target, how far it is verified and by which CI job.
 Besides the tests on every target, CI runs:
 
-- **The template** (`ci/template`): projects generated with and without HTTP and JNI, checked as
-  their own CI would, with planted violations of their rules.
 - **Scenario A** (`ci/drills`): a planted shutdown defect in one release fails the lifecycle
   contract tests of a program and an embedded consumer; the next release fixes it, and the
   consumers pass after `cargo update`, with only their `Cargo.lock` changed.

@@ -1,30 +1,28 @@
 # The release notes, rendered by git-cliff when a release runs (the `release` workflow): the
 # GitHub release's body lists the commits on main since the previous tag, which are the pull
-# requests' Conventional Commit titles, in five parts. Nothing is written by hand; preview the
+# requests' Conventional Commit titles, in four parts. Nothing is written by hand; preview the
 # next release's notes with `just release-notes <version>`.
 
 [changelog]
 header = ""
 body = """
-{% for section in ["Added", "Changed", "Fixed", "Breaking", "Template"] %}
+{% for section in ["Added", "Changed", "Fixed", "Breaking"] %}
 ### {{ section }}
 {% set entries = commits | filter(attribute="group", value=section) %}
 {%- for commit in entries %}
-- {% if commit.scope and commit.scope != "template" %}`{{ commit.scope }}`: {% endif %}{{ commit.message | upper_first }}
+- {% if commit.scope %}`{{ commit.scope }}`: {% endif %}{{ commit.message | upper_first }}
 {%- endfor %}
 {%- if entries | length == 0 %}
 None.
 {%- endif %}
 {% endfor %}
-### Platforms, upgrades and the template
+### Platforms and upgrades
 
 - How far each target is verified: \
 [docs/platforms.md](https://github.com/rivium-rs/rivium/blob/{{ version }}/docs/platforms.md). \
 A target without a recorded verification is unverified.
 - A breaking release (a new minor version before 1.0) lists its steps in \
 [docs/upgrading.md](https://github.com/rivium-rs/rivium/blob/{{ version }}/docs/upgrading.md).
-- `just template-diff {{ version | trim_start_matches(pat="v") }}` shows the changes to the files that \
-the template generates, to merge by hand.
 """
 footer = ""
 trim = true
@@ -38,12 +36,11 @@ sort_commits = "oldest"
 commit_preprocessors = [
     { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/rivium-rs/rivium/pull/${1}))" },
 ]
-# What a consumer gets is the five library crates and the template: commits about anything else
+# What a consumer gets is the five library crates: commits about anything else
 # (CI, tests, examples, scripts, documentation, housekeeping) are left out.
 commit_parsers = [
     { message = "^[a-z]+(\\([^)]*\\))?!:", group = "Breaking" },
     { footer = "^BREAKING[ -]CHANGE", group = "Breaking" },
-    { message = "^(feat|fix|perf|refactor)\\(template\\)", group = "Template" },
     { message = "^feat(\\((rivium|rivium-error|rivium-http|rivium-jni|rivium-test)\\))?:", group = "Added" },
     { message = "^fix(\\((rivium|rivium-error|rivium-http|rivium-jni|rivium-test)\\))?:", group = "Fixed" },
     { message = "^(perf|refactor)(\\((rivium|rivium-error|rivium-http|rivium-jni|rivium-test)\\))?:", group = "Changed" },

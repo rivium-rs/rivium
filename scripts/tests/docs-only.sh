@@ -41,7 +41,7 @@ expect() { # <exit status> <name> <command>...: checks the command's change on a
 
 code_paths=(crates/rivium/README.md crates/rivium/src/lib.rs examples/smoke/data/README.md
   .github/workflows/ci.yml .github/pull_request_template.md scripts/check.sh
-  template/Cargo.toml.liquid Cargo.toml Cargo.lock deny.toml Cross.toml justfile LICENSE-MIT .gitignore)
+  fixtures/minimal/Cargo.toml Cargo.toml Cargo.lock deny.toml Cross.toml justfile LICENSE-MIT .gitignore)
 git init -q -b main "$repo"
 git -C "$repo" config user.name tester
 git -C "$repo" config user.email tester@example.invalid

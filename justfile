@@ -10,7 +10,7 @@ default:
 
 # Install the developer tools used by the recipes into .tools/
 tools:
-    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-generate@0.25.0 cargo-semver-checks@0.51.0 git-cliff@2.14.2
+    cargo install --locked --root .tools cargo-hack@0.6.45 cargo-semver-checks@0.51.0 git-cliff@2.14.2
 
 # Formatting, clippy, cargo-deny, feature matrix, the panic = "abort" refusal and script self-tests (what ci/lint runs)
 lint:
@@ -80,10 +80,6 @@ glibc:
 # Desktop JVM: rivium-jni's contract on the beacon-jni library in a JDK 17
 jvm:
     scripts/local/jvm.sh
-
-# Generate projects from the template and check them against this workspace, as ci/template does
-template:
-    scripts/template-smoke.sh
 
 # The drills of ci/drills: scenario A (a fix reaches the consumers through cargo update, with a local
 # registry) and scenario C (a new service, program and section touch only the service)
