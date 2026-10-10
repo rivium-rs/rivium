@@ -1,7 +1,7 @@
-# The release notes, rendered by git-cliff when a release runs (the `release` workflow): the
-# GitHub release's body lists the commits on main since the previous tag, which are the pull
-# requests' Conventional Commit titles, in four parts. Nothing is written by hand; preview the
-# next release's notes with `just release-notes <version>`.
+# The release notes, rendered by git-cliff when a release runs: the GitHub release's body lists
+# the commits on main since the previous tag, which are the pull requests' Conventional Commit
+# titles, in four parts. Nothing is written by hand; preview the next release's notes with
+# `git cliff --unreleased --tag v<version> --strip all`.
 
 [changelog]
 header = ""
