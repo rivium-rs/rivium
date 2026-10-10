@@ -79,6 +79,9 @@ instead of working around it here.
 - Each setting can be overridden as `--set section.key=value` or by the environment variable
   `{{project-name | shouty_snake_case}}_SECTION__KEY`.
 - Log with `tracing`. Spans of services and tasks are added by Rivium.
+- To split the log into files, add `[[log.files]]` categories whose filters name modules, and
+  turn those modules off in `log.file.filter`. Filter by module (target), not by span. Rivium's
+  docs/architecture.md, "Splitting the log by module", has an example.
 
 ## Dependencies
 

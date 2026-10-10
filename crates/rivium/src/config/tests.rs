@@ -2,12 +2,13 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 use super::load::{FileLayer, Inputs, Loaded, default_config, load};
+use super::paths::without_verbatim;
 use super::{Paths, Report, Source};
 use crate::lifecycle::Restart;
 
@@ -504,6 +505,20 @@ fn the_default_configuration_round_trips() {
 }
 
 #[test]
+fn the_verbatim_prefix_of_windows_paths_is_dropped() {
+    for (path, plain) in [
+        (r"\\?\C:\rivium\bin", r"C:\rivium\bin"),
+        (r"\\?\UNC\server\share\bin", r"\\server\share\bin"),
+        // Not a drive or a share: kept as it is.
+        (r"\\?\Volume{0e5f8a2c}\bin", r"\\?\Volume{0e5f8a2c}\bin"),
+        (r"C:\rivium\bin", r"C:\rivium\bin"),
+        ("/opt/rivium/bin", "/opt/rivium/bin"),
+    ] {
+        assert_eq!(without_verbatim(Path::new(path)), PathBuf::from(plain));
+    }
+}
+
+#[test]
 fn paths_follow_the_command_line_then_the_environment_then_the_executable() {
     let base = std::env::temp_dir();
     let (srv, opt) = (base.join("srv"), base.join("opt"));
@@ -544,11 +559,11 @@ fn paths_follow_the_command_line_then_the_environment_then_the_executable() {
 
     let (paths, explicit) = locate(None, None, Some(&[]));
     let exe = std::env::current_exe().unwrap().canonicalize().unwrap();
-    assert_eq!((paths.root(), explicit), (exe.parent().unwrap(), false));
-    assert_eq!(
-        paths.config_file(),
-        exe.parent().unwrap().join("configs/default.toml")
-    );
+    let dir = without_verbatim(exe.parent().unwrap());
+    assert_eq!((paths.root(), explicit), (dir.as_path(), false));
+    assert_eq!(paths.config_file(), dir.join("configs/default.toml"));
+    // On Windows, `canonicalize` gives `\\?\C:\…`; the root is written the usual way.
+    assert!(!paths.root().to_string_lossy().starts_with(r"\\?\"));
     let (paths, _) = locate(Some(&PathBuf::from("relative")), None, Some(&[]));
     assert_eq!(
         paths.root(),

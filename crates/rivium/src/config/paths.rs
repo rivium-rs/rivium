@@ -78,7 +78,7 @@ impl Paths {
             }
             None => (std::env::current_exe().and_then(|exe| exe.canonicalize()))
                 .ok()
-                .and_then(|exe| exe.parent().map(Path::to_path_buf))
+                .and_then(|exe| exe.parent().map(without_verbatim))
                 .ok_or_else(|| {
                     let reason = "the directory of the executable is unknown; pass --root";
                     Error::explain(kinds::INVALID_INPUT, reason)
@@ -89,5 +89,22 @@ impl Paths {
             None => (root.join(config_file), false),
         };
         Ok((Paths { root, config_file }, explicit))
+    }
+}
+
+/// `path` without the verbatim prefix that `canonicalize` adds on Windows: `\\?\C:\dir` becomes
+/// `C:\dir`, and `\\?\UNC\server\share` becomes `\\server\share`. Logs show the usual form, and
+/// other programs given the root expect it; std adds the prefix itself where a long path needs
+/// it. Other paths are returned as they are.
+pub(super) fn without_verbatim(path: &Path) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path.to_path_buf();
+    };
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path.to_path_buf(),
     }
 }
