@@ -36,7 +36,7 @@ it leaves out silently:
 | The stop signal and `ConnectInfo` in requests, a TLS hook, layers outside the contract | own code | own code | own code | yes |
 
 Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
-version, and the repository has the examples and the documentation.
+version, and the repository has the documentation.
 
 ## License
 

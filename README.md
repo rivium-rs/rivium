@@ -37,14 +37,8 @@ rivium-test = "0.1"
 Its service library implements `rivium::App`, the composition root that builds the services from
 the configuration, and its program's `main` is `rivium::process::run::<App>()`.
 [docs/architecture.md](docs/architecture.md) describes how Rivium works, starting with
-[a service](docs/architecture.md#a-service). The examples show the crates at work:
-
-| Example | What it shows |
-| --- | --- |
-| [`udp-echo`](examples/udp-echo) | A service that is not HTTP: a blocking socket loop, a periodic job, restart requests, log export without HTTP |
-| [`http-api`](examples/http-api) | An HTTP API with the status envelope, the probes and an HTTP binding of log export |
-| [`embedded`](examples/embedded) | One service library run as a program (`beacon-bin`) and inside an Android app (`beacon-jni`) |
-| [`multi-bin`](examples/multi-bin) | One service library and two programs, each its own composition root |
+[a service](docs/architecture.md#a-service). The examples of 0.1.0 are at the tag
+[`v0.1.0`](https://github.com/rivium-rs/rivium/tree/v0.1.0/examples).
 
 ## Crates
 
@@ -58,24 +52,30 @@ the configuration, and its program's `main` is `rivium::process::run::<App>()`.
 
 ## Platforms
 
-[docs/platforms.md](docs/platforms.md) lists the supported targets, how far each one is verified
-and the CI job that verifies it. The minimum supported Rust version is 1.92.
+[docs/platforms.md](docs/platforms.md) lists the supported targets and how far each one was
+verified for 0.1.0. The minimum supported Rust version is 1.92.
 
 ## Development
 
-`just` lists the tasks. The main ones:
+CI runs formatting, clippy, cargo-deny and the workspace tests on Linux, macOS and Windows, and
+the tests on Rust 1.92. The cross-target, hosting and release verification of 0.1.0 is being
+rebuilt. The same checks locally:
 
-| Task | What it does |
-| --- | --- |
-| `just check` | Formatting, clippy, cargo-deny, the feature matrix, script self-tests and the workspace tests |
-| `just msrv` | The tests with Rust 1.92, installed under `.tools/` |
-| `just cross`, `just android`, `just glibc`, `just jvm`, `just systemd` | Local runs of the cross-target, glibc-baseline, JVM and systemd CI jobs with Docker |
-| `just drills` | The scenario A and C drills |
-| `just loc`, `just deps` | Size budget and dependency closure of the library crates |
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --locked
+```
 
-Developer tools are installed under `.tools/` (`just tools`), never globally. Maintainers install
-the git hooks that run the public-content check with `just hooks <denylist>`. Branches, commit
-messages (Conventional Commits) and pull requests follow [CONTRIBUTING.md](CONTRIBUTING.md).
+Maintainers install the git hooks that run the public-content check once:
+
+```bash
+git config core.hooksPath scripts/hooks
+git config rivium.denylist <absolute path of the private denylist>
+```
+
+Branches, commit messages (Conventional Commits) and pull requests follow
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

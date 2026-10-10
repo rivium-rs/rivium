@@ -9,7 +9,7 @@
 ## Checklist
 
 - [ ] The title and every commit follow Conventional Commits
-- [ ] `just check` passes locally
+- [ ] `cargo fmt`, `cargo clippy` and `cargo test` pass locally (README, "Development")
 - [ ] Each new check was shown to fail on a planted violation
 - [ ] README and `docs/` are updated where behaviour changed
 - [ ] The public-content hooks ran on every commit and push

@@ -1,5 +1,5 @@
-//! The parts of the process host that need no process of their own; the process-level tests
-//! run a real program (`examples/udp-echo/tests`).
+//! The parts of the process host that need no process of their own; the rest needs a real
+//! program to test.
 
 use super::console_event;
 use crate::lifecycle::StopReason;

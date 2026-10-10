@@ -16,7 +16,7 @@ to load. A panic in a native method returns -99 or an empty string, and the crat
 `tests/jvm/run.sh` checks a library on a desktop JVM.
 
 Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
-version, and the repository has the examples and the documentation.
+version, and the repository has the documentation.
 
 ## License
 

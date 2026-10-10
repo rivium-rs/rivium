@@ -1,14 +1,13 @@
 name: ci
 
-# Runs on pull requests and on main; branches get CI through their (draft) pull request. Pull
-# requests that change documentation only skip every job but `changes`.
+# The minimal CI while the verification is rebuilt: formatting, clippy, cargo-deny and the script
+# self-tests; the workspace tests on Linux, macOS and Windows (GNU); the tests on the MSRV. Runs on
+# pull requests and on main; branches get CI through their (draft) pull request.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # The release runs it at the commit it releases.
-  workflow_call:
 
 permissions:
   contents: read
@@ -16,10 +15,8 @@ permissions:
 concurrency:
   # Superseded pull request runs are cancelled; every commit on main gets a complete run. A group
   # keeps at most one pending run, which a newer one replaces whatever cancel-in-progress says, so
-  # on main each commit is a group of its own: commits merged in a row run side by side. Called by
-  # the release, github.workflow is the release's name: the workflow's own name in front keeps
-  # those runs apart from both the release's and this workflow's own.
-  group: ci-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  # on main each commit is a group of its own: commits merged in a row run side by side.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
@@ -27,193 +24,43 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  # Pull requests only. The other jobs are skipped (and report "skipped") only when this job finds
-  # that the pull request changes documentation only; they run when it is skipped (main, manual
-  # runs) or fails.
-  changes:
-    name: ci/changes
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    outputs:
-      docs-only: ${{ steps.diff.outputs.docs-only }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - id: diff
-        name: Files changed since the merge base with the base branch
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          status=0
-          scripts/docs-only.sh "origin/$BASE_REF" "$HEAD_SHA" || status=$?
-          case "$status" in
-            0) echo "docs-only=true" >> "$GITHUB_OUTPUT" ;;
-            1) echo "docs-only=false" >> "$GITHUB_OUTPUT" ;;
-            *) exit "$status" ;;
-          esac
-
   lint:
     name: ci/lint
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: cargo-deny@0.20.2,cargo-hack@0.6.45
+          tool: cargo-deny@0.20.2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo deny --locked check
-      - run: cargo hack check --each-feature --workspace --locked
-      - name: rivium-jni refuses panic = "abort" (fixtures/jni-forbid)
-        run: scripts/check-panic-abort.sh
-      - name: Lint scripts and run their self-tests (planted violations)
+      - name: Lint the scripts and run their self-tests (planted violations)
         run: |
-          shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/local/*.sh scripts/hosting/*.sh \
-            crates/rivium-jni/tests/jvm/run.sh
+          shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh crates/rivium-jni/tests/jvm/run.sh
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
-          scripts/tests/docs-only.sh
 
-  test-linux:
-    name: ci/test-linux
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
-    runs-on: ubuntu-24.04
+  test:
+    name: ci/test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-24.04, toolchain: stable }
+          - { name: macos, os: macos-latest, toolchain: stable }
+          - { name: windows-gnu, os: windows-latest, toolchain: stable-x86_64-pc-windows-gnu }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo test --workspace --locked
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Desktop JVM contract of rivium-jni (beacon-jni; panics in a --cfg rivium_jni_fault build)
-        run: |
-          cargo build --locked -p beacon-jni
-          RUSTFLAGS="--cfg rivium_jni_fault" cargo build --locked -p beacon-jni --target-dir target/jni-fault
-          crates/rivium-jni/tests/jvm/run.sh target/debug beacon_jni com/example/beacon target/jni-fault/debug
-
-  test-linux-arm64:
-    name: ci/test-linux-arm64
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust
-        run: |
-          if ! command -v rustup > /dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-            export PATH="$HOME/.cargo/bin:$PATH"
-          fi
-          rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo test --workspace --locked
-
-  test-macos:
-    name: ci/test-macos
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - run: cargo test --workspace --locked
-
-  test-windows-gnu:
-    name: ci/test-windows-gnu
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal && rustup default stable-x86_64-pc-windows-gnu
-      - name: Toolchain report
-        shell: bash
-        run: |
-          rustc -vV
-          for tool in gcc x86_64-w64-mingw32-gcc; do
-            printf '%s: ' "$tool"; command -v "$tool" || echo "(not on PATH)"
-          done
-          gcc --version 2> /dev/null | head -n 1 || true
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal && rustup default ${{ matrix.toolchain }}
       - run: cargo test --workspace --locked
 
   msrv:
     name: ci/msrv
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install 1.92 --profile minimal
       - run: cargo +1.92 test --workspace --all-features --locked
-
-  semver:
-    name: ci/semver
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
-        with:
-          tool: cargo-semver-checks@0.51.0
-      - name: API compatibility report (does not block before 0.1.0)
-        continue-on-error: true
-        env:
-          BEFORE: ${{ github.event.before }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          # Baseline: the PR base, else the previous tip of the pushed branch, else main.
-          if [ -n "$BASE_REF" ]; then
-            base=$(git merge-base HEAD "origin/$BASE_REF")
-          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
-            base=$BEFORE
-          else
-            base=$(git merge-base HEAD origin/main)
-          fi
-          echo "baseline: $base"
-          status=0
-          for crate in rivium-error rivium rivium-http rivium-jni rivium-test; do
-            if git cat-file -e "$base:crates/$crate/Cargo.toml" 2> /dev/null; then
-              cargo semver-checks -p "$crate" --baseline-rev "$base" || status=1
-            else
-              echo "::notice::$crate has no baseline at $base; skipped"
-            fi
-          done
-          exit "$status"
-
-  drills:
-    name: ci/drills
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
-        with:
-          tool: cargo-semver-checks@0.51.0
-      - name: Scenario A, a fix reaches the consumers through cargo update (V-7; planted defect and breaking change included)
-        run: scripts/drill-a.sh
-      - name: Scenario C, a new service, program and section touch only the service (V-12)
-        run: scripts/drill-c.sh
-      - name: Planted violation (a scenario that changes rivium must fail the path check)
-        run: |
-          # No pipe here: run steps use `bash -e` without pipefail, so `drill | tee` would hide the status.
-          status=0
-          scripts/drill-c.sh --plant > "$RUNNER_TEMP/plant.log" 2>&1 || status=$?
-          cat "$RUNNER_TEMP/plant.log"
-          if [ "$status" -eq 0 ]; then
-            echo "::error::drill-c accepted a scenario that changes rivium"
-            exit 1
-          fi
-          grep -q "^drill-c: the scenario changes more than the example's code and tests:$" "$RUNNER_TEMP/plant.log"

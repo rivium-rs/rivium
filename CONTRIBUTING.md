@@ -9,20 +9,19 @@
    to build on a unit that is still under review, branch from that unit and, after its pull
    request is merged, merge `main` into the dependent branch (never rebase it) before asking for
    review.
-2. **Install the hooks once:** `just hooks <denylist>`. They check every commit (staged tree,
-   identity, message) and every push against the private denylist, and check that commit
+2. **Install the hooks once:** `git config core.hooksPath scripts/hooks` and
+   `git config rivium.denylist <absolute path of the denylist>`. They check every commit (staged
+   tree, identity, message) and every push against the private denylist, and check that commit
    messages are Conventional Commits.
 3. **Commit as [Conventional Commits](https://www.conventionalcommits.org/):**
    `<type>(<scope>)!: <subject>`, where scope and `!` (breaking change) are optional and the
    type is one of `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`,
    `style`, `test`. Imperative subject, at most 72 characters, no trailing period; the body
    explains why.
-4. **Push and open a draft pull request against `main` right away.** The `ci`, `cross` and
-   `hosting` workflows run on pull requests and on `main`; the public-content check runs on every
-   push. On a pull request that changes only documentation (files under `docs/` and Markdown
-   files at the top level, as decided by `scripts/docs-only.sh`), every job of those three
-   workflows except `changes` is skipped; on `main` every job runs.
-5. **When the work is complete,** run `just check`, make sure every check is green and mark the
+4. **Push and open a draft pull request against `main` right away.** The `ci` workflow runs on
+   pull requests and on `main`; the public-content check runs on every push.
+5. **When the work is complete,** run the checks of the README's "Development" section, make
+   sure every check is green and mark the
    pull request ready for review. Its title is a Conventional Commit that still fits in 72
    characters once GitHub appends ` (#<n>)`; `check/pr-title` checks it that way.
 6. **Merge with "Squash and merge"** after the maintainer approves that pull request. Its title
@@ -37,20 +36,17 @@
 ## Checks
 
 - New checks are shown to fail once on a planted violation before they are relied on.
-- Developer tools are installed under `.tools/` (`just tools`), never globally.
+- Developer tools are installed under `.tools/` (`cargo install --locked --root .tools <tool>`),
+  never globally.
 
 ## Releases
 
 Releases are made by the maintainer only. Every crate shares one version, and the release notes
-are generated, never written by hand.
+are generated, never written by hand: git-cliff renders them from the commits on `main` since the
+previous tag (`cliff.toml`), and those commits are the pull requests' titles, so a title is also
+the line that the release notes show. `git cliff --unreleased --tag v<version> --strip all`
+previews them.
 
-1. On a branch: set the version in the workspace `Cargo.toml` (`[workspace.package]` and the
-   `rivium-*` entries of `[workspace.dependencies]`), and for a new minor version the steps in
-   `docs/upgrading.md`. The `release` workflow checks it all as a dry run on the pull request
-   (`scripts/release-check.sh`) and prints the release notes, which git-cliff renders from the
-   commits since the previous tag (`cliff.toml`); `just release-notes <version>` shows them
-   locally. The commits on `main` are the pull requests' titles, so a title is also the line
-   that the release notes show.
-2. Once that pull request is merged and `main` is green, tag the merge commit `v<version>` and
-   push the tag. The `release` workflow checks again, runs the whole matrix, publishes the crates
-   in dependency order and creates the GitHub release with the notes.
+The release workflow, which checks a release, runs the whole verification and publishes the
+crates, is being rebuilt with the cross-target and hosting verification. Until it returns, there
+is no release.

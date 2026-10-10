@@ -12,7 +12,6 @@ instead of an edit in every copy.
 | Part | What it holds | How it changes |
 | --- | --- | --- |
 | Library crates (crates.io) | What is the same in every service and costly to get wrong: lifecycle, signals and exit codes, FFI, the log budget, the error model | Released together at one version; consumers take fixes with `cargo update` |
-| Examples (`examples/`) | How to use the crates, and what the tests and drills run against | Not published |
 | The service | Its business: domain logic, configuration schema, adapters, protocol bindings such as the HTTP endpoints of log export | Its own |
 
 A piece of code belongs in the library when a defect in it should be fixed once for every
@@ -300,13 +299,6 @@ leaves before the answer, or that is still running at the stop deadline has neit
 
 ## How it is verified
 
-[platforms.md](platforms.md) lists each target, how far it is verified and by which CI job.
-Besides the tests on every target, CI runs:
-
-- **Scenario A** (`ci/drills`): a planted shutdown defect in one release fails the lifecycle
-  contract tests of a program and an embedded consumer; the next release fixes it, and the
-  consumers pass after `cargo update`, with only their `Cargo.lock` changed.
-- **Scenario C** (`ci/drills`): a new background service, program and configuration section
-  change only the service's code.
-- **Hosting** (`hosting/*`): the `udp-echo` example under systemd, launchd and WinSW, stopped as
-  those supervisors stop it, and restarted after a restart request.
+Each crate's tests, its unit tests and those in its `tests/` directory, run in CI on Linux, macOS
+and Windows and on Rust 1.92. [platforms.md](platforms.md) lists each target and how far it was
+verified for 0.1.0; the cross-target, hosting and drill verification of 0.1.0 is being rebuilt.
