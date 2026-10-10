@@ -1,9 +1,0 @@
-# A task belongs to a service: started with ctx.spawn or ctx.spawn_blocking, it gets the service's
-# stop request and deadline, and the supervisor sees how it ends. Detached tasks get neither.
-# (`JoinSet` and the like, which end with their owner, are fine.)
-disallowed-methods = [
-    { path = "tokio::spawn", reason = "start tasks with ctx.spawn: they belong to their service" },
-    { path = "tokio::task::spawn", reason = "start tasks with ctx.spawn: they belong to their service" },
-    { path = "tokio::task::spawn_blocking", reason = "start blocking work with ctx.spawn_blocking" },
-    { path = "std::thread::spawn", reason = "start blocking work with ctx.spawn_blocking" },
-]

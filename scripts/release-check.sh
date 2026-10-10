@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checks that the tree can be released as <version>, before anything is published:
-#   - the workspace (every crate) and the template (.rivium-template) have that version;
-#   - the release notes render, with their five parts (Added, Changed, Fixed, Breaking,
-#     Template): git-cliff with cliff.toml, from the commits since the previous tag;
+#   - the workspace (every crate) has that version;
+#   - the release notes render, with their four parts (Added, Changed, Fixed, Breaking):
+#     git-cliff with cliff.toml, from the commits since the previous tag;
 #   - a new minor or major version, once there is an earlier release, has its section in
 #     docs/upgrading.md, which is written by hand;
 #   - crates.io does not have that version of any library crate yet, and before the first
@@ -33,10 +33,10 @@ else
 fi
 if (cd "$root" && git cliff --config cliff.toml "${range[@]}" --strip all --output "$notes" 2> /dev/null); then
   missing=""
-  for heading in Added Changed Fixed Breaking Template; do
+  for heading in Added Changed Fixed Breaking; do
     grep -q "^### $heading$" "$notes" || missing="$missing $heading"
   done
-  if [ -z "$missing" ]; then ok "the release notes render with their five parts"; else fail "the release notes lack:$missing"; fi
+  if [ -z "$missing" ]; then ok "the release notes render with their four parts"; else fail "the release notes lack:$missing"; fi
 else
   fail "git cliff cannot render the release notes"
 fi
@@ -44,7 +44,6 @@ $notes_only && exit "$((failures > 0))"
 
 workspace=$(sed -n -E 's/^version = "([^"]+)"$/\1/p' "$root/Cargo.toml" | head -n 1)
 if [ "$workspace" = "$version" ]; then ok "the workspace is at $version"; else fail "the workspace is at $workspace, not $version"; fi
-if grep -q "^version = \"$version\"$" "$root/template/.rivium-template"; then ok "the template records $version"; else fail "template/.rivium-template does not record $version"; fi
 
 earlier=$(git -C "$root" tag -l 'v*' | grep -vx "v$version" || true)
 if [ -n "$earlier" ] && [ "${version##*.}" = 0 ]; then

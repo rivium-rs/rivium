@@ -22,17 +22,22 @@ versioned crates, so a fix reaches every service through a dependency update.
 
 ## Getting started
 
-A new service starts from the template, which generates a service library with its composition
-root, a program, optionally an HTTP API and a JNI library for Android, the configuration, the
-checks and the packaging for each platform:
+A service depends on the Rivium crates it uses, all at one version:
 
-```bash
-cargo generate --git https://github.com/rivium-rs/rivium --tag v0.1.0 template
+```toml
+[dependencies]
+rivium = "0.1"
+rivium-http = "0.1" # an HTTP API
+rivium-jni = "0.1"  # a JNI library for an Android app
+
+[dev-dependencies]
+rivium-test = "0.1"
 ```
 
-The tag is the release the project starts from; `just template-diff <version>` in the project
-later shows what a newer template changes. The generated AGENTS.md describes the rules for
-services; [docs/architecture.md](docs/architecture.md) describes how Rivium works. The examples show the crates at work:
+Its service library implements `rivium::App`, the composition root that builds the services from
+the configuration, and its program's `main` is `rivium::process::run::<App>()`.
+[docs/architecture.md](docs/architecture.md) describes how Rivium works, starting with
+[a service](docs/architecture.md#a-service). The examples show the crates at work:
 
 | Example | What it shows |
 | --- | --- |
@@ -65,7 +70,7 @@ and the CI job that verifies it. The minimum supported Rust version is 1.92.
 | `just check` | Formatting, clippy, cargo-deny, the feature matrix, script self-tests and the workspace tests |
 | `just msrv` | The tests with Rust 1.92, installed under `.tools/` |
 | `just cross`, `just android`, `just glibc`, `just jvm`, `just systemd` | Local runs of the cross-target, glibc-baseline, JVM and systemd CI jobs with Docker |
-| `just template`, `just drills` | The template's projects checked as their CI would; the scenario A and C drills |
+| `just drills` | The scenario A and C drills |
 | `just loc`, `just deps` | Size budget and dependency closure of the library crates |
 
 Developer tools are installed under `.tools/` (`just tools`), never globally. Maintainers install

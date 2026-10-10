@@ -10,7 +10,6 @@ members = [
     "fixtures/jni-forbid",
     "fixtures/minimal",
 ]
-exclude = ["template"]
 
 [workspace.package]
 version = "0.1.0"

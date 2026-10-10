@@ -24,7 +24,7 @@ fn main() {
 `error.cause`.
 
 Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
-version, and the repository has the template, the examples and the documentation.
+version, and the repository has the examples and the documentation.
 
 ## License
 

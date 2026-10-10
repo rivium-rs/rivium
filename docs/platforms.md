@@ -48,7 +48,7 @@ is recorded again. For 0.1.0:
   `GLIBC_2.17`, run, and stop with 0 on SIGTERM.
 - **Android devices** and **LoongArch new-world hardware**: no record yet; unverified.
 
-Two validation services, written from the template, exercised Rivium as an SNMP agent run both as
+Two validation services exercised Rivium as an SNMP agent run both as
 a program and through JNI on a desktop JVM, and as an edge collector under the three hosts. They ran
 in CI on validation branches
 ([#45](https://github.com/rivium-rs/rivium/pull/45),
