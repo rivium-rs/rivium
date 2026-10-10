@@ -1,12 +1,35 @@
 # rivium-http
 
-The [axum](https://crates.io/crates/axum) integration: an HTTP server that runs as a Rivium service, a fixed status envelope, error-class to status-code mapping, request ids, access logging and liveness/readiness probes.
+The [axum](https://crates.io/crates/axum) integration: a fixed status envelope, error-class to status-code mapping, request ids, access logging and liveness/readiness probes, as a contract layer for any axum router and an HTTP server that runs as a Rivium service.
 
-`HttpServer` runs an axum `Router` as a frontline Rivium service, with the settings of an
-`[http]` section: it serves `/livez` and `/readyz`, gives every request an id, logs one access
-line per request, and answers with `ApiResponse` or `ApiError`, whose class decides the status.
-The extractors `Json`, `Query` and `Path` answer bad input with the envelope, and
-`file_response` serves downloads with ranges.
+It comes in four layers, each built on the public API of the layers below, so that a service
+can stop at any of them:
+
+| Layer | Items | Use |
+| --- | --- | --- |
+| Vocabulary | `ApiResponse`, `ApiError`, `ApiResult`, `status_of`, `extract::{Json, Query, Path}`, `file_response` | what handlers return and extract |
+| Primitives | `render`, `error_of`, `RequestId`, `NoEnvelope` | middleware of a server's own that keeps the contract |
+| Contract layer | `contract`, `ContractSettings`, `HttpObserver`, `ResponseInfo` | the whole contract on any axum router, also in `oneshot` tests |
+| Server | `HttpServer`, `HttpSettings` | a frontline Rivium service: the contract layer, the probes and the listener |
+
+Handlers answer with `ApiResponse` or `ApiError`, whose class decides the status; the extractors
+answer bad input with the envelope, and `file_response` serves downloads with ranges. The
+contract layer gives every request an id, logs one access line per response with its error,
+calls the observers, and answers timeouts, panics and every other error with the envelope.
+`HttpServer` runs a `Router` in it, with the settings of an `[http]` section, and serves
+`/livez` and `/readyz`.
+
+What each way of using the crate keeps of the contract; what the vocabulary alone leaves out,
+it leaves out silently:
+
+| Contract | Vocabulary | + primitives | Contract layer | `HttpServer` |
+| --- | --- | --- | --- | --- |
+| Success shapes, statuses, client error descriptions, extractor errors, `Retry-After` | yes | yes | yes | yes |
+| Server errors with the request id, `expose_internal_detail`, the envelope for framework errors | no | with `render` | yes | yes |
+| Errors logged once, the access log, observers | no | with `error_of` | yes | yes |
+| Request ids made, checked, returned and extracted | no | with `RequestId` | yes | yes |
+| 503 for a timeout, 500 for a panic, the body limit | no | own code | yes | yes |
+| Probes | no | own code | own code | yes |
 
 Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
 version, and the repository has the template, the examples and the documentation.

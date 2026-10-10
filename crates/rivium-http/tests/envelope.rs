@@ -1,8 +1,9 @@
-//! The HTTP contract (V-8): every row of the status envelope, the mapping of error classes to
-//! statuses, the errors of the framework, request ids in the response and the logs, the access
-//! log and its observers, the probes and file downloads. The servers run in an embedded host in
-//! this process, as a service would run them; one test checks everything in order, because a
-//! process installs logging once.
+//! `HttpServer` over real connections: its settings reach the contract layer, responses carry
+//! request ids and the access log is written with them, each server tells only its own
+//! observers, the probes answer, and files download with ranges. The contract itself is checked
+//! row by row on the contract layer (`layer.rs`). The servers run in an embedded host in this
+//! process, as a service would run them; one test checks everything in order, because a process
+//! installs logging once.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -12,32 +13,26 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::extract::Request;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use rivium::embedded::Host;
-use rivium::error::{Class, Error, ErrorKind, ErrorType};
+use rivium::error::{Error, kinds};
 use rivium::{App, AppContext, Code, Health, HealthHandle, Result, Service};
-use rivium_http::extract::{Json, Path as UrlPath, Query};
+use rivium_http::extract::Json;
 use rivium_http::{
     ApiResponse, ApiResult, HttpObserver, HttpServer, HttpSettings, ResponseInfo, file_response,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// The file that `/file` serves.
 static FILE: OnceLock<PathBuf> = OnceLock::new();
 /// The health item that `/readyz` reports.
 static HEALTH: Mutex<Option<HealthHandle>> = Mutex::new(None);
-/// What the observer of the `http` server saw.
-static SEEN: Mutex<Vec<Seen>> = Mutex::new(Vec::new());
-
-/// A response as the observer saw it: method, route, status, request id, error type.
-type Seen = (String, Option<String>, u16, String, Option<String>);
+/// The request ids that the observer of the `http` server saw.
+static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 struct Api;
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Config {
     http: HttpSettings,
     admin: HttpSettings,
@@ -72,85 +67,33 @@ struct Observer;
 
 impl HttpObserver for Observer {
     fn on_response(&self, info: &ResponseInfo<'_>) {
-        let error = info.error.map(|error| error.etype().name().to_string());
-        let route = info.route.map(String::from);
-        let seen = (
-            info.method.to_string(),
-            route,
-            info.status.as_u16(),
-            info.request_id.to_string(),
-            error,
-        );
-        SEEN.lock().unwrap().push(seen);
+        SEEN.lock().unwrap().push(info.request_id.to_string());
     }
 }
 
-const TOKEN_EXPIRED: ErrorType =
-    &ErrorKind::new("TokenExpired", Class::Unauthenticated).titled("token expired");
-
-#[derive(Deserialize)]
-struct Failure {
-    #[serde(default)]
-    upstream: bool,
-    #[serde(default)]
-    retry: bool,
-    #[serde(default)]
-    titled: bool,
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Device {
     name: String,
-    port: u16,
-}
-
-#[derive(Deserialize)]
-struct Page {
-    page: u32,
-}
-
-/// A handler failing with an error of `class`, whose context is a secret for server errors.
-async fn failing(UrlPath(class): UrlPath<String>, Query(how): Query<Failure>) -> ApiResult {
-    let class = match class.as_str() {
-        "InvalidInput" => Class::InvalidInput,
-        "InvalidBody" => Class::InvalidBody,
-        "Unauthenticated" => Class::Unauthenticated,
-        "Forbidden" => Class::Forbidden,
-        "NotFound" => Class::NotFound,
-        "Conflict" => Class::Conflict,
-        "TooManyRequests" => Class::TooManyRequests,
-        "Unavailable" => Class::Unavailable,
-        "Timeout" => Class::Timeout,
-        _ => Class::Internal,
-    };
-    let kind: ErrorType = match how.titled {
-        true => TOKEN_EXPIRED,
-        false => Box::leak(Box::new(ErrorKind::new("Failing", class))),
-    };
-    let mut error = Error::explain(kind, format!("secret detail of {class}"));
-    error.set_retry(how.retry);
-    Err(match how.upstream {
-        true => error.into_up().into(),
-        false => error.into(),
-    })
-}
-
-async fn panicking() -> ApiResult {
-    panic!("a handler panicked")
 }
 
 fn routes() -> Router {
     Router::new()
-        .route("/ok", get(|| async { ApiResult::<()>::Ok(ApiResponse::Ok) }))
         .route(
-            "/data",
-            get(|| async { ApiResult::Ok(ApiResponse::Data(json!({"id": 7}))) }),
+            "/ok",
+            get(|| async { ApiResult::<()>::Ok(ApiResponse::Ok) }),
         )
         .route(
-            "/created",
-            post(|| async { ApiResult::Ok(ApiResponse::Created(json!({"id": 8}))) }),
+            "/missing-device",
+            get(|| async {
+                ApiResult::<()>::Err(Error::explain(kinds::NOT_FOUND, "no device 7").into())
+            }),
         )
-        .route("/error/{class}", get(failing))
+        .route(
+            "/broken",
+            get(|| async {
+                ApiResult::<()>::Err(Error::explain(kinds::INTERNAL, "secret detail").into())
+            }),
+        )
         .route(
             "/slow",
             get(|| async {
@@ -158,18 +101,9 @@ fn routes() -> Router {
                 ApiResult::<()>::Ok(ApiResponse::Ok)
             }),
         )
-        .route("/panic", get(panicking))
         .route(
             "/json",
             post(|Json(device): Json<Device>| async { ApiResult::Ok(ApiResponse::Data(device)) }),
-        )
-        .route(
-            "/query",
-            get(|Query(page): Query<Page>| async move { ApiResult::Ok(ApiResponse::Data(page.page)) }),
-        )
-        .route(
-            "/path/{n}",
-            get(|UrlPath(n): UrlPath<u32>| async move { ApiResult::Ok(ApiResponse::Data(n)) }),
         )
         .route(
             "/log",
@@ -177,10 +111,6 @@ fn routes() -> Router {
                 tracing::info!("inside the handler");
                 ApiResult::<()>::Ok(ApiResponse::Ok)
             }),
-        )
-        .route(
-            "/teapot",
-            get(|| async { (StatusCode::IM_A_TEAPOT, "short and stout").into_response() }),
         )
         .route(
             "/file",
@@ -216,7 +146,7 @@ impl Reply {
     /// The envelope's status, code and description.
     fn envelope(&self) -> (String, u16, String) {
         let json = self.json();
-        let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
+        let keys = json.as_object().unwrap().keys();
         assert_eq!(
             keys.len(),
             3,
@@ -331,7 +261,7 @@ fn failures_to_stderr() {
 }
 
 #[test]
-fn the_http_contract() {
+fn http_servers_keep_the_contract_over_connections() {
     let root = std::env::temp_dir().join(format!("rivium-http-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -354,99 +284,55 @@ fn the_http_contract() {
     failures_to_stderr();
     let (http, admin) = (addr_of(&root, "http"), addr_of(&root, "admin"));
 
-    // §2.1: success without data is the envelope; data is bare JSON.
+    // The settings of each server reach its contract layer: the request timeout, the body
+    // limit and whether server errors show their detail.
+    let slow = get_(http, "/slow");
+    let id = slow.request_id().to_string();
+    let expected = format!("service unavailable (request_id={id})");
+    assert_eq!(slow.envelope(), ("error".into(), 503, expected));
+    assert_eq!(slow.header("retry-after"), Some("1"));
+    assert!(access_line(&root, &id).contains("error.type=\"RequestTimedOut\""));
+    let json_type = [("content-type", "application/json")];
+    let large = format!("{{\"name\":\"{}\"}}", "x".repeat(80));
+    let large = send(http, "POST", "/json", &json_type, &large);
+    assert_eq!(
+        large.envelope(),
+        ("error".into(), 413, "Payload Too Large".into())
+    );
+    let small = send(http, "POST", "/json", &json_type, r#"{"name":"printer"}"#);
+    assert_eq!(
+        (small.status, small.body.as_str()),
+        (200, r#"{"name":"printer"}"#)
+    );
+    let hidden = get_(http, "/broken");
+    let id = hidden.request_id().to_string();
+    let expected = format!("internal error (request_id={id})");
+    assert_eq!(hidden.envelope(), ("error".into(), 500, expected));
+    let line = access_line(&root, &id);
+    assert!(
+        line.contains(" ERROR ") && line.contains("error.context=\"secret detail\""),
+        "{line}"
+    );
+    let exposed = get_(admin, "/broken");
+    assert_eq!(
+        exposed.envelope().2,
+        "secret detail",
+        "expose_internal_detail"
+    );
+    let unobserved = exposed.request_id().to_string();
+
+    // Answers through the envelope, with request ids in the response and in every line the
+    // request logs.
     let ok = get_(http, "/ok");
     assert_eq!(
         (ok.status, ok.body.as_str()),
         (200, r#"{"status":"success","code":200,"description":""}"#)
     );
-    assert_eq!(ok.header("content-type"), Some("application/json"));
-    let data = get_(http, "/data");
-    assert_eq!((data.status, data.body.as_str()), (200, r#"{"id":7}"#));
-    let created = send(http, "POST", "/created", &[], "");
+    let missing = get_(http, "/missing-device");
     assert_eq!(
-        (created.status, created.body.as_str()),
-        (201, r#"{"id":8}"#)
+        missing.envelope(),
+        ("error".into(), 404, "no device 7".into())
     );
-
-    // §2.2: each class, its status, and what the caller is told.
-    let cases: [(&str, u16, &str, &str); 14] = [
-        ("InvalidInput", 400, "secret detail of InvalidInput", "INFO"),
-        ("InvalidBody", 406, "secret detail of InvalidBody", "INFO"),
-        ("Unauthenticated", 401, "unauthenticated", "INFO"),
-        ("Unauthenticated?titled=true", 401, "token expired", "INFO"),
-        ("Forbidden", 403, "forbidden", "INFO"),
-        ("NotFound", 404, "secret detail of NotFound", "INFO"),
-        ("Conflict", 409, "secret detail of Conflict", "INFO"),
-        (
-            "TooManyRequests",
-            429,
-            "secret detail of TooManyRequests",
-            "WARN",
-        ),
-        (
-            "Unavailable",
-            503,
-            "service unavailable (request_id=",
-            "WARN",
-        ),
-        ("Timeout", 504, "timeout (request_id=", "WARN"),
-        ("Internal", 500, "internal error (request_id=", "ERROR"),
-        (
-            "NotFound?upstream=true",
-            500,
-            "internal error (request_id=",
-            "ERROR",
-        ),
-        (
-            "TooManyRequests?upstream=true",
-            503,
-            "service unavailable (request_id=",
-            "WARN",
-        ),
-        ("Timeout?upstream=true", 504, "timeout (request_id=", "WARN"),
-    ];
-    for (path, status, description, level) in cases {
-        let reply = get_(http, &format!("/error/{path}"));
-        let (outcome, code, said) = reply.envelope();
-        assert_eq!((outcome.as_str(), code), ("error", status), "{path}");
-        let id = reply.request_id().to_string();
-        match description.ends_with('=') {
-            true => assert_eq!(said, format!("{description}{id})"), "{path}"),
-            false => assert_eq!(said, description, "{path}"),
-        }
-        assert_eq!(reply.header("retry-after"), None, "{path}");
-        let line = access_line(&root, &id);
-        assert!(line.contains(&format!(" {level} ")), "{path}: {line}");
-        assert!(
-            line.contains("error.type=\"Failing\"") || path.contains("titled"),
-            "{line}"
-        );
-        assert!(line.contains("error.context=\"secret detail of"), "{line}");
-    }
-    for path in [
-        "TooManyRequests?",
-        "Unavailable?",
-        "TooManyRequests?upstream=true&",
-    ] {
-        let reply = get_(http, &format!("/error/{path}retry=true"));
-        assert_eq!(reply.header("retry-after"), Some("1"), "{path}");
-    }
-    let reply = get_(http, "/error/Timeout?retry=true");
-    assert_eq!(
-        reply.header("retry-after"),
-        None,
-        "only 429 and 503 carry Retry-After"
-    );
-    let exposed = get_(admin, "/error/Internal");
-    assert_eq!(
-        exposed.envelope().2,
-        "secret detail of Internal",
-        "expose_internal_detail"
-    );
-    let unobserved = exposed.request_id().to_string();
-
-    // §2.3: errors of the framework.
     let unmatched = get_(http, "/nope");
     assert_eq!(
         unmatched.envelope(),
@@ -458,115 +344,6 @@ fn the_http_contract() {
         ("error".into(), 405, "Method Not Allowed".into())
     );
     assert_eq!(method.header("allow"), Some("GET,HEAD"));
-    let json_type = [("content-type", "application/json")];
-    let large = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        &format!("{{\"name\":\"{}\"}}", "x".repeat(80)),
-    );
-    assert_eq!(
-        large.envelope(),
-        ("error".into(), 413, "Payload Too Large".into())
-    );
-    let device = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        r#"{"name":"printer","port":9100}"#,
-    );
-    assert_eq!(
-        (device.status, device.body.as_str()),
-        (200, r#"{"name":"printer","port":9100}"#)
-    );
-    let bad = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        r#"{"name":"printer","port":"x"}"#,
-    );
-    let (_, code, said) = bad.envelope();
-    assert_eq!(code, 406);
-    assert!(
-        said.starts_with("port: invalid type: string \"x\", expected u16 at line 1 column"),
-        "{said}"
-    );
-    let missing = send(http, "POST", "/json", &json_type, r#"{"name":"printer"}"#);
-    assert!(
-        missing
-            .envelope()
-            .2
-            .starts_with("missing field `port` at line 1"),
-        "{}",
-        missing.body
-    );
-    let trailing = send(
-        http,
-        "POST",
-        "/json",
-        &json_type,
-        r#"{"name":"p","port":1} x"#,
-    );
-    assert!(
-        trailing.envelope().2.starts_with("trailing characters"),
-        "{}",
-        trailing.body
-    );
-    let untyped = send(
-        http,
-        "POST",
-        "/json",
-        &[],
-        r#"{"name":"printer","port":9100}"#,
-    );
-    let said = untyped.envelope();
-    assert_eq!(
-        (said.1, said.2.as_str()),
-        (
-            406,
-            "expected a JSON body, with Content-Type: application/json"
-        )
-    );
-    let query = get_(http, "/query?page=two");
-    let (_, code, said) = query.envelope();
-    assert_eq!(code, 400);
-    assert!(
-        said.contains("page: invalid digit found in string"),
-        "{said}"
-    );
-    let path = get_(http, "/path/seven");
-    let (_, code, said) = path.envelope();
-    assert_eq!(code, 400);
-    assert!(said.contains("Cannot parse `seven` to a `u32`"), "{said}");
-    let slow = get_(http, "/slow");
-    let id = slow.request_id().to_string();
-    assert_eq!(
-        slow.envelope().2,
-        format!("service unavailable (request_id={id})")
-    );
-    assert_eq!((slow.status, slow.header("retry-after")), (503, Some("1")));
-    assert!(access_line(&root, &id).contains("error.type=\"RequestTimedOut\""));
-    let panicked = get_(http, "/panic");
-    let id = panicked.request_id().to_string();
-    assert_eq!(
-        panicked.envelope(),
-        (
-            "error".into(),
-            500,
-            format!("internal error (request_id={id})")
-        )
-    );
-    assert!(log(&root).contains("panic.message=\"a handler panicked\""));
-    let teapot = get_(http, "/teapot");
-    assert_eq!(
-        teapot.envelope(),
-        ("error".into(), 418, "I'm a teapot".into())
-    );
-
-    // §2.4: request ids, in the response and in every line the request logs.
     let given = send(http, "GET", "/log", &[("x-request-id", "abc-123")], "");
     assert_eq!(given.request_id(), "abc-123");
     let log_text = log(&root);
@@ -587,30 +364,21 @@ fn the_http_contract() {
         line.contains(" INFO ") && !line.contains("error."),
         "{line}"
     );
-    for invalid in ["has space", &"x".repeat(129)] {
-        let reply = send(http, "GET", "/ok", &[("x-request-id", invalid)], "");
-        let id = reply.request_id();
-        assert!(
-            id.len() == 36 && id.as_bytes()[14] == b'7',
-            "a UUIDv7, not {id}"
-        );
-    }
-    let seen = SEEN.lock().unwrap();
-    let last = seen.iter().find(|seen| seen.3 == "abc-123").unwrap();
-    assert_eq!(last.0, "GET");
-    assert_eq!(
-        (last.1.as_deref(), last.2, last.4.as_deref()),
-        (Some("/log"), 200, None)
-    );
-    let failed = seen.iter().find(|seen| seen.2 == 409).unwrap();
-    assert_eq!(
-        (failed.1.as_deref(), failed.4.as_deref()),
-        (Some("/error/{class}"), Some("Failing"))
-    );
-    let unrouted = seen.iter().find(|seen| seen.2 == 404 && seen.1.is_none());
-    assert!(unrouted.is_some(), "an unknown route has no route");
+    let generated = get_(http, "/ok");
+    let id = generated.request_id();
     assert!(
-        !seen.iter().any(|seen| seen.3 == unobserved),
+        id.len() == 36 && id.as_bytes()[14] == b'7',
+        "a UUIDv7, not {id}"
+    );
+
+    // Each server tells its own observers only.
+    let seen = SEEN.lock().unwrap();
+    assert!(
+        seen.iter().any(|seen| seen == "abc-123"),
+        "the observer sees its server"
+    );
+    assert!(
+        !seen.contains(&unobserved),
         "only the observed server reports"
     );
     drop(seen);
