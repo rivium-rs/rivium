@@ -6,19 +6,19 @@
 //! | Request | Answer |
 //! | --- | --- |
 //! | `GET /api/logs/kinds` | `[{"kind":"service"},{"kind":"access"}]`: the kinds there are files for |
-//! | `POST /api/logs/exports` with `{"from":"2026-10-01","to":"2026-10-08","kinds":["service"]}` | 201 `{"id":3}`; all kinds when `kinds` is left out |
+//! | `POST /api/logs/exports` with `{"from":"2026-10-01","to":"2026-10-08","kinds":["service"]}` | 201 `{"id":3}`; all kinds when `kinds` is left out; 400 `{"unknown":["audit"],"kinds":["service","access"]}` for kinds the binding does not know |
 //! | `GET /api/logs/exports/{id}` | `{"percent":40,"state":"running"}`; `"error"` too once failed |
 //! | `DELETE /api/logs/exports/{id}` | cancels the export, or removes its archive |
 //! | `GET /api/logs/exports/{id}/archive` | the zip archive, which can be downloaded in ranges |
 
 use axum::Router;
 use axum::extract::{Request, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use rivium::error::{Error, kinds};
 use rivium::log::{Date, ExportId, ExportRequest, ExportState, LogExporter};
 use rivium_http::extract::{Json, Path};
-use rivium_http::{ApiError, ApiResponse, ApiResult, file_response};
+use rivium_http::{ApiError, ApiResponse, ApiResult, NoEnvelope, file_response};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -54,22 +54,40 @@ struct Start {
     kinds: Vec<String>,
 }
 
-async fn start(State(exporter): State<LogExporter>, Json(body): Json<Start>) -> ApiResult<Value> {
-    let mut sinks = Vec::new();
-    for kind in &body.kinds {
-        let Some((_, sink)) = KINDS.iter().find(|(known, _)| known == kind) else {
-            let why = format!("no kind of log is named {kind:?}");
-            return Err(Error::explain(kinds::INVALID_INPUT, why).into());
-        };
-        sinks.push(sink.to_string());
+async fn start(
+    State(exporter): State<LogExporter>,
+    Json(body): Json<Start>,
+) -> Result<Response, ApiError> {
+    let sink = |kind: &String| {
+        KINDS
+            .iter()
+            .find(|(known, _)| known == kind)
+            .map(|(_, sink)| *sink)
+    };
+    let unknown: Vec<&String> = body
+        .kinds
+        .iter()
+        .filter(|kind| sink(kind).is_none())
+        .collect();
+    if !unknown.is_empty() {
+        // The clients' own answer instead of the envelope: what they asked for that does not
+        // exist, and what does.
+        let known: Vec<&str> = KINDS.iter().map(|(kind, _)| *kind).collect();
+        let answer = ApiResponse::Data(json!({ "unknown": unknown, "kinds": known }));
+        return Ok((StatusCode::BAD_REQUEST, NoEnvelope, answer).into_response());
     }
     let request = ExportRequest {
         from: body.from,
         to: body.to,
-        sinks,
+        sinks: body
+            .kinds
+            .iter()
+            .filter_map(sink)
+            .map(String::from)
+            .collect(),
     };
     let id = exporter.start(request)?;
-    Ok(ApiResponse::Created(json!({ "id": id })))
+    Ok(ApiResponse::Created(json!({ "id": id })).into_response())
 }
 
 async fn progress(

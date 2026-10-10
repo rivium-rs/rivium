@@ -1,6 +1,7 @@
 //! An HTTP API on Rivium's process host: a small device registry that answers with the status
 //! envelope ([`devices`]), the probes `/livez` and `/readyz`, and the binding of Rivium's log
-//! export to the HTTP protocol of the service's clients ([`logs`]).
+//! export to the HTTP protocol of the service's clients ([`logs`]). A layer outside the contract
+//! layer takes the request id from a W3C `traceparent` header ([`trace_id`]).
 //!
 //! ```toml
 //! [http]
@@ -22,8 +23,11 @@
 
 use std::net::SocketAddr;
 
+use axum::extract::Request;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use rivium::{App, AppContext, Result, Service};
-use rivium_http::{HttpServer, HttpSettings};
+use rivium_http::{HttpServer, HttpSettings, RequestId};
 use serde::{Deserialize, Serialize};
 
 pub mod devices;
@@ -39,8 +43,26 @@ impl App for Api {
 
     fn services(config: &Config, ctx: &AppContext) -> Result<Vec<Box<dyn Service>>> {
         let router = devices::router().merge(logs::router(ctx.log_exporter().clone()));
-        Ok(vec![Box::new(HttpServer::new(&config.http, router, ctx))])
+        let server = HttpServer::new(&config.http, router, ctx);
+        Ok(vec![Box::new(server.layer(middleware::from_fn(trace_id)))])
     }
+}
+
+/// Makes the trace id of a W3C `traceparent` header (`00-<trace id>-<parent id>-<flags>`) the
+/// request id: the contract layer keeps an id that a layer outside it set, returns it in
+/// `x-request-id` and logs every line of the request with it. Without the header, the contract
+/// layer's own rules apply.
+pub async fn trace_id(mut request: Request, next: Next) -> Response {
+    let header = request.headers().get("traceparent");
+    let traceparent = header
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let trace = traceparent.split('-').nth(1);
+    let valid = |id: &&str| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit());
+    if let Some(id) = trace.filter(valid).map(RequestId::new) {
+        request.extensions_mut().insert(id);
+    }
+    next.run(request).await
 }
 
 /// The configuration.

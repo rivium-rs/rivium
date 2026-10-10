@@ -81,7 +81,40 @@ instead of working around it here.
 - Log with `tracing`. Spans of services and tasks are added by Rivium.
 - To split the log into files, add `[[log.files]]` categories whose filters name modules, and
   turn those modules off in `log.file.filter`. Filter by module (target), not by span. Rivium's
-  docs/architecture.md, "Splitting the log by module", has an example.
+  docs/architecture.md, "Splitting the log by module", has an example.{% if http %}
+
+## HTTP
+
+- Handlers return `ApiResult`: `ApiResponse` for data, `ApiError` for failures, which answer with
+  the status envelope and the status of their class; `rivium_http::extract::{Json, Query, Path}`
+  answer bad input the same way. A response that keeps a body of its own, such as an error
+  format that older clients expect, carries `NoEnvelope`: `(StatusCode::CONFLICT, NoEnvelope,
+  body)`.
+- `HttpServer` puts the router in the contract layer: request ids, the access log, the request
+  timeout, panics and the envelope for every error. A layer added to the router
+  (`Router::layer`, `route_layer`) runs inside it, which suits authentication per route. CORS,
+  compression and whatever must see the final response go outside, with `HttpServer::layer` in
+  `services()`: inside, compression would garble the envelope and CORS would miss the answers to
+  timeouts and panics. A layer outside may set the request id by rules of its own
+  (`RequestId::new`, such as from `traceparent`); handlers extract `RequestId`.
+- A long response, such as server-sent events or a streamed download, reads
+  `Extension<StopSignal>` and ends once `is_stopping()`; otherwise it makes the stop time out.
+- Routes that must wait for the other services ("start HTTP last") get a gate that answers 503
+  until the run is ready:
+
+  ```rust
+  let readiness = ctx.readiness().clone();
+  let gate = axum::middleware::from_fn(move |request: Request, next: Next| {
+      let ready = readiness.is_ready();
+      async move {
+          match ready {
+              true => next.run(request).await,
+              false => ApiError(Error::explain(kinds::UNAVAILABLE, "starting")).into_response(),
+          }
+      }
+  });
+  let router = api::router().route_layer(gate);
+  ```{% endif %}
 
 ## Dependencies
 
