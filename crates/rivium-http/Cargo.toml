@@ -1,6 +1,6 @@
 [package]
 name = "rivium-http"
-description = "axum integration for Rivium: HTTP server service, status envelope, probes, access log"
+description = "axum integration for Rivium: the HTTP contract as a layer and its primitives, and an HTTP server service"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
