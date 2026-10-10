@@ -44,7 +44,7 @@ Rivium works. The examples show the crates at work:
 | --- | --- |
 | `rivium-error` | The error type: kind, class, responsible party, retry hint, context, cause chain and log fields |
 | `rivium` | Configuration, logging, the service lifecycle kernel, the process host and the embedded host |
-| `rivium-http` | axum integration: HTTP server service, status envelope, request ids, access log, probes |
+| `rivium-http` | axum integration: the HTTP contract (status envelope, request ids, access log) as a contract layer and its primitives, and an HTTP server service with probes |
 | `rivium-jni` | JNI adapter for the embedded host (generated `JNI_OnLoad` and native methods) |
 | `rivium-test` | Test support: scripted services, log capture, process tools, lifecycle contract suites (dev-dependency only) |
 
