@@ -1,6 +1,6 @@
 //! The program as its clients use it: the device registry with the status envelope, the probes,
-//! and log export over HTTP from the first request to the download. Not built for Android, where
-//! services run embedded.
+//! request ids from `traceparent`, and log export over HTTP from the first request to the
+//! download. Not built for Android, where services run embedded.
 #![cfg(not(target_os = "android"))]
 
 use std::io::{Cursor, Read, Write};
@@ -59,13 +59,14 @@ impl Reply {
     }
 }
 
-/// Sends one HTTP/1.1 request, with a JSON body when there is one, and reads the response.
+/// Sends one HTTP/1.1 request, with a JSON body and another header when there are, and reads the
+/// response.
 fn send(
     addr: SocketAddr,
     method: &str,
     path: &str,
     body: Option<&str>,
-    range: Option<&str>,
+    header: Option<(&str, &str)>,
 ) -> Reply {
     let mut stream = TcpStream::connect(addr).unwrap();
     stream
@@ -77,8 +78,8 @@ fn send(
         "Content-Type: application/json\r\nContent-Length: {}\r\n",
         body.len()
     );
-    if let Some(range) = range {
-        head += &format!("Range: {range}\r\n");
+    if let Some((name, value)) = header {
+        head += &format!("{name}: {value}\r\n");
     }
     stream
         .write_all(format!("{head}\r\n{body}").as_bytes())
@@ -180,6 +181,20 @@ fn devices_answer_with_the_status_envelope() {
     assert_eq!(get(addr, "/api/devices/1").error().0, 404);
     assert_eq!(get(addr, "/livez").status, 200);
     assert_eq!(get(addr, "/readyz").json()["status"], "ready");
+
+    // A client's `traceparent` sets the request id; without one, the server makes one.
+    let traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    let traced = send(
+        addr,
+        "GET",
+        "/api/devices",
+        None,
+        Some(("traceparent", traceparent)),
+    );
+    let trace = Some("4bf92f3577b34da6a3ce929d0e0e4736");
+    assert_eq!(traced.header("x-request-id"), trace);
+    let made = get(addr, "/api/devices");
+    assert!(made.header("x-request-id").is_some_and(|id| id.len() == 36));
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -222,19 +237,19 @@ fn logs_export_over_http_from_the_request_to_the_download() {
         access.contains("http.route=\"/api/devices\"") && access.contains("http.status=201"),
         "{access}"
     );
-    let again = send(addr, "GET", &archive, None, Some("bytes=0-3"));
+    let again = send(addr, "GET", &archive, None, Some(("Range", "bytes=0-3")));
     assert_eq!(
         (again.status, again.body.as_slice()),
         (206, b"PK\x03\x04".as_slice())
     );
 
-    // What the binding refuses, with the status of the error.
+    // What the binding refuses: kinds it does not know in the clients' own format, the rest
+    // with the status of the error.
+    let unknown = json!({"from": today, "to": today, "kinds": ["audit", "service"]});
+    let unknown = post(addr, "/api/logs/exports", &unknown.to_string());
+    let answer = json!({"unknown": ["audit"], "kinds": ["service", "access"]});
+    assert_eq!((unknown.status, unknown.json()), (400, answer));
     let refused = [
-        (
-            json!({"from": today, "to": today, "kinds": ["audit"]}),
-            400,
-            "no kind of log is named \"audit\"",
-        ),
         (
             json!({"from": "2020-01-01", "to": "2020-01-02"}),
             404,
