@@ -31,7 +31,11 @@ now.
 
 Since 0.1.0 the verification is being rebuilt. CI on `main` runs the workspace tests natively on
 `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin` and `x86_64-pc-windows-gnu` (`ci/test`) and on
-Rust 1.92 (`ci/msrv`). The other jobs of the table, the hosting, glibc, Android and JVM checks,
+Rust 1.92 (`ci/msrv`). These jobs also run the independent private process suite: CLI,
+configuration, fault/exit diagnostics and the public process contract on all three native
+targets; Unix signal and native exec-runner checks on Linux/macOS only. Windows CTRL_C and
+other real console control events remain for the hosting verification; they are not simulated
+as a passing Unix signal test. The other jobs of the table, the hosting, glibc, Android and JVM checks,
 return with the rebuild; until then the targets they cover are verified as of 0.1.0 only.
 
 ## 0.1.0

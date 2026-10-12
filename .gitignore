@@ -8,3 +8,9 @@
 /.tools/
 
 .DS_Store
+
+# A direct Cargo invocation in the private workspace may use its local target directory.
+/tests/target/
+
+# Python script imports/self-tests.
+__pycache__/

@@ -301,4 +301,9 @@ leaves before the answer, or that is still running at the stop deadline has neit
 
 Each crate's tests, its unit tests and those in its `tests/` directory, run in CI on Linux, macOS
 and Windows and on Rust 1.92. [platforms.md](platforms.md) lists each target and how far it was
-verified for 0.1.0; the cross-target, hosting and drill verification of 0.1.0 is being rebuilt.
+verified for 0.1.0. `tests/` is a separate non-published workspace; its minimal App and thin
+process binary verify real CLI/exit/diagnostic boundaries and exercise the public process
+contract without examples. `scripts/test-hosts.sh <target>` builds the ordinary subject separately
+from the driver, requires all suite entries, and records artifact/lock hashes. Its native runner
+probe does not prove a cross image or emulator. Cross-target, JNI, hosting and drill verification
+are still being rebuilt.

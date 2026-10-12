@@ -58,13 +58,21 @@ verified for 0.1.0. The minimum supported Rust version is 1.92.
 ## Development
 
 CI runs formatting, clippy, cargo-deny and the workspace tests on Linux, macOS and Windows, and
-the tests on Rust 1.92. The cross-target, hosting and release verification of 0.1.0 is being
+the tests on Rust 1.92. The private process suite also runs in these jobs: the script builds
+an ordinary subject first, selects its current Cargo artifact, and tests it with a separately
+built driver. Root workspace tests still cover only the five release crates; `tests/` is an
+independent, non-published workspace. JSON receipts under `target/verify/reports/` record locks,
+toolchain, subject hash and results; no previous target or PATH program is substituted.
+The cross-target, hosting and release verification of 0.1.0 is being
 rebuilt. The same checks locally:
 
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --locked
+
+# Independent private process verification (Python >=3.11; installed native Rust target).
+scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
 ```
 
 Maintainers install the git hooks that run the public-content check once:

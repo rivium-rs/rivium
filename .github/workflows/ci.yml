@@ -27,6 +27,7 @@ jobs:
   lint:
     name: ci/lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
@@ -34,8 +35,12 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
       - run: cargo fmt --all --check
+      - run: cargo fmt --manifest-path tests/Cargo.toml --all --check
+      - run: cargo clippy --manifest-path tests/Cargo.toml --workspace --all-targets --locked -- -D warnings
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_process*.py'
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo deny --locked check
+      - run: cargo deny --manifest-path tests/Cargo.toml --locked check
       - name: Lint the scripts and run their self-tests (planted violations)
         run: |
           shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh crates/rivium-jni/tests/jvm/run.sh
@@ -52,15 +57,24 @@ jobs:
           - { name: macos, os: macos-latest, toolchain: stable }
           - { name: windows-gnu, os: windows-latest, toolchain: stable-x86_64-pc-windows-gnu }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal && rustup default ${{ matrix.toolchain }}
       - run: cargo test --workspace --locked
+      - name: Ordinary process subject and public process contracts
+        shell: bash
+        run: scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
 
   msrv:
     name: ci/msrv
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install 1.92 --profile minimal
       - run: cargo +1.92 test --workspace --all-features --locked
+      - name: Ordinary process contracts on the MSRV
+        env:
+          RUSTUP_TOOLCHAIN: '1.92'
+        run: scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
