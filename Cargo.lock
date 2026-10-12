@@ -811,8 +811,7 @@ name = "tests-integration"
 version = "0.0.0"
 dependencies = [
  "libc",
- "serde_json",
- "test-app",
+ "rivium-test",
 ]
 
 [[package]]

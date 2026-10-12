@@ -4,71 +4,84 @@
 
 use std::env;
 use std::path::PathBuf;
-use std::process::{Command, ExitStatus};
-use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// Send a Unix signal to a child process, reporting a failed delivery.
 #[cfg(unix)]
-fn send_signal(pid: u32, sig: libc::c_int) {
-    // SAFETY: kill() is called with a valid process ID and signal number.
-    // The process may have already exited, in which case kill returns -1.
-    unsafe {
-        libc::kill(pid as libc::pid_t, sig);
-    }
-}
-
-/// Get the path to a test-app binary by name.
-///
-/// The name should match a [[bin]] target in test-app/Cargo.toml,
-/// with hyphens replaced by underscores (e.g., "host_sigint" for "host-sigint").
-pub fn test_binary(name: &str) -> PathBuf {
-    let env_name = format!("CARGO_BIN_EXE_{}", name);
-    PathBuf::from(
-        env::var(&env_name)
-            .unwrap_or_else(|_| panic!("{} not set. Did you run with cargo test?", env_name)),
-    )
-}
-
-/// Spawn a test binary and return a handle for interaction.
-pub struct TestProcess {
-    child: std::process::Child,
-}
-
-impl TestProcess {
-    /// Spawn a test binary with optional arguments.
-    pub fn spawn(binary_name: &str, args: &[&str]) -> std::io::Result<Self> {
-        let path = test_binary(binary_name);
-        let child = Command::new(path).args(args).spawn()?;
-        Ok(Self { child })
-    }
-
-    /// Send a signal to the process (Unix only).
-    #[cfg(unix)]
-    pub fn signal(&mut self, sig: libc::c_int) -> std::io::Result<()> {
-        send_signal(self.child.id(), sig);
+pub fn send_signal(pid: u32, sig: libc::c_int) -> std::io::Result<()> {
+    // SAFETY: kill only inspects the supplied PID and signal; it does not access memory.
+    if unsafe { libc::kill(pid as libc::pid_t, sig) } == -1 {
+        Err(std::io::Error::last_os_error())
+    } else {
         Ok(())
     }
+}
 
-    /// Wait for the process to exit with a timeout.
-    pub fn wait_timeout(&mut self, timeout: Duration) -> std::io::Result<Option<ExitStatus>> {
-        let start = std::time::Instant::now();
-        loop {
-            match self.child.try_wait()? {
-                Some(status) => return Ok(Some(status)),
-                None if start.elapsed() > timeout => return Ok(None),
-                None => std::thread::sleep(Duration::from_millis(50)),
-            }
+/// Get a prebuilt test-app binary; use underscores in place of hyphens in `name`.
+pub fn test_binary(name: &str) -> PathBuf {
+    let env_name = format!("CARGO_BIN_EXE_{name}");
+    let path = PathBuf::from(env::var(&env_name).unwrap_or_else(|_| panic!("{env_name} not set")));
+    assert!(
+        path.is_file(),
+        "{} is missing; run cargo build --package test-app --bins --locked with the same \
+         toolchain, target, profile and target directory as the tests",
+        path.display()
+    );
+    path
+}
+
+/// A test's isolated root directory, removed when dropped after its child process.
+pub struct TestRoot(PathBuf);
+
+/// Create an isolated root without reusing or deleting another test's files.
+pub fn test_root() -> TestRoot {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    loop {
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = env::temp_dir().join(format!("rivium-integration-{}-{n}", std::process::id()));
+        match std::fs::create_dir(&path) {
+            Ok(()) => return TestRoot(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("cannot create {}: {error}", path.display()),
         }
-    }
-
-    /// Kill the process.
-    pub fn kill(&mut self) -> std::io::Result<()> {
-        self.child.kill()
     }
 }
 
-impl Drop for TestProcess {
+impl TestRoot {
+    /// The command-line arguments selecting this root.
+    pub fn args(&self) -> [&str; 2] {
+        [
+            "--root",
+            self.0.to_str().expect("UTF-8 temporary directory"),
+        ]
+    }
+}
+
+impl Drop for TestRoot {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roots_are_isolated_and_removed() {
+        let first = test_root();
+        let second = test_root();
+        assert_ne!(first.0, second.0);
+        let path = first.0.clone();
+        std::fs::write(path.join("log"), "test").unwrap();
+        drop(first);
+        assert!(!path.exists());
+        assert!(second.0.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn invalid_signal_is_reported() {
+        assert!(send_signal(std::process::id(), -1).is_err());
     }
 }

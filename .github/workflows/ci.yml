@@ -55,6 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal && rustup default ${{ matrix.toolchain }}
+      - run: cargo build --package test-app --bins --locked
       - run: cargo test --workspace --locked
 
   msrv:
@@ -63,4 +64,5 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install 1.92 --profile minimal
+      - run: cargo +1.92 build --package test-app --bins --all-features --locked
       - run: cargo +1.92 test --workspace --all-features --locked

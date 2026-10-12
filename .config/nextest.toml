@@ -5,9 +5,7 @@
 # Retry flaky tests once automatically.
 retries = 1
 
-# Signal tests in tests-integration must run in separate processes.
-# This is already enforced per-package via tests-integration's Cargo.toml,
-# but we set a global default here for consistency.
+# Nextest runs each test in its own process; no package-wide serialization is needed.
 test-threads = "num-cpus"
 
 # Slow tests get 30 seconds, then 3 grace periods.
@@ -21,8 +19,3 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 # Show test output for failures only.
 failure-output = "immediate-final"
 success-output = "never"
-
-[[profile.default.overrides]]
-# tests-integration runs process-level tests that must be isolated.
-filter = "package(tests-integration)"
-test-threads = 1

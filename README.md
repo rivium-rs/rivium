@@ -64,8 +64,13 @@ rebuilt. The same checks locally:
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo build --package test-app --bins --locked
 cargo test --workspace --locked
 ```
+
+Build the test programs before running the process tests, including with
+`cargo nextest run --package tests-integration --locked`. Use the same toolchain, target,
+profile and target directory for both commands.
 
 Maintainers install the git hooks that run the public-content check once:
 
