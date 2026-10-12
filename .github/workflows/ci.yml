@@ -32,10 +32,17 @@ jobs:
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@0.20.2,cargo-hack@0.6.45,tokei@14.0.0
       - run: cargo fmt --all --check
+      - name: Check each package feature without rewriting manifests
+        # Resolver 3 keeps dev features out of normal check targets; --no-dev-deps rewrites manifests.
+        run: cargo hack --each-feature --workspace check --locked
+      - name: Verify feature checks leave the workspace unchanged
+        run: git diff --exit-code
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo deny --locked check
+      - name: Check library code budgets
+        run: cargo test --package tests-build --test loc_budget --locked
       - name: Lint the scripts and run their self-tests (planted violations)
         run: |
           shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh crates/rivium-jni/tests/jvm/run.sh
@@ -57,7 +64,7 @@ jobs:
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal && rustup default ${{ matrix.toolchain }}
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: cargo-nextest@0.9.145
+          tool: cargo-nextest@0.9.145,tokei@14.0.0
       - run: cargo build --package test-app --bins --locked
       - run: cargo test --workspace --locked
       - name: Run isolated process tests without retries
@@ -69,5 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install 1.92 --profile minimal
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: tokei@14.0.0
       - run: cargo +1.92 build --package test-app --bins --all-features --locked
       - run: cargo +1.92 test --workspace --all-features --locked

@@ -57,13 +57,23 @@ verified for 0.1.0. The minimum supported Rust version is 1.92.
 
 ## Development
 
-CI runs formatting, clippy, cargo-deny and the workspace tests on Linux, macOS and Windows, and
+CI runs formatting, clippy, cargo-deny, feature checks and the workspace tests on Linux, macOS and Windows, and
 the tests on Rust 1.92. The cross-target, hosting and release verification of 0.1.0 is being
-rebuilt. The same checks locally:
+rebuilt. Repository checks require tokei 14.0.0 (Rust code-line counting) and cargo-hack 0.6.45
+(feature checks). Install these tools under `.tools/` and put `.tools/bin` on `PATH`:
+
+```bash
+cargo install --locked --root .tools --version 14.0.0 tokei
+cargo install --locked --root .tools --version 0.6.45 cargo-hack
+export PATH="$PWD/.tools/bin:$PATH"
+```
+
+The same checks locally:
 
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo hack --each-feature --workspace check --locked
 cargo build --package test-app --bins --locked
 cargo test --workspace --locked
 ```
@@ -78,6 +88,13 @@ cargo nextest run --package tests-integration --profile ci --retries 0 --locked
 Use the same toolchain, target, Cargo build profile and target directory for the prebuild and
 tests. The nextest `--profile ci` option selects test-runner settings, not a Cargo build profile.
 Unix signal cases are skipped on Windows; portable exit-code and command-line checks still run.
+
+`cargo test --package tests-build --locked` runs the supply-chain checks separately: complete
+normal/build dependency closures, JNI compile guards, package file boundaries and library code
+budgets. The budgets include Rust tests inside each library directory, but exclude comments and
+blank lines. A missing counter, missing crate or malformed measurement is a failure, not a skip.
+The feature check uses normal build targets under resolver 3; it does not remove dev-dependencies
+from manifests or regenerate the lockfile.
 
 Maintainers install the git hooks that run the public-content check once:
 

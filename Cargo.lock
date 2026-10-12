@@ -803,7 +803,9 @@ name = "tests-build"
 version = "0.0.0"
 dependencies = [
  "rivium",
+ "rivium-jni",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

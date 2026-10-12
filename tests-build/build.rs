@@ -1,10 +1,9 @@
-//! Build script for tests-build.
-//!
-//! Runs build-time assertions and checks for the tests-build package.
+//! Records the target whose dependency closure the tests inspect.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-
-    // Placeholder for future build-time checks.
-    // Examples: verify feature flags, check for jni.h on Android, etc.
+    println!(
+        "cargo:rustc-env=TESTS_BUILD_TARGET={}",
+        std::env::var("TARGET").expect("Cargo target")
+    );
 }
