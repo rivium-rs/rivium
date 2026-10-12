@@ -1,0 +1,22 @@
+[package]
+name = "tests-integration"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+log-export = ["rivium/log-export"]
+
+[dev-dependencies]
+rivium.workspace = true
+rivium-test.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+
+[[test]]
+name = "process"
+path = "tests/process.rs"

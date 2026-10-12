@@ -1,0 +1,17 @@
+[package]
+name = "test-app"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+log-export = ["rivium/log-export"]
+
+[dependencies]
+rivium.workspace = true
+serde = { workspace = true, features = ["derive", "std"] }

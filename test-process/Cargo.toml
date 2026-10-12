@@ -1,0 +1,22 @@
+[package]
+name = "test-process"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+log-export = ["test-app/log-export", "rivium/log-export"]
+
+[dependencies]
+test-app = { path = "../test-app" }
+rivium.workspace = true
+
+[[bin]]
+name = "test-process"
+path = "src/main.rs"
+test = false

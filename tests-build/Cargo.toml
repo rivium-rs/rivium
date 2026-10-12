@@ -1,0 +1,18 @@
+[package]
+name = "tests-build"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rivium-test.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+
+[[test]]
+name = "consumers"
+path = "tests/consumers.rs"

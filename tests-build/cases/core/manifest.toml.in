@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+
+[package]
+name = "core-consumer"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.92"
+publish = false
+
+# Default-off: lock resolution covers export without enabling it in this build.
+[features]
+log-export = ["rivium/log-export"]
+
+[dependencies]
+rivium = { path = @CORE_PATH@, default-features = false@EXPORT@ }

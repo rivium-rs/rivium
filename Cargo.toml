@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "crates/rivium-error", "crates/rivium", "crates/rivium-http", "crates/rivium-jni",
+    "crates/rivium-test", "test-app", "test-process", "tests-integration", "tests-build",
+]
+default-members = [
+    "crates/rivium-error", "crates/rivium", "crates/rivium-http", "crates/rivium-jni", "crates/rivium-test",
+]
 
 [workspace.package]
 version = "0.1.0"
