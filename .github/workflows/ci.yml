@@ -64,7 +64,8 @@ jobs:
       - run: cargo test --workspace --locked
       - name: Ordinary process subject and public process contracts
         shell: bash
-        run: scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
+        run: |
+          scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
 
   msrv:
     name: ci/msrv
@@ -77,4 +78,5 @@ jobs:
       - name: Ordinary process contracts on the MSRV
         env:
           RUSTUP_TOOLCHAIN: '1.92'
-        run: scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
+        run: |
+          scripts/test-hosts.sh "$(rustc -vV | sed -n 's/^host: //p')"
