@@ -179,6 +179,9 @@ def main():
     finally:
         (report / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(f"process verification: {receipt['result']}; receipt {report.relative_to(ROOT)}/receipt.json")
+        # Retain a neutral CI summary without uploading raw logs or absolute checkout paths.
+        summary = json.dumps(receipt, ensure_ascii=True).replace(str(ROOT), "<checkout>")
+        print("process verification receipt: " + summary)
 
 
 if __name__ == "__main__":

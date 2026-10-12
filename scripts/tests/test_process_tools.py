@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import os
+import sys
 
 spec = importlib.util.spec_from_file_location("hosts", Path(__file__).parents[1] / "test-hosts.py")
 hosts = importlib.util.module_from_spec(spec)
@@ -11,6 +13,17 @@ spec.loader.exec_module(hosts)
 
 
 class ProcessInputs(unittest.TestCase):
+    def test_watchdog_is_failure_and_reaps_child(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory)
+            receipt = {"commands": []}
+            env = {name: os.environ[name] for name in hosts.ENV_KEYS if name in os.environ}
+            with self.assertRaisesRegex(RuntimeError, "watchdog/cancellation"):
+                hosts.run([sys.executable, "-c", "import time; time.sleep(30)"],
+                          env, report, "watchdog", receipt, timeout=0.1)
+            self.assertIsNotNone(receipt["commands"][0]["exit"])
+            self.assertTrue((report / "watchdog.log").is_file())
+
     def test_missing_or_filtered_suite_fails(self):
         valid = "\n".join(f"{name}: test" for name in hosts.ENTRIES)
         hosts.require_suite(valid)

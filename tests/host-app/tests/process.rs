@@ -385,6 +385,12 @@ fn host_boundaries() {
             .unwrap(),
         deployed.0.canonicalize().unwrap()
     );
+    assert_eq!(
+        Path::new(identity["resolved"].as_str().unwrap())
+            .file_name()
+            .unwrap(),
+        "relative.txt"
+    );
     control(address, b'F');
     status(&program.wait(), 0);
     assert!(
@@ -416,6 +422,88 @@ fn host_boundaries() {
         control(address, b'F');
         status(&program.wait(), 0);
     }
+
+    // Relative CLI/environment roots and config paths are relative to startup cwd.
+    let relative_root = cwd.0.join("relative-root");
+    std::fs::create_dir(&relative_root).unwrap();
+    for cli_root in [true, false] {
+        let mut command = process::command(&subject());
+        command.current_dir(&cwd.0);
+        if cli_root {
+            command.args(["--root", "relative-root"]);
+        } else {
+            command.env("RIVIUM_VERIFY_ROOT", "relative-root");
+        }
+        command.args([
+            "--set",
+            "verify.case=idle",
+            "--set",
+            "log.console.format=json",
+            "--set",
+            "log.console.filter=info",
+        ]);
+        let program = Running::start(command);
+        let address = program.addr_of("control");
+        let identity = program.wait_for("verify identity", &[]);
+        assert_eq!(
+            Path::new(identity["root"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            relative_root.canonicalize().unwrap()
+        );
+        control(address, b'F');
+        status(&program.wait(), 0);
+    }
+    std::fs::write(
+        cwd.0.join("environment.toml"),
+        "[verify]\ncase = 'idle'\n[log]\nfilter = 'trace'\n",
+    )
+    .unwrap();
+    let mut command = process::command(&subject());
+    command
+        .current_dir(&cwd.0)
+        .args([
+            "check-config",
+            "--root",
+            root.text(),
+            "--set",
+            "verify.case=idle",
+        ])
+        .env("RIVIUM_VERIFY_CONFIG", "environment.toml");
+    let environment_file = Running::start(command).wait();
+    status(&environment_file, 0);
+    assert!(
+        environment_file
+            .stdout
+            .lines()
+            .any(|line| line.contains("log.filter")
+                && line.contains("trace")
+                && line.contains("file "))
+    );
+    let mut command = process::command(&subject());
+    command
+        .current_dir(&cwd.0)
+        .args([
+            "check-config",
+            "--root",
+            root.text(),
+            "--config",
+            "input.toml",
+            "--set",
+            "verify.case=idle",
+        ])
+        .env("RIVIUM_VERIFY_CONFIG", "environment.toml");
+    let cli_file = Running::start(command).wait();
+    status(&cli_file, 0);
+    assert!(
+        cli_file
+            .stdout
+            .lines()
+            .any(|line| line.contains("log.filter")
+                && line.contains("info")
+                && line.contains("default")),
+        "CLI config path must override environment path"
+    );
 
     #[cfg(unix)]
     unix_signals();
