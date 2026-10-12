@@ -1,0 +1,18 @@
+[package]
+name = "tests-build"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.92.0"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Build-time and supply-chain tests for Rivium"
+
+[dependencies]
+rivium = { path = "../crates/rivium" }
+
+[dev-dependencies]
+# Dependencies for consumer tests.
+serde = { version = "1.0", features = ["derive"] }
+
+[lints]
+workspace = true

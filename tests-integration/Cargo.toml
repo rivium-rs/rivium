@@ -1,0 +1,26 @@
+[package]
+name = "tests-integration"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.92.0"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Process-level integration tests for Rivium"
+
+[dependencies]
+test-app = { path = "../test-app" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+serde_json = "1.0"
+
+[dev-dependencies]
+# Test dependencies will be added as needed per phase.
+
+[lints]
+workspace = true
+
+# Nextest configuration: one process per test file to isolate signal handlers.
+[package.metadata.nextest]
+test-threads = 1
+slow-timeout = { period = "30s", terminate-after = 3 }

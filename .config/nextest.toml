@@ -1,0 +1,28 @@
+# Nextest configuration for Rivium.
+# See https://nexte.st/book/configuration.html
+
+[profile.default]
+# Retry flaky tests once automatically.
+retries = 1
+
+# Signal tests in tests-integration must run in separate processes.
+# This is already enforced per-package via tests-integration's Cargo.toml,
+# but we set a global default here for consistency.
+test-threads = "num-cpus"
+
+# Slow tests get 30 seconds, then 3 grace periods.
+slow-timeout = { period = "30s", terminate-after = 3 }
+
+[profile.ci]
+# CI uses more retries to reduce noise from transient failures.
+retries = { backoff = "exponential", count = 2, delay = "1s" }
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# Show test output for failures only.
+failure-output = "immediate-final"
+success-output = "never"
+
+[[profile.default.overrides]]
+# tests-integration runs process-level tests that must be isolated.
+filter = "package(tests-integration)"
+test-threads = 1
