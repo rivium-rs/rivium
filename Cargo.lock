@@ -812,6 +812,7 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "rivium-test",
+ "serde_json",
 ]
 
 [[package]]

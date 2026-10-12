@@ -3,7 +3,7 @@
 #![allow(unsafe_code)]
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Send a Unix signal to a child process, reporting a failed delivery.
@@ -48,6 +48,18 @@ pub fn test_root() -> TestRoot {
 }
 
 impl TestRoot {
+    /// The directory containing this test's configuration and logs.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Read the application's main log after the process has exited and flushed it.
+    pub fn log(&self, name: &str) -> String {
+        let file = self.0.join(format!("logs/{name}/{name}.log"));
+        std::fs::read_to_string(&file)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", file.display()))
+    }
+
     /// The command-line arguments selecting this root.
     pub fn args(&self) -> [&str; 2] {
         [

@@ -13,5 +13,8 @@ rivium-test.workspace = true
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(unix)'.dev-dependencies]
+serde_json = { workspace = true, features = ["std"] }
+
 [lints]
 workspace = true

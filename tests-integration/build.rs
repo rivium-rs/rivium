@@ -8,6 +8,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(qemu)");
     println!("cargo:rerun-if-changed=../test-app");
 
     // List of binary names from test-app/Cargo.toml (with hyphens).
