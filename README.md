@@ -68,9 +68,16 @@ cargo build --package test-app --bins --locked
 cargo test --workspace --locked
 ```
 
-Build the test programs before running the process tests, including with
-`cargo nextest run --package tests-integration --locked`. Use the same toolchain, target,
-profile and target directory for both commands.
+Build the test programs before running the process tests. CI also runs them with
+cargo-nextest 0.9.145, without retries:
+
+```bash
+cargo nextest run --package tests-integration --profile ci --retries 0 --locked
+```
+
+Use the same toolchain, target, Cargo build profile and target directory for the prebuild and
+tests. The nextest `--profile ci` option selects test-runner settings, not a Cargo build profile.
+Unix signal cases are skipped on Windows; portable exit-code and command-line checks still run.
 
 Maintainers install the git hooks that run the public-content check once:
 

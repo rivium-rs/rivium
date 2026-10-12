@@ -55,8 +55,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal && rustup default ${{ matrix.toolchain }}
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-nextest@0.9.145
       - run: cargo build --package test-app --bins --locked
       - run: cargo test --workspace --locked
+      - name: Run isolated process tests without retries
+        run: cargo nextest run --package tests-integration --profile ci --retries 0 --locked
 
   msrv:
     name: ci/msrv
