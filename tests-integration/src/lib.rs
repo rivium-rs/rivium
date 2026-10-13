@@ -22,8 +22,10 @@ pub fn send_signal(pid: u32, sig: libc::c_int) -> std::io::Result<()> {
 
 /// Get a prebuilt test-app binary; use underscores in place of hyphens in `name`.
 pub fn test_binary(name: &str) -> PathBuf {
-    let env_name = format!("CARGO_BIN_EXE_{name}");
-    let path = PathBuf::from(env::var(&env_name).unwrap_or_else(|_| panic!("{env_name} not set")));
+    // Cargo injects rustc-env at runtime only when it launches tests; standalone runners do not.
+    // Every prebuilt test-app binary shares the target/profile directory of host.
+    let binary = format!("{}{}", name.replace('_', "-"), env::consts::EXE_SUFFIX);
+    let path = Path::new(env!("CARGO_BIN_EXE_host")).with_file_name(binary);
     assert!(
         path.is_file(),
         "{} is missing; run cargo build --package test-app --bins --locked with the same \
@@ -81,6 +83,28 @@ impl Drop for TestRoot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_paths_work_without_cargo_environment() {
+        if env::var_os("RIVIUM_TEST_BINARY_PROBE").is_some() {
+            for name in ["host", "host_args"] {
+                assert!(test_binary(name).is_file());
+            }
+            return;
+        }
+
+        let mut command = rivium_test::process::command(&env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "tests::binary_paths_work_without_cargo_environment",
+            ])
+            .env("RIVIUM_TEST_BINARY_PROBE", "1")
+            .env_remove("CARGO_BIN_EXE_host")
+            .env_remove("CARGO_BIN_EXE_host_args");
+        let exited = rivium_test::process::Running::start(command).wait();
+        assert_eq!(exited.code, Some(0), "{exited:?}");
+    }
 
     #[test]
     fn roots_are_isolated_and_removed() {

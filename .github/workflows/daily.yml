@@ -27,9 +27,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: armv7, target: armv7-unknown-linux-gnueabihf, runner: 'qemu@11.0' }
-          - { name: loongarch64, target: loongarch64-unknown-linux-gnu, runner: 'qemu@11.0' }
-          - { name: windows-wine, target: x86_64-pc-windows-gnu, runner: 'wine@10.0' }
+          - { name: armv7, target: armv7-unknown-linux-gnueabihf, runner: 'qemu-user@11.0' }
+          - { name: loongarch64, target: loongarch64-unknown-linux-gnu, runner: 'qemu-user@11.0' }
+          - { name: windows-wine, target: x86_64-pc-windows-gnu, runner: 'wine@10.0.0.0' }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal && rustup default stable
