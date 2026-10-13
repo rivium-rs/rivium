@@ -29,6 +29,10 @@ fn a_second_signal_aborts_with_its_own_number() {
         send_signal(proc.id(), signal).expect("send second signal while stopping");
         let exited = proc.wait();
         assert_eq!(exited.code, Some(code), "second {name}: {}", exited.stderr);
+        assert!(
+            exited.code.is_some(),
+            "second signal must exit with code, not signal termination"
+        );
         assert!(aborting.elapsed() < Duration::from_secs(5));
         assert!(
             exited

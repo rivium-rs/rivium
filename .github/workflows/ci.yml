@@ -35,7 +35,7 @@ jobs:
           tool: cargo-deny@0.20.2,cargo-hack@0.6.45,tokei@14.0.0
       - run: cargo fmt --all --check
       - name: Check each package feature without rewriting manifests
-        # Resolver 3 keeps dev features out of normal check targets; --no-dev-deps rewrites manifests.
+        # Check each feature separately without rewriting manifests; resolver 3 handles dev-deps.
         run: cargo hack --each-feature --workspace check --locked
       - name: Verify feature checks leave the workspace unchanged
         run: git diff --exit-code
