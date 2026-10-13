@@ -22,6 +22,10 @@ ELF
 if [ "${CASE:-}" != no-versions ]; then
   for version in ${VERSIONS:-2.2.5 2.17}; do
     printf '  1: 0 0 FUNC GLOBAL DEFAULT UND function@GLIBC_%s (2)\n' "$version"
+    printf '  000:   2 (GLIBC_%s)\n' "$version"
+    if [ "${CASE:-}" != no-version-names ]; then
+      printf '  0x0010:   Name: GLIBC_%s  Flags: none  Version: 2\n' "$version"
+    fi
   done
 fi
 READER
@@ -45,12 +49,17 @@ VERSIONS=2.17.1 reject 'exceeds GLIBC_2.17' "$work/artifact"
 VERSIONS=2.18446744073709551618 reject 'unrecognized version' "$work/artifact"
 VERSIONS=PRIVATE reject 'unrecognized version' "$work/artifact"
 VERSIONS=ABI_DT_RELR reject 'unrecognized version' "$work/artifact"
+# Keep unknown suffixes intact even when a valid version is also present.
+for version in '2.2-5' '2.2+5' '2.2/5' '2.2(5' '2.2)5' '2.2@5'; do
+  VERSIONS="2.17 $version" reject "unrecognized version GLIBC_$version:" "$work/artifact"
+done
 ELF_CLASS=ELF32 reject 'not ELF64' "$work/artifact"
 ELF_TYPE=REL reject 'not an executable or shared object' "$work/artifact"
 MACHINE=AArch64 reject 'wrong machine' "$work/artifact"
 INTERPRETER=/lib/ld-musl-x86_64.so.1 reject 'wrong or missing interpreter' "$work/artifact"
 LIBC=libother.so reject 'missing dynamic libc dependency' "$work/artifact"
 CASE=no-versions reject 'no GLIBC symbol versions' "$work/artifact"
+CASE=no-version-names reject 'no GLIBC symbol versions' "$work/artifact"
 CASE=reader-failure reject 'readelf failed' "$work/artifact"
 CASE=empty reject 'not ELF64' "$work/artifact"
 CASE=warning reject 'readelf diagnostics' "$work/artifact"

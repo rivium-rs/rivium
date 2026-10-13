@@ -10,7 +10,7 @@ fail() { echo "glibc: $*" >&2; exit 1; }
 
 for artifact in "$@"; do
   [ -s "$artifact" ] || fail "missing or empty artifact: $artifact"
-  "$reader" --wide --file-header --program-headers --dynamic --dyn-syms --version-info "$artifact" \
+  LC_ALL=C "$reader" --wide --file-header --program-headers --dynamic --dyn-syms --version-info "$artifact" \
     > "$work/elf" 2> "$work/errors" || fail "readelf failed: $artifact"
   [ ! -s "$work/errors" ] || { cat "$work/errors" >&2; fail "readelf diagnostics: $artifact"; }
   grep -Eq 'Class:[[:space:]]+ELF64' "$work/elf" || fail "not ELF64: $artifact"
@@ -21,8 +21,12 @@ for artifact in "$@"; do
     grep -Fq '[Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]' "$work/elf" \
       || fail "wrong or missing interpreter: $artifact"
   fi
-  grep -oE 'GLIBC_[A-Za-z0-9_.]+' "$work/elf" | sort -u > "$work/versions" \
-    || fail "no GLIBC symbol versions: $artifact"
+  # Read complete version names, not a whitelist that truncates unknown suffixes.
+  awk 'match($0, /Name: GLIBC_/) {
+    version = substr($0, RSTART + 6)
+    sub(/  Flags: [^[:space:]]+  Version: [0-9]+$/, "", version)
+    print version
+  }' "$work/elf" | sort -u > "$work/versions"
   [ -s "$work/versions" ] || fail "no GLIBC symbol versions: $artifact"
   highest=0.0
   high_minor=0
