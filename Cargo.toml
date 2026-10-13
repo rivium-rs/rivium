@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "test-app", "test-app/jni", "tests-integration", "tests-build"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 # MSRV is a platform commitment: do not raise it without the maintainer's approval.
 rust-version = "1.92"
@@ -12,11 +12,11 @@ repository = "https://github.com/rivium-rs/rivium"
 
 [workspace.dependencies]
 # All Rivium crates share one version and are released together.
-rivium-error = { path = "crates/rivium-error", version = "0.1.0" }
-rivium = { path = "crates/rivium", version = "0.1.0" }
-rivium-http = { path = "crates/rivium-http", version = "0.1.0" }
-rivium-jni = { path = "crates/rivium-jni", version = "0.1.0" }
-rivium-test = { path = "crates/rivium-test", version = "0.1.0" }
+rivium-error = { path = "crates/rivium-error", version = "0.1.1" }
+rivium = { path = "crates/rivium", version = "0.1.1" }
+rivium-http = { path = "crates/rivium-http", version = "0.1.1" }
+rivium-jni = { path = "crates/rivium-jni", version = "0.1.1" }
+rivium-test = { path = "crates/rivium-test", version = "0.1.1" }
 
 # Third-party crates: default features are always off; members enable what they use.
 axum = { version = "0.8", default-features = false }

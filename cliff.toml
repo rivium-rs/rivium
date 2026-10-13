@@ -21,7 +21,7 @@ None.
 - How far each target is verified: \
 [docs/platforms.md](https://github.com/rivium-rs/rivium/blob/{{ version }}/docs/platforms.md). \
 A target without a recorded verification is unverified.
-- A breaking release (a new minor version before 1.0) lists its steps in \
+- Upgrade guidance, including repository-workflow changes that do not change the library API: \
 [docs/upgrading.md](https://github.com/rivium-rs/rivium/blob/{{ version }}/docs/upgrading.md).
 """
 footer = ""

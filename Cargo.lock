@@ -542,7 +542,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rivium"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "log",
@@ -562,14 +562,14 @@ dependencies = [
 
 [[package]]
 name = "rivium-error"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "rivium-http"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "futures-util",
@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "rivium-jni"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "jni",
  "rivium",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "rivium-test"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rivium",
  "serde_json",

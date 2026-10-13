@@ -84,7 +84,7 @@ not interchangeable. The current Android lane checks compilation and JNI ELF pro
 not execution on a device.
 
 See [platform support](docs/platforms.md) for the current verification scope, known gaps and
-the separate [0.1.0 verification record](docs/platforms.md#010).
+[version-specific verification records](docs/platforms.md#release-records).
 
 ## Getting help
 

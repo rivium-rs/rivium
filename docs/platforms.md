@@ -9,6 +9,7 @@ The minimum supported Rust version is **1.92**, checked by `ci/msrv`.
 - [Verification levels](#verification-levels)
 - [Current verification scope](#current-verification-scope)
 - [Release records](#release-records)
+- [0.1.1](#011)
 - [0.1.0](#010)
 
 ## Verification levels
@@ -29,9 +30,9 @@ device testing unless the record explicitly includes it.
 
 ## Current verification scope
 
-The verification toolchain is being rebuilt. The following describes workflows configured in
-this checkout, not a completed release record. **Configuration is not a successful run.**
-Record the candidate's actual results; do not carry the 0.1.0 results forward to a new version.
+The automated verification toolchain is restored. The following describes its configured scope;
+actual results belong to the version-specific records below. **Configuration is not a successful
+run.** Do not carry the 0.1.0 results forward to a new version.
 
 | Target or check | Workflow | Configured coverage and limits |
 | --- | --- | --- |
@@ -73,6 +74,24 @@ The protected release reviewer checks that evidence before approving publication
 presence is not proof of its claims. A T3 target without a matching record remains **unverified**.
 See the [release guide](releasing.md) for the approval and publishing procedure. Historical
 records retain their original scope and dates.
+
+## 0.1.1
+
+Release preparation, 2026-10-13. The candidate aligns all five public crates at 0.1.1, with Rust
+1.92 as the MSRV. The candidate's CI, extended-platform and packaging checks are pending; the
+successful 0.1.0-version preview used while restoring the workflows is not evidence for these
+new package bytes. No publication is implied by this record.
+
+The validation must cover the five native targets, MSRV, desktop JVM, x86_64 glibc 2.17 linking
+and CentOS runtime, ARMv7 and LoongArch QEMU, Windows GNU under Wine, and Android API 30 linking
+and JNI/16 KB ELF checks. Successful results will be recorded with the tested source revision
+and workflow runs before this preparation is considered complete.
+
+The following remain **unverified for 0.1.1**: real systemd/launchd/WinSW hosting and sd-notify;
+Android bionic/ART runtime and devices; physical ARMv7 and LoongArch hardware, including the
+vendor old-world ABI/toolchain; and renewed architecture-specific glibc baselines other than
+x86_64. Android compilation is not T2 runtime verification. Historical T3 records below remain
+historical, not a claim of new candidate acceptance.
 
 ## 0.1.0
 
