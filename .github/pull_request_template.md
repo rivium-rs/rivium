@@ -1,15 +1,20 @@
 ## Summary
 
-<!-- What changes and why. The title is a Conventional Commit; it becomes the squash commit on main. -->
+<!-- What changes and why; link the issue or discussion. The title is a Conventional Commit
+and becomes the squash commit and generated release-note entry. See docs/contributing/pull-requests.md. -->
 
 ## Verification
 
-<!-- Commands run locally and their results; the CI jobs that cover the change. -->
+<!-- List exact commands, targets/features and results; distinguish local results from CI.
+Record checks not run and any required maintainer-local or manual platform acceptance. -->
 
 ## Checklist
 
 - [ ] The title and every commit follow Conventional Commits
-- [ ] `cargo fmt`, `cargo clippy` and `cargo test` pass locally (README, "Development")
-- [ ] Each new check was shown to fail on a planted violation
-- [ ] README and `docs/` are updated where behaviour changed
-- [ ] The public-content hooks ran on every commit and push
+- [ ] Relevant development checks are recorded, including anything not run (`docs/development.md`)
+- [ ] Bug fixes have regression coverage; each new guard was shown to fail on a planted violation
+- [ ] API, configuration, dependency/MSRV and platform impacts are noted where applicable
+- [ ] README, API docs and `docs/` are updated where behavior changed
+- [ ] Public-content hooks ran, or this fork PR explicitly awaits the maintainer's local check
+
+<!-- Missing local checks are not waivers: required CI and manual acceptance must pass before merge. -->

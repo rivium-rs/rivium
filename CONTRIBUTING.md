@@ -1,52 +1,78 @@
-# Contributing
+# Contributing to Rivium
+
+Thanks for helping improve Rivium. Contributions can be bug reports, clearer documentation,
+reproductions, tests, code or reviews. You do not need to understand the whole workspace to
+make a useful contribution.
+
+Start with the [contribution guide](docs/contributing/README.md). It has separate paths for
+[issues](docs/contributing/issues.md), [pull requests](docs/contributing/pull-requests.md),
+[reviews](docs/contributing/reviewing.md) and [dependency changes](docs/contributing/dependencies.md).
+The policies below apply across those paths.
+
+## Working together
+
+Keep discussions respectful and specific. Explain the behavior or trade-off you are concerned
+about, not assumptions about the person proposing it. Distinguish a required change from an
+optional suggestion, and help new contributors find the relevant code or test.
+
+Discuss substantial API, lifecycle or platform changes in an issue before implementing them.
+Small fixes and documentation improvements can go directly to a pull request.
+
+## Getting help
+
+Check the [architecture guide](docs/architecture.md) and [API documentation](https://docs.rs/rivium)
+first, then [open an issue](https://github.com/rivium-rs/rivium/issues) if something is unclear.
+Include a small example and the version and platform involved. The
+[issue guide](docs/contributing/issues.md) explains what makes a useful report and how to help
+with someone else's report. Do not put credentials, private logs or sensitive reports in a
+public issue.
 
 ## Workflow
 
-1. **Branch from `main`, one branch and one pull request per coherent unit of work** (a crate, a
-   module or a set of related changes), named `<type>/<topic>` (for example `fix/log-rotation`).
-   A development phase of the initial plan is delivered as several such units on branches
-   `c-<n>/<topic>`. Start the next unit from `main` once the previous one is merged; if it has
-   to build on a unit that is still under review, branch from that unit and, after its pull
-   request is merged, merge `main` into the dependent branch (never rebase it) before asking for
-   review.
-2. **Install the hooks once:** `git config core.hooksPath scripts/hooks` and
-   `git config rivium.denylist <absolute path of the denylist>`. They check every commit (staged
-   tree, identity, message) and every push against the private denylist, and check that commit
-   messages are Conventional Commits.
-3. **Commit as [Conventional Commits](https://www.conventionalcommits.org/):**
-   `<type>(<scope>)!: <subject>`, where scope and `!` (breaking change) are optional and the
-   type is one of `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`,
-   `style`, `test`. Imperative subject, at most 72 characters, no trailing period; the body
-   explains why.
-4. **Push and open a draft pull request against `main` right away.** The `ci` workflow runs on
-   pull requests and on `main`; the public-content check runs on every push.
-5. **When the work is complete,** run the checks of the README's "Development" section, make
-   sure every check is green and mark the
-   pull request ready for review. Its title is a Conventional Commit that still fits in 72
-   characters once GitHub appends ` (#<n>)`; `check/pr-title` checks it that way.
-6. **Merge with "Squash and merge"** after the maintainer approves that pull request. Its title
-   becomes the commit on `main`, which keeps every commit there a reviewed, CI-verified state.
-   Merge commits made on GitHub skip the local hooks, so check the final message with
-   `scripts/check-public.sh <denylist> --message <file>` and merge with your GitHub noreply
-   address as the author, for example
-   `gh pr merge <n> --squash --delete-branch --subject "<title> (#<n>)" --body-file <file> --author-email <noreply>`.
-   `--delete-branch` removes the remote and local branch; the pull request keeps its commits.
-   Never force-push or rewrite history that has been pushed.
+Use one branch and one pull request per coherent change. Commits and PR titles follow
+Conventional Commits; reviewed changes are squash-merged by a maintainer. Do not force-push
+or rewrite history that has already been pushed.
+
+See the [pull request guide](docs/contributing/pull-requests.md) for fork setup, branch rules,
+commit examples, review updates and the maintainer's merge checklist.
 
 ## Checks
 
-- New checks are shown to fail once on a planted violation before they are relied on.
-- Developer tools are installed under `.tools/` (`cargo install --locked --root .tools <tool>`),
-  never globally.
+Run the [development checks](docs/development.md) relevant to your change and record the actual
+commands, results and anything not run. Add regression tests for fixes and update documentation
+when behavior changes. New checks must fail on a planted violation before they are relied on.
+
+Public-content checks use a private denylist. Fork pull requests cannot receive its secret;
+the maintainer performs that check locally before merging. A skipped check is not a pass.
+See [public-content checks](docs/contributing/pull-requests.md#public-content-checks) for setup
+and the fork workflow.
+
+## Minimum supported Rust version
+
+Rivium's minimum supported Rust version (MSRV) is **1.92**, declared in the workspace manifest
+and tested by `ci/msrv`. Raising it requires the maintainer's approval, including when the
+change comes from a dependency update. A successful build on stable alone does not verify MSRV.
+
+## Versioning
+
+The five public crates are released together at one version. Before 1.0, a new minor release
+may change the API or configuration contract; those changes need migration steps in the
+[upgrade guide](docs/upgrading.md). Keep breaking changes explicit in the PR and its title.
+The maintainer chooses the next version; do not bump it as part of an unrelated contribution.
+
+Platform claims are tied to a version and its [verification record](docs/platforms.md), not
+to the presence of a workflow. This guide does not establish an LTS or backport support window.
 
 ## Releases
 
-Releases are made by the maintainer only. Every crate shares one version, and the release notes
-are generated, never written by hand: git-cliff renders them from the commits on `main` since the
-previous tag (`cliff.toml`), and those commits are the pull requests' titles, so a title is also
-the line that the release notes show. `git cliff --unreleased --tag v<version> --strip all`
-previews them.
+Releases are maintainer-only. Notes are generated from reviewed commit titles. Manual dispatch
+is a non-publishing preview; a stable `vX.Y.Z` tag requests publication only after the required
+checks, evidence and protected-environment review. See the [release guide](docs/releasing.md)
+for the complete procedure, including recovery after partial publication.
 
-The release workflow, which checks a release, runs the whole verification and publishes the
-crates, is being rebuilt with the cross-target and hosting verification. Until it returns, there
-is no release.
+## Contribution license
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion
+in this project by you, as defined in the Apache-2.0 license, shall be dual licensed under
+[Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option,
+without any additional terms or conditions.
