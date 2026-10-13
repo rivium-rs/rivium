@@ -166,6 +166,8 @@ fn log_export() {
         packed.contains(&"audit.log") && packed.contains(&"manifest.txt"),
         "{packed:?}"
     );
+    // Release the reader before replacement; Wine keeps an open archive pending deletion.
+    drop(zip);
 
     // An export in progress outlives a restart in the process, and refuses another one.
     fs::write(logs.join(format!("probe.{today}.90.log")), noise(12 << 20)).unwrap();

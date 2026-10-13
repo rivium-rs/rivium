@@ -7,6 +7,7 @@ on:
     branches: ["**"]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -15,7 +16,7 @@ concurrency:
   # Superseded pull request runs are cancelled; every commit on main gets a complete run. A group
   # keeps at most one pending run, which a newer one replaces whatever cancel-in-progress says, so
   # on main each commit is a group of its own: commits merged in a row run side by side.
-  group: public-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  group: public-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:

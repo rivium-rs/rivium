@@ -1,0 +1,26 @@
+[package]
+name = "tests-integration"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.92.0"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Process-level integration tests for Rivium"
+
+[features]
+jvm = ["dep:jni"]
+
+[dependencies]
+rivium-test.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(unix)'.dev-dependencies]
+serde_json = { workspace = true, features = ["std"] }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+jni = { workspace = true, features = ["invocation"], optional = true }
+
+[lints]
+workspace = true

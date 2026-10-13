@@ -1,0 +1,19 @@
+[package]
+name = "tests-build"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.92.0"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Build-time and supply-chain tests for Rivium"
+
+[dependencies]
+rivium = { path = "../crates/rivium" }
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["std"] }
+rivium-jni.workspace = true
+
+[lints]
+workspace = true

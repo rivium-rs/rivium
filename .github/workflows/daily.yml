@@ -1,0 +1,78 @@
+name: daily
+
+# Slow/extended platforms stay out of pull-request CI. No experimental lane is allowed to fail.
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  platform:
+    name: daily/${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: armv7, target: armv7-unknown-linux-gnueabihf, runner: 'qemu-user@11.0' }
+          - { name: loongarch64, target: loongarch64-unknown-linux-gnu, runner: 'qemu-user@11.0' }
+          - { name: windows-wine, target: x86_64-pc-windows-gnu, runner: 'wine@10.0.0.0' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1
+        with:
+          target: ${{ matrix.target }}
+          runner: ${{ matrix.runner }}
+      - name: Run library and target child-process contracts
+        env:
+          TARGET: ${{ matrix.target }}
+        run: scripts/test-platform.sh "$TARGET"
+
+  android:
+    name: daily/android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target aarch64-linux-android && rustup default stable
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-ndk@4.1.2
+      - name: Install the fixed NDK revision
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'ndk;28.1.13356709'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.1.13356709" >> "$GITHUB_ENV"
+      - name: Link API 30 tests and check the real JNI library's 16 KB alignment
+        run: scripts/build-android.sh
+
+  glibc-centos:
+    name: daily/glibc-centos
+    uses: ./.github/workflows/glibc.yml
+    with:
+      run-runtime: true
+
+  daily-pass:
+    name: daily-pass
+    if: ${{ always() }}
+    needs: [platform, android, glibc-centos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require every extended platform to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: scripts/check-ci.sh "$NEEDS_JSON"

@@ -4,78 +4,101 @@
 
 # Rivium
 
-Rivium is a small foundation for long-running Rust services that run either as a standalone
-process (under systemd, launchd or a Windows service wrapper) or embedded in an Android app
-through JNI. Both forms share one service lifecycle, and the crates also provide an error model,
-layered configuration, logging with a disk budget and an axum integration. They are published as
-versioned crates, so a fix reaches every service through a dependency update.
+A small foundation for long-running Rust services, whether they run as standalone processes
+or inside an Android app through JNI.
 
-> [!NOTE]
->
-> **Status: 0.1.0, the first release.** The crates are on crates.io
-> ([rivium](https://crates.io/crates/rivium), [rivium-error](https://crates.io/crates/rivium-error),
-> [rivium-http](https://crates.io/crates/rivium-http), [rivium-jni](https://crates.io/crates/rivium-jni),
-> [rivium-test](https://crates.io/crates/rivium-test)); each
-> [release](https://github.com/rivium-rs/rivium/releases) lists its changes, and
-> [docs/platforms.md](docs/platforms.md) how far each target is verified. Before 1.0, a new minor
-> version may break the API; [docs/upgrading.md](docs/upgrading.md) lists the steps of each one.
+[![Crates.io](https://img.shields.io/crates/v/rivium.svg)](https://crates.io/crates/rivium)
+[![Documentation](https://docs.rs/rivium/badge.svg)](https://docs.rs/rivium)
+
+[API documentation](https://docs.rs/rivium) |
+[Architecture](docs/architecture.md) |
+[Platform support](docs/platforms.md) |
+[Contributing](docs/contributing/README.md)
+
+## Overview
+
+Rivium handles the common parts of a service so applications can focus on their own work:
+
+- **One lifecycle, two hosts.** The same application handles startup, readiness, graceful
+  shutdown and restarts as a process or through an embedded host.
+- **Configuration and logging.** Layered configuration with source tracking, and logging to
+  the console, budgeted files and Android logcat.
+- **Optional integrations.** Add HTTP with axum, a JNI bridge or test helpers through separate
+  crates. Services without those integrations do not depend on them.
+
+Rivium is built on Tokio; it is a service foundation, not a replacement async runtime.
+See the [architecture guide](docs/architecture.md) for the lifecycle and crate boundaries.
 
 ## Getting started
 
-A service depends on the Rivium crates it uses, all at one version:
+Add the core crate to your service:
 
 ```toml
 [dependencies]
 rivium = "0.1"
-rivium-http = "0.1" # an HTTP API
-rivium-jni = "0.1"  # a JNI library for an Android app
+```
+
+Implement [`rivium::App`](https://docs.rs/rivium/latest/rivium/trait.App.html) with your
+configuration type and services, then call `rivium::process::run::<YourApp>()` from `main`.
+The [service guide](docs/architecture.md#a-service) explains the application model; the
+[App API documentation](https://docs.rs/rivium/latest/rivium/trait.App.html) includes a complete
+example. The same application can be exported as a JNI library with `rivium_jni::export!`.
+
+Add only the adapters you need, keeping the Rivium crates on the same version:
+
+```toml
+[dependencies]
+rivium = "0.1"
+rivium-http = "0.1" # optional: an HTTP API
+rivium-jni = "0.1"  # optional: a JNI library for an Android app
 
 [dev-dependencies]
 rivium-test = "0.1"
 ```
 
-Its service library implements `rivium::App`, the composition root that builds the services from
-the configuration, and its program's `main` is `rivium::process::run::<App>()`.
-[docs/architecture.md](docs/architecture.md) describes how Rivium works, starting with
-[a service](docs/architecture.md#a-service). The examples of 0.1.0 are at the tag
-[`v0.1.0`](https://github.com/rivium-rs/rivium/tree/v0.1.0/examples).
+The examples shipped with 0.1.0 are available at the
+[`v0.1.0` tag](https://github.com/rivium-rs/rivium/tree/v0.1.0/examples).
+Before 1.0, a new minor version may break the API. See the
+[release notes](https://github.com/rivium-rs/rivium/releases) for changes and the
+[upgrade guide](docs/upgrading.md) for migration steps.
 
 ## Crates
 
 | Crate | Purpose |
 | --- | --- |
-| `rivium-error` | The error type: kind, class, responsible party, retry hint, context, cause chain and log fields |
-| `rivium` | Configuration, logging, the service lifecycle kernel, the process host and the embedded host |
-| `rivium-http` | axum integration: the HTTP contract (status envelope, request ids, access log) as a contract layer and its primitives, and an HTTP server service with probes |
-| `rivium-jni` | JNI adapter for the embedded host (generated `JNI_OnLoad` and native methods) |
-| `rivium-test` | Test support: scripted services, log capture, process tools, lifecycle contract suites (dev-dependency only) |
+| [`rivium`](https://docs.rs/rivium) | Configuration, logging, lifecycle, process and embedded hosts |
+| [`rivium-error`](https://docs.rs/rivium-error) | Structured errors with classification, context, causes and retry hints |
+| [`rivium-http`](https://docs.rs/rivium-http) | axum integration, HTTP contracts, a server service and health probes |
+| [`rivium-jni`](https://docs.rs/rivium-jni) | JNI bridge for the embedded host, with generated native entry points |
+| [`rivium-test`](https://docs.rs/rivium-test) | Lifecycle, logging and process test helpers; a dev-dependency only |
+
+## Supported Rust versions
+
+The minimum supported Rust version (MSRV) is **1.92**, checked separately in CI.
 
 ## Platforms
 
-[docs/platforms.md](docs/platforms.md) lists the supported targets and how far each one was
-verified for 0.1.0. The minimum supported Rust version is 1.92.
+Rivium targets GNU/Linux, macOS and Windows processes, and Android apps through JNI.
+Verification differs by target and release: native tests, emulator tests and device tests are
+not interchangeable. The current Android lane checks compilation and JNI ELF properties,
+not execution on a device.
+
+See [platform support](docs/platforms.md) for the current verification scope, known gaps and
+the separate [0.1.0 verification record](docs/platforms.md#010).
+
+## Getting help
+
+Start with the [API documentation](https://docs.rs/rivium) and
+[architecture guide](docs/architecture.md). If something is unclear or does not work,
+[open an issue](https://github.com/rivium-rs/rivium/issues) with the Rivium version, target
+platform and a small reproduction. Suggestions and documentation improvements are welcome too.
 
 ## Development
 
-CI runs formatting, clippy, cargo-deny and the workspace tests on Linux, macOS and Windows, and
-the tests on Rust 1.92. The cross-target, hosting and release verification of 0.1.0 is being
-rebuilt. The same checks locally:
-
-```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --locked
-```
-
-Maintainers install the git hooks that run the public-content check once:
-
-```bash
-git config core.hooksPath scripts/hooks
-git config rivium.denylist <absolute path of the private denylist>
-```
-
-Branches, commit messages (Conventional Commits) and pull requests follow
-[CONTRIBUTING.md](CONTRIBUTING.md).
+See [Contributing](docs/contributing/README.md) for the pull request workflow and
+[development checks](docs/development.md) for local setup, native tests, JVM contracts and
+cross-target verification. Maintainers can find dry-run and publishing instructions in the
+[release guide](docs/releasing.md).
 
 ## License
 

@@ -1,13 +1,14 @@
 name: ci
 
-# The minimal CI while the verification is rebuilt: formatting, clippy, cargo-deny and the script
-# self-tests; the workspace tests on Linux, macOS and Windows (GNU); the tests on the MSRV. Runs on
-# pull requests and on main; branches get CI through their (draft) pull request.
+# Native tests, JVM contracts, supply-chain guards and the glibc link baseline feed ci-pass.
+# Old-userland runtime tests use the glibc workflow's manual entry. CI runs on pull requests
+# and on main; branches get CI through their (draft) pull request.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -16,7 +17,7 @@ concurrency:
   # Superseded pull request runs are cancelled; every commit on main gets a complete run. A group
   # keeps at most one pending run, which a newer one replaces whatever cancel-in-progress says, so
   # on main each commit is a group of its own: commits merged in a row run side by side.
-  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
@@ -32,15 +33,28 @@ jobs:
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@0.20.2,cargo-hack@0.6.45,tokei@14.0.0
       - run: cargo fmt --all --check
+      - name: Check each package feature without rewriting manifests
+        # Check each feature separately without rewriting manifests; resolver 3 handles dev-deps.
+        run: cargo hack --each-feature --workspace check --locked
+      - name: Verify feature checks leave the workspace unchanged
+        run: git diff --exit-code
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo deny --locked check
+      - name: Check library code budgets
+        run: cargo test --package tests-build --test loc_budget --locked
       - name: Lint the scripts and run their self-tests (planted violations)
         run: |
           shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh crates/rivium-jni/tests/jvm/run.sh
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
+          scripts/tests/check-jvm.sh
+          scripts/tests/check-glibc.sh
+          scripts/tests/check-ci.sh
+          scripts/tests/check-platform.sh
+          scripts/tests/check-android.sh
+          scripts/tests/check-release.sh
 
   test:
     name: ci/test (${{ matrix.name }})
@@ -48,14 +62,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, os: ubuntu-24.04, toolchain: stable }
-          - { name: macos, os: macos-latest, toolchain: stable }
-          - { name: windows-gnu, os: windows-latest, toolchain: stable-x86_64-pc-windows-gnu }
+          - { name: linux, target: x86_64-unknown-linux-gnu, os: ubuntu-24.04, toolchain: stable }
+          - { name: linux-arm64, target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm, toolchain: stable }
+          - { name: macos, target: aarch64-apple-darwin, os: macos-15, toolchain: stable }
+          - { name: macos-intel, target: x86_64-apple-darwin, os: macos-15-intel, toolchain: stable }
+          - { name: windows-gnu, target: x86_64-pc-windows-gnu, os: windows-latest, toolchain: stable-x86_64-pc-windows-gnu }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal && rustup default ${{ matrix.toolchain }}
+      - name: Require the declared native compiler and runner architecture
+        shell: bash
+        env:
+          EXPECTED_TARGET: ${{ matrix.target }}
+        run: |
+          rustc -vV | grep -Fx "host: $EXPECTED_TARGET"
+          case "$EXPECTED_TARGET" in
+            aarch64-*) test "$RUNNER_ARCH" = ARM64 ;;
+            *) test "$RUNNER_ARCH" = X64 ;;
+          esac
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.name == 'windows-gnu' && 'x64' || (runner.arch == 'ARM64' && 'aarch64' || 'x64') }}
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-nextest@0.9.145,tokei@14.0.0
+      - run: cargo build --package test-app --bins --locked
       - run: cargo test --workspace --locked
+      - name: Run isolated process and JVM tests without retries
+        # Each test starts a full host or JVM; avoid competing runtimes on small runners.
+        run: cargo nextest run --package tests-integration --package rivium-jni --profile ci --test-threads=1 --retries 0 --locked
 
   msrv:
     name: ci/msrv
@@ -63,4 +101,50 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install 1.92 --profile minimal
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: tokei@14.0.0
+      - run: cargo +1.92 build --package test-app --bins --all-features --locked
       - run: cargo +1.92 test --workspace --all-features --locked
+
+  jvm:
+    name: ci/jvm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build the normal JNI application
+        run: cargo build --package test-jni --lib --target-dir target/jvm-normal --locked
+      - name: Build the fault-injected JNI application separately
+        env:
+          RUSTFLAGS: --cfg rivium_jni_fault
+        run: cargo build --package test-jni --lib --target-dir target/jvm-fault --locked
+      - name: Check loading, signature rejection and panic containment
+        run: timeout --kill-after=5s 120s crates/rivium-jni/tests/jvm/run.sh target/jvm-normal/debug test_jni rivium/tests target/jvm-fault/debug
+
+  zigbuild:
+    name: ci/zigbuild
+    uses: ./.github/workflows/glibc.yml
+    with:
+      run-runtime: false
+
+  ci-pass:
+    name: ci-pass
+    if: ${{ always() }}
+    needs: [lint, test, msrv, jvm, zigbuild]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require every preceding job to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: scripts/check-ci.sh "$NEEDS_JSON"

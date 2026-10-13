@@ -15,5 +15,9 @@ categories = ["api-bindings"]
 jni.workspace = true
 rivium.workspace = true
 
+[target.'cfg(not(target_os = "android"))'.dev-dependencies]
+test-app = { path = "../../test-app" }
+tests-integration = { path = "../../tests-integration", features = ["jvm"] }
+
 [lints]
 workspace = true

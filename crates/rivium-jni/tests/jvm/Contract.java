@@ -31,6 +31,11 @@ public final class Contract {
         System.out.println("jvm contract (" + mode + "): passed");
     }
 
+    /** Runs the same contract after the Invocation API has registered the native methods. */
+    public static void run(String root) throws Exception {
+        contract(Path.of(root), new String[0]);
+    }
+
     private static void contract(Path root, String[] extra) throws Exception {
         String version = RiviumBridge.nativeVersion();
         check(version.matches("\\S+ \\S+"), "nativeVersion: " + version);
@@ -48,6 +53,10 @@ public final class Contract {
         expect(RiviumBridge.nativeStart(invalid), -78, "nativeStart with an invalid configuration");
         check(lastError().startsWith("Config: invalid configuration: lifecycle.stop_timeout"),
                 lastError());
+
+        String unicode = "--未知-😀";
+        expect(RiviumBridge.nativeStart(start(root, extra, unicode)), -64, "Unicode argument");
+        check(lastError().contains(unicode), "Unicode diagnostic: " + lastError());
 
         String[] rooted = start(root, extra);
         for (int round = 1; round <= 3; round++) {
@@ -76,9 +85,12 @@ public final class Contract {
         expect(RiviumBridge.nativeStart(new String[] {"--root", root.toString()}), 0, "nativeStart");
         // Logging is installed now, and so is Rivium's panic hook.
         expect(RiviumBridge.nativeStatus(), -99, "nativeStatus while running");
+        check(RiviumBridge.nativeLastError().isEmpty(), "nativeLastError while running");
         expect(RiviumBridge.nativeStop(4000), 0, "nativeStop");
         check(Files.readString(log).contains("nativeStatus: a panic injected by a test build"),
                 "the panic is in " + log);
+        check(Files.readString(log).contains("nativeLastError: a panic injected by a test build"),
+                "the string-method panic is in " + log);
     }
 
     /** RIVIUM_JNI_PANIC=nativeStart,nativeStop,nativeVersion: -99 and an empty string. */

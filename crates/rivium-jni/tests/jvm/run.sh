@@ -1,52 +1,78 @@
 #!/usr/bin/env bash
-# Desktop JVM contract of rivium-jni: loads a JNI library built with rivium_jni::export! into a
-# JVM (JDK 17) and checks the native methods of its bridge class (Contract.java), then loads it
-# with a bridge class that declares them otherwise, which must fail. Given a build of the same
-# library with `--cfg rivium_jni_fault`, it also checks that panics in native methods return
-# -99 or an empty string, are logged, and the JVM goes on. The Java files have no package: this
-# script adds the package of the bridge class.
-# Usage: run.sh <library dir> <library name> <bridge package, as com/example/svc> [<fault build's library dir>]
+# JVM contract for a real application cdylib: normal, mismatched signatures and all panic modes.
+# Requires a full JDK via JAVA_HOME. Java sources remain compatible with JDK 17; CI uses 21.
+# Usage: run.sh <normal library dir> <library name> <bridge package> <fault library dir>
 set -euo pipefail
-[ $# -ge 3 ] || { echo "usage: run.sh <library dir> <library name> <bridge package> [<fault library dir>]" >&2; exit 2; }
+[ $# -eq 4 ] || { echo "usage: run.sh <normal library dir> <library name> <bridge package> <fault library dir>" >&2; exit 2; }
+: "${JAVA_HOME:?set JAVA_HOME to a full JDK}"
 lib_dir=$(cd "$1" && pwd)
 name=$2
 pkg_dir=$3
+fault_dir=$(cd "$4" && pwd)
+[ "$lib_dir" != "$fault_dir" ] || { echo "normal and fault builds need different directories" >&2; exit 2; }
+[[ "$pkg_dir" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)*$ ]] || { echo "invalid Java package" >&2; exit 2; }
 pkg=${pkg_dir//\//.}
-fault_dir=""
-if [ $# -ge 4 ]; then fault_dir=$(cd "$4" && pwd); fi
+case "$(uname -s)" in
+  Darwin) library="lib$name.dylib"; exe="" ;;
+  Linux) library="lib$name.so"; exe="" ;;
+  MINGW* | MSYS* | CYGWIN*) library="$name.dll"; exe=".exe" ;;
+  *) echo "unsupported desktop platform" >&2; exit 2 ;;
+esac
+java="$JAVA_HOME/bin/java$exe"
+javac="$JAVA_HOME/bin/javac$exe"
+if [ ! -x "$java" ] || [ ! -x "$javac" ]; then
+  echo "JAVA_HOME must contain java and javac" >&2
+  exit 2
+fi
+if [ ! -f "$lib_dir/$library" ] || [ ! -f "$fault_dir/$library" ]; then
+  echo "normal or fault cdylib is missing" >&2
+  exit 2
+fi
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-compile() { # <output dir> <java file>...: compiles the files in the bridge's package
+compile() { # <output dir> <java file>...
   local out=$1 file
   shift
-  mkdir -p "$work/src-$out/$pkg_dir"
+  mkdir -p "$work/src-$out/$pkg_dir" "$work/$out"
   for file in "$@"; do
     { printf 'package %s;\n\n' "$pkg"; cat "$here/$file"; } > "$work/src-$out/$pkg_dir/$(basename "$file")"
   done
-  javac -d "$work/$out" "$work/src-$out/$pkg_dir"/*.java
+  "$javac" --release 17 -encoding UTF-8 -proc:none --class-path "$work/$out" -d "$work/$out" "$work/src-$out/$pkg_dir"/*.java
 }
 
-contract() { # <library dir> <mode> <methods that panic>: runs Contract below a new root
+run_java() {
+  local status=0
+  "$java" -Xcheck:jni --enable-native-access=ALL-UNNAMED -XX:-CreateCoredumpOnCrash \
+    "-XX:ErrorFile=$work/hs_err_pid%p.log" "$@" > "$work/java.out" 2> "$work/java.err" || status=$?
+  cat "$work/java.out"
+  cat "$work/java.err" >&2
+  if grep -Eq 'WARNING in native method|WARNING: JNI' "$work/java.out" "$work/java.err"; then
+    echo "jvm contract: JNI checker warning" >&2
+    return 1
+  fi
+  return "$status"
+}
+
+contract() { # <library dir> <mode> <methods that panic>
   local root
   root=$(mktemp -d "$work/root.XXXXXX")
-  RIVIUM_JNI_PANIC=$3 java -Djava.library.path="$1" -cp "$work/ok" "$pkg.Contract" "$name" "$root" "$2"
+  RIVIUM_JNI_PANIC=$3 run_java -Djava.library.path="$1" -cp "$work/ok" "$pkg.Contract" "$name" "$root" "$2"
 }
 
 compile ok RiviumBridge.java Contract.java
-contract "$lib_dir" contract ""
+# A production build must ignore the fault-injection environment variable.
+contract "$lib_dir" contract nativeStart,nativeStop,nativeStatus,nativeLastError,nativeVersion
 
 compile mismatch mismatch/RiviumBridge.java
 status=0
-java -Djava.library.path="$lib_dir" -cp "$work/mismatch" "$pkg.RiviumBridge" "$name" || status=$?
+run_java -Djava.library.path="$lib_dir" -cp "$work/mismatch" "$pkg.RiviumBridge" "$name" || status=$?
 if [ "$status" -ne 3 ]; then
-  echo "jvm contract: a bridge class that declares the methods otherwise was not rejected (exit $status)" >&2
+  echo "jvm contract: a mismatched bridge was not rejected (exit $status)" >&2
   exit 1
 fi
 
-if [ -n "$fault_dir" ]; then
-  contract "$fault_dir" panics-a nativeStatus,nativeLastError
-  contract "$fault_dir" panics-b nativeStart,nativeStop,nativeVersion
-fi
-echo "jvm contract: passed"
+contract "$fault_dir" panics-a nativeStatus,nativeLastError
+contract "$fault_dir" panics-b nativeStart,nativeStop,nativeVersion
+echo "jvm contract: normal, mismatch and both panic modes passed"

@@ -1,0 +1,21 @@
+# Nextest configuration for Rivium.
+# See https://nexte.st/book/configuration.html
+
+[profile.default]
+# Retry flaky tests once automatically.
+retries = 1
+
+# Nextest runs each test in its own process; no package-wide serialization is needed.
+test-threads = "num-cpus"
+
+# Slow tests get 30 seconds, then 3 grace periods.
+slow-timeout = { period = "30s", terminate-after = 3 }
+
+[profile.ci]
+# CI uses more retries to reduce noise from transient failures.
+retries = { backoff = "exponential", count = 2, delay = "1s" }
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# Show test output for failures only.
+failure-output = "immediate-final"
+success-output = "never"
