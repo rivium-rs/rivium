@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Read-only registry checks. Never retry a publication to resolve an uncertain HTTP result.
 set -euo pipefail
-[ "$#" -ge 2 ] && [ "$#" -le 3 ] || { echo 'usage: release-registry.sh <absent|published> <version> [package-dir]' >&2; exit 2; }
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo 'usage: release-registry.sh <absent|published> <version> [package-dir]' >&2
+  exit 2
+fi
 mode=$1; version=$2
 [[ "$version" =~ ^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || { echo 'release: invalid version' >&2; exit 1; }
 [[ "$mode" = absent && "$#" -eq 2 || "$mode" = published && "$#" -eq 3 ]] || exit 2

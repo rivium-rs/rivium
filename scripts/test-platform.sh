@@ -30,8 +30,9 @@ common=(--target "$target" --target-dir "$out" --locked)
 # Build before testing, with the same target/profile/flags as the process tests.
 timeout --kill-after=10s 900s cargo build -p test-app --bins -p test-jni --lib "${common[@]}" \
   < /dev/null 2>&1 | tee "$logs/build.log"
-[ -s "$out/$target/debug/host$suffix" ] && [ -s "$out/$target/debug/$library" ] \
-  || fail 'application or JNI library was not built'
+if [ ! -s "$out/$target/debug/host$suffix" ] || [ ! -s "$out/$target/debug/$library" ]; then
+  fail 'application or JNI library was not built'
+fi
 
 # Avoid selecting JNI Invocation or tests-build: a target emulator is not a JDK/Cargo host.
 timeout --kill-after=10s 900s cargo test -p rivium -p rivium-error -p rivium-http -p rivium-test \

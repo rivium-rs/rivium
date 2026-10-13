@@ -59,8 +59,9 @@ while IFS= read -r name; do
   if grep -Ev '^[-d]' "$work/types" >/dev/null; then fail 'package contains a link or special file'; fi
   mkdir "$work/$name"
   tar -xzf "$packages/$archive" -C "$work/$name"
-  [ -s "$work/$name/$name-$version/Cargo.toml" ] && [ -s "$work/$name/$name-$version/src/lib.rs" ] \
-    || fail 'package is missing its manifest or library source'
+  if [ ! -s "$work/$name/$name-$version/Cargo.toml" ] || [ ! -s "$work/$name/$name-$version/src/lib.rs" ]; then
+    fail 'package is missing its manifest or library source'
+  fi
   "$root/scripts/check-public.sh" "$denylist" --dir "$work/$name"
   cp "$packages/$archive" "$artifacts/$archive"
 done < "$work/names"

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Build/inspect actual workspace artifacts, then optionally run them in the old userland.
 set -euo pipefail
-[ "$#" -eq 1 ] && [[ "$1" == build || "$1" == run ]] \
-  || { echo 'usage: glibc.sh <build|run>' >&2; exit 2; }
+if [ "$#" -ne 1 ] || [[ "$1" != build && "$1" != run ]]; then
+  echo 'usage: glibc.sh <build|run>' >&2
+  exit 2
+fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 out="$root/target/glibc"
@@ -36,8 +38,10 @@ if [ "$1" = build ]; then
     "$out/tests.jsonl" > "$out/runtime-tests.txt"
 fi
 
-[ -s "$out/artifacts.txt" ] && [ -s "$out/runtime-tests.txt" ] \
-  || { echo 'glibc: missing artifact inventory; run glibc.sh build first' >&2; exit 1; }
+if [ ! -s "$out/artifacts.txt" ] || [ ! -s "$out/runtime-tests.txt" ]; then
+  echo 'glibc: missing artifact inventory; run glibc.sh build first' >&2
+  exit 1
+fi
 # Check both inventories before invoking anything, including when reusing a build for the runtime pass.
 for inventory in artifacts runtime-tests; do
   while IFS= read -r artifact; do
@@ -70,8 +74,10 @@ docker run --rm -i --platform linux/amd64 --network none --ulimit core=0 \
   --mount "type=bind,source=$root,target=$root,readonly" --workdir "$root" \
   --entrypoint /bin/bash "$image" -s -- "$out/runtime-tests.txt" <<'RUNTIME'
 set -euo pipefail
-[ "$(uname -m)" = x86_64 ] && [ "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.17' ] \
-  || { echo 'glibc: the runtime is not x86_64 glibc 2.17' >&2; exit 1; }
+if [ "$(uname -m)" != x86_64 ] || [ "$(getconf GNU_LIBC_VERSION)" != 'glibc 2.17' ]; then
+  echo 'glibc: the runtime is not x86_64 glibc 2.17' >&2
+  exit 1
+fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 passed=0

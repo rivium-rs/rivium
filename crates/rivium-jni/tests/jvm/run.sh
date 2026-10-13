@@ -20,8 +20,14 @@ case "$(uname -s)" in
 esac
 java="$JAVA_HOME/bin/java$exe"
 javac="$JAVA_HOME/bin/javac$exe"
-[ -x "$java" ] && [ -x "$javac" ] || { echo "JAVA_HOME must contain java and javac" >&2; exit 2; }
-[ -f "$lib_dir/$library" ] && [ -f "$fault_dir/$library" ] || { echo "normal or fault cdylib is missing" >&2; exit 2; }
+if [ ! -x "$java" ] || [ ! -x "$javac" ]; then
+  echo "JAVA_HOME must contain java and javac" >&2
+  exit 2
+fi
+if [ ! -f "$lib_dir/$library" ] || [ ! -f "$fault_dir/$library" ]; then
+  echo "normal or fault cdylib is missing" >&2
+  exit 2
+fi
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
