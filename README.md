@@ -171,6 +171,57 @@ scripts/tests/check-glibc.sh
 scripts/tests/check-ci.sh
 ```
 
+### Extended-platform checks
+
+The `daily` workflow declares a UTC 02:00 schedule, manual dispatch and a reusable entry point.
+It is separate from pull-request CI. Every required lane must succeed; `daily-pass` rejects
+failed, cancelled or skipped jobs, including failures on the experimental upstream LoongArch runner.
+
+| Lane | What it checks |
+| --- | --- |
+| ARMv7 GNU/Linux + QEMU 11.0 | Library tests and actual target child-process contracts |
+| LoongArch64 GNU/Linux + QEMU 11.0 | The same contracts; no allowed-failure exception |
+| Windows GNU + Wine 10.0 | Library tests and target child-process contracts |
+| Android arm64-v8a, API 30 | NDK compilation/linking, real JNI export and 16 KB ELF LOAD alignment |
+| CentOS glibc 2.17 | Reuses the glibc workflow with its runtime check enabled |
+
+On a Linux x86_64 build host, after configuring the matching linker/sysroot and
+`CARGO_TARGET_<TRIPLE>_RUNNER` (the workflow uses a SHA-pinned cross-toolchain action):
+
+```bash
+scripts/test-platform.sh armv7-unknown-linux-gnueabihf
+scripts/test-platform.sh loongarch64-unknown-linux-gnu
+scripts/test-platform.sh x86_64-pc-windows-gnu
+```
+
+The script owns `RUSTFLAGS`: leave it and `CARGO_ENCODED_RUSTFLAGS` unset. It prebuilds the
+application/JNI targets before tests, bounds each command, runs tests serially without retries,
+and rejects empty/filtered results or missing child-process contracts. Only the four signal
+scenarios and the signal-driven stop-deadline test are ignored under QEMU, with their names and
+counts checked; native CI still runs all five. Wine permits no ignored tests. JVM Invocation and
+Cargo/tokei-dependent build guards stay in native CI, not in these emulator runs.
+
+For the Android compile-only check, install NDK **28.1.13356709**, GNU `readelf`, and:
+
+```bash
+cargo install cargo-ndk --version 4.1.2 --locked --root .tools
+export PATH="$PWD/.tools/bin:$PATH"
+export ANDROID_NDK_HOME=/path/to/android-ndk-r28b
+rustup target add aarch64-linux-android
+scripts/build-android.sh
+```
+
+The output is `target/android/aarch64-linux-android/debug/libtest_jni.so`. The checker requires
+an AArch64 shared object linked to bionic, an API 30 note, a defined `JNI_OnLoad`, and valid
+16 KB-or-greater LOAD alignments with congruent file offsets/virtual addresses. This is **not**
+an ART/device test or a bionic runtime test. Driver and malformed-ELF self-tests run in `ci/lint`;
+fixtures do not count as QEMU, Wine or device execution.
+
+Hosting remains a separate acceptance boundary: `host-notify` currently runs the ordinary host,
+not an sd-notify implementation. The daily workflow does not claim notification-protocol or real
+systemd/launchd/WinSW service-manager verification, and has no disabled placeholder job reporting
+those as passed.
+
 Maintainers install the git hooks that run the public-content check once:
 
 ```bash

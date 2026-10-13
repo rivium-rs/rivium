@@ -51,6 +51,8 @@ jobs:
           scripts/tests/check-jvm.sh
           scripts/tests/check-glibc.sh
           scripts/tests/check-ci.sh
+          scripts/tests/check-platform.sh
+          scripts/tests/check-android.sh
 
   test:
     name: ci/test (${{ matrix.name }})
