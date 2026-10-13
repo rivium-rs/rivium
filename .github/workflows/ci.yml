@@ -1,8 +1,8 @@
 name: ci
 
-# The minimal CI while the verification is rebuilt: formatting, clippy, cargo-deny and the script
-# self-tests; the workspace tests on Linux, macOS and Windows (GNU); the tests on the MSRV. Runs on
-# pull requests and on main; branches get CI through their (draft) pull request.
+# Native tests, JVM contracts, supply-chain guards and the glibc link baseline feed ci-pass.
+# Old-userland runtime tests use the glibc workflow's manual entry. CI runs on pull requests
+# and on main; branches get CI through their (draft) pull request.
 on:
   push:
     branches: [main]
@@ -49,6 +49,8 @@ jobs:
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
           scripts/tests/check-jvm.sh
+          scripts/tests/check-glibc.sh
+          scripts/tests/check-ci.sh
 
   test:
     name: ci/test (${{ matrix.name }})
@@ -111,3 +113,21 @@ jobs:
         run: cargo build --package test-jni --lib --target-dir target/jvm-fault --locked
       - name: Check loading, signature rejection and panic containment
         run: timeout --kill-after=5s 120s crates/rivium-jni/tests/jvm/run.sh target/jvm-normal/debug test_jni rivium/tests target/jvm-fault/debug
+
+  zigbuild:
+    name: ci/zigbuild
+    uses: ./.github/workflows/glibc.yml
+    with:
+      run-runtime: false
+
+  ci-pass:
+    name: ci-pass
+    if: ${{ always() }}
+    needs: [lint, test, msrv, jvm, zigbuild]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require every preceding job to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: scripts/check-ci.sh "$NEEDS_JSON"

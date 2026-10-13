@@ -126,6 +126,51 @@ This checks real loading, mismatched signatures and panic containment in all fiv
 The normal library must ignore fault-injection settings. CI bounds the entire loader run with
 a timeout; neither missing fault artifacts nor checker warnings count as success.
 
+### Linux glibc baseline
+
+The x86_64 GNU/Linux baseline is glibc 2.17. Install cargo-zigbuild 0.23.4 and Zig 0.15.2
+in an isolated environment, plus GNU `readelf` and `jq`; add the Rust
+`x86_64-unknown-linux-gnu` target. For example:
+
+```bash
+python3 -m venv .tools/glibc
+.tools/glibc/bin/pip install cargo-zigbuild==0.23.4 ziglang==0.15.2
+export PATH="$PWD/.tools/glibc/bin:$PATH"
+rustup target add x86_64-unknown-linux-gnu
+scripts/glibc.sh build
+```
+
+This links the real application binaries, workspace tests and JNI cdylib. It checks the ELF
+architecture, dynamic loader and numeric GLIBC symbol versions of artifacts reported by those
+Cargo builds, not unrelated files left in `target`. Missing tools, empty results and malformed
+ELFs fail the check. The inventories are under `target/glibc`; a failed build is not runtime
+verification. Cargo-zigbuild's `--tests` compiles without running; it does not take `--no-run`.
+
+On a **native Linux x86_64 host with Docker running**, follow the build with:
+
+```bash
+scripts/glibc.sh run
+```
+
+This rechecks the artifacts and runs the library and process tests in a digest-pinned cross-rs
+CentOS userland, first requiring `getconf` to report glibc 2.17. The checkout is mounted read-only
+at the same absolute path used at compile time. Tests have time limits and must not be skipped
+or retried. Invocation needs a JDK and supply-chain tests need Cargo/tokei, so those two suites
+stay in their existing required native CI jobs rather than being counted as old-userland tests.
+Linking and symbol inspection alone do not establish runtime compatibility.
+
+PR CI calls the `glibc` workflow for linking/symbol inspection only. Manually dispatch `glibc`
+with `run-runtime` enabled for the old-userland run; the workflow is also reusable by future
+platform jobs. The `ci-pass` aggregate requires **every** CI prerequisite to succeed, including
+all native matrix legs and `ci/zigbuild`; failure, cancellation or skipping fails the aggregate.
+Maintainers can select `ci-pass` for branch protection; adding the job does not change repository
+settings automatically. Guard self-tests run in `ci/lint`:
+
+```bash
+scripts/tests/check-glibc.sh
+scripts/tests/check-ci.sh
+```
+
 Maintainers install the git hooks that run the public-content check once:
 
 ```bash
