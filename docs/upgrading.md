@@ -60,6 +60,12 @@ The repository workflow changed even though the library contract did not:
   repository's default branch as its template source will no longer work. For the old scaffold,
   explicitly select the [`v0.1.0` tag](https://github.com/rivium-rs/rivium/tree/v0.1.0/template),
   or start a normal Cargo application using the [App example](https://docs.rs/rivium/latest/rivium/trait.App.html).
+  The historical scaffold command is:
+
+  ```bash
+  cargo generate --git https://github.com/rivium-rs/rivium --tag v0.1.0 template
+  ```
+
   Already-generated projects keep their own source; they do not need to be regenerated to
   update their Rivium dependencies. The generated release notes retain this repository-level
   breaking change; it is not a breaking change to the published library APIs.
