@@ -33,7 +33,10 @@ done
 [[ "$args" == *' --locked '* ]] && [ -n "$target" ] && [ -n "$out" ] || exit 91
 case "$target" in
   *-linux-*) [ "${RUSTFLAGS:-}" = '--cfg qemu' ] || exit 92; mode=qemu; suffix=; lib=libtest_jni.so ;;
-  *-windows-gnu) [ -z "${RUSTFLAGS:-}" ] || exit 93; mode=wine; suffix=.exe; lib=test_jni.dll ;;
+  *-windows-gnu)
+    [ -z "${RUSTFLAGS:-}" ] || exit 93
+    [ "${WINEDEBUG:-}" = -all ] || { echo 'Wine diagnostics can corrupt test result lines'; exit 99; }
+    mode=wine; suffix=.exe; lib=test_jni.dll ;;
 esac
 if [ "${PLANT:-}" = cargo-failure ]; then echo 'planted Cargo failure'; exit 9; fi
 if [ "$cmd" = build ]; then

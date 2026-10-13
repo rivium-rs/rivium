@@ -17,7 +17,12 @@ runner_name="CARGO_TARGET_$(tr '[:lower:]-' '[:upper:]_' <<< "$target")_RUNNER"
 read -r -a runner <<< "${!runner_name}"
 command -v "${runner[0]}" >/dev/null || fail "runner not found: ${runner[0]}"
 command -v timeout >/dev/null || fail 'GNU timeout is required'
-if [ "$mode" = qemu ]; then export RUSTFLAGS='--cfg qemu'; fi
+if [ "$mode" = qemu ]; then
+  export RUSTFLAGS='--cfg qemu'
+else
+  # Wine's fixme messages otherwise interleave with Rust's test result lines.
+  export WINEDEBUG=-all
+fi
 export RUST_TEST_THREADS=1 CARGO_TERM_COLOR=never
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"

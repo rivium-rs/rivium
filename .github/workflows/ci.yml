@@ -92,7 +92,8 @@ jobs:
       - run: cargo build --package test-app --bins --locked
       - run: cargo test --workspace --locked
       - name: Run isolated process and JVM tests without retries
-        run: cargo nextest run --package tests-integration --package rivium-jni --profile ci --retries 0 --locked
+        # Each test starts a full host or JVM; avoid competing runtimes on small runners.
+        run: cargo nextest run --package tests-integration --package rivium-jni --profile ci --test-threads=1 --retries 0 --locked
 
   msrv:
     name: ci/msrv

@@ -42,11 +42,12 @@ cargo test --workspace --locked
 ```
 
 Build the test programs before running the process tests. CI also runs them with
-cargo-nextest 0.9.145, without retries:
+cargo-nextest 0.9.145, without retries and one test at a time so full hosts/JVMs do not compete
+for a small runner:
 
 ```bash
 cargo install --locked --root .tools --version 0.9.145 cargo-nextest
-cargo nextest run --package tests-integration --package rivium-jni --profile ci --retries 0 --locked
+cargo nextest run --package tests-integration --package rivium-jni --profile ci --test-threads=1 --retries 0 --locked
 ```
 
 Use the same toolchain, target, Cargo build profile and target directory for the prebuild and
@@ -162,7 +163,9 @@ The script owns `RUSTFLAGS`: leave it and `CARGO_ENCODED_RUSTFLAGS` unset. It pr
 application/JNI targets before tests, bounds each command, runs tests serially without retries,
 and rejects empty/filtered results or missing child-process contracts. Only the four signal
 scenarios and the signal-driven stop-deadline test are ignored under QEMU, with their names and
-counts checked; native CI still runs all five. Wine permits no ignored tests. JVM Invocation and
+counts checked; native CI still runs all five. Wine permits no ignored tests; its own debug
+messages are disabled so they cannot interleave with test result lines. Application diagnostics
+and exit statuses are still checked. JVM Invocation and
 Cargo/tokei-dependent build guards stay in native CI, not in these emulator runs.
 
 For the Android compile-only check, install NDK **28.1.13356709**, GNU `readelf`, and:
