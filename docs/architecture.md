@@ -299,6 +299,9 @@ leaves before the answer, or that is still running at the stop deadline has neit
 
 ## How it is verified
 
-Each crate's tests, its unit tests and those in its `tests/` directory, run in CI on Linux, macOS
-and Windows and on Rust 1.92. [platforms.md](platforms.md) lists each target and how far it was
-verified for 0.1.0; the cross-target, hosting and drill verification of 0.1.0 is being rebuilt.
+The native CI matrix runs library and process contracts on Linux, macOS and Windows, alongside
+Rust 1.92 and desktop JVM checks. The daily workflow adds QEMU, Wine, the x86_64 glibc 2.17
+userland and compile-only Android checks. See [development checks](development.md) for commands
+and [platform support](platforms.md) for version-specific evidence and exclusions. Real service
+manager, device and hardware acceptance remain separate; automated success does not restore
+those historical claims.

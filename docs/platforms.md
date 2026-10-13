@@ -9,6 +9,7 @@ The minimum supported Rust version is **1.92**, checked by `ci/msrv`.
 - [Verification levels](#verification-levels)
 - [Current verification scope](#current-verification-scope)
 - [Release records](#release-records)
+- [0.1.1](#011)
 - [0.1.0](#010)
 
 ## Verification levels
@@ -29,9 +30,9 @@ device testing unless the record explicitly includes it.
 
 ## Current verification scope
 
-The verification toolchain is being rebuilt. The following describes workflows configured in
-this checkout, not a completed release record. **Configuration is not a successful run.**
-Record the candidate's actual results; do not carry the 0.1.0 results forward to a new version.
+The automated verification toolchain is restored. The following describes its configured scope;
+actual results belong to the version-specific records below. **Configuration is not a successful
+run.** Do not carry the 0.1.0 results forward to a new version.
 
 | Target or check | Workflow | Configured coverage and limits |
 | --- | --- | --- |
@@ -73,6 +74,54 @@ The protected release reviewer checks that evidence before approving publication
 presence is not proof of its claims. A T3 target without a matching record remains **unverified**.
 See the [release guide](releasing.md) for the approval and publishing procedure. Historical
 records retain their original scope and dates.
+
+## 0.1.1
+
+Candidate verification recorded on **2026-10-13** at
+[`448b47e`](https://github.com/rivium-rs/rivium/commit/448b47ede3abcf17e7f04c9ea4f9de72bda93f13).
+All five public crates and internal dependency requirements are 0.1.1; MSRV remains Rust 1.92.
+This records verified candidate behavior, not a claim that the version has been published.
+
+Evidence:
+
+- [PR CI](https://github.com/rivium-rs/rivium/actions/runs/38369209031): all native targets,
+  MSRV, JVM, lint, supply-chain guards and glibc link checks succeeded, including `ci-pass`.
+- [Release preview](https://github.com/rivium-rs/rivium/actions/runs/38369210903): same-revision
+  CI, public-content checks, API compatibility, the complete daily matrix and `release/ready`
+  succeeded. The event was manual dispatch; **`release/publish` was skipped**.
+- That preview packaged and scanned the actual five **0.1.1** archives, completed a real
+  `cargo publish --dry-run`, and checked archive/notes/metadata bytes. Artifact `11797758745`
+  was downloaded and its archive digest and all seven file checksums verified. Both package
+  and notes versions in `release.json` are 0.1.1; this is not the earlier 0.1.0-version preview.
+
+The [release preparation PR](https://github.com/rivium-rs/rivium/pull/70) tracks checks on its
+final revision as well. Documentation-only closeout does not waive a fresh candidate preview;
+a future release tag must pass its own full workflow before publication.
+
+| Target or check | Result and scope |
+| --- | --- |
+| `x86_64-unknown-linux-gnu` | Native suite passed; separate artifacts linked/checked against glibc 2.17, and the basic library/process suite passed in the pinned CentOS glibc 2.17 userland |
+| `aarch64-unknown-linux-gnu` | Native suite passed; no renewed architecture-specific glibc baseline |
+| `aarch64-apple-darwin`, `x86_64-apple-darwin` | Native suites passed on both architectures; not launchd hosting acceptance |
+| `x86_64-pc-windows-gnu` | Native suite and the separate Wine 10.0 suite passed; not WinSW hosting acceptance |
+| `armv7-unknown-linux-gnueabihf` | Library and target child-process contracts passed under QEMU 11.0; not hardware or systemd acceptance |
+| `loongarch64-unknown-linux-gnu` | Library and target child-process contracts passed under QEMU 11.0; not hardware or vendor old-world ABI/toolchain acceptance |
+| `aarch64-linux-android` | API 30 compilation/linking, JNI exports and 16 KB ELF LOAD checks passed; **compile-only**, not bionic/ART/device execution |
+| Desktop JVM | Invocation, dynamic loading, signature rejection and panic-containment checks passed; not an Android device record |
+| Rust 1.92 | Workspace build and tests passed on the MSRV |
+
+The QEMU runs exclude exactly the five native signal/stop-deadline scenarios listed in the
+[development guide](development.md#extended-platform-checks); native CI still runs them. Wine
+permits no ignored tests. The CentOS run excludes JVM Invocation and Cargo/tokei-dependent
+build guards, which passed in native CI instead. Android compilation is not T2 runtime
+verification, and the declared 16 KB ELF alignment is not a real-device compatibility result.
+
+The following remain **unverified for 0.1.1**: real systemd/launchd/WinSW hosting and sd-notify;
+Android bionic/ART runtime and devices; physical ARMv7 and LoongArch hardware, including the
+vendor old-world ABI/toolchain; and renewed architecture-specific glibc baselines other than
+x86_64. Historical T3 records below remain historical, not a claim of new candidate acceptance.
+The protected release reviewer must confirm any required manual acceptance and publishing
+configuration separately; this preview did not request OIDC credentials or upload packages.
 
 ## 0.1.0
 
