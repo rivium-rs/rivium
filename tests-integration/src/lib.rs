@@ -2,6 +2,9 @@
 
 #![allow(unsafe_code)]
 
+#[cfg(all(feature = "jvm", not(target_os = "android")))]
+pub mod jvm;
+
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};

@@ -1,0 +1,18 @@
+[package]
+name = "test-jni"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Private JNI library for JVM contract tests"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rivium-jni.workspace = true
+test-app = { path = ".." }
+
+[lints]
+workspace = true

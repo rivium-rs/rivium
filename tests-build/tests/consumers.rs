@@ -124,7 +124,10 @@ fn log_export_adds_zip_without_http_or_jni() {
 fn adapters_do_not_pull_each_other_in() {
     let jni = dependency_names("rivium-jni", None);
     assert!(jni.contains("jni"));
-    excludes(&jni, &["rivium-http", "axum", "hyper"]);
+    excludes(
+        &jni,
+        &["rivium-http", "axum", "hyper", "java-locator", "libloading"],
+    );
     let http = dependency_names("rivium-http", None);
     assert!(http.contains("axum"));
     excludes(&http, &["rivium-jni", "jni", "jni-sys"]);
