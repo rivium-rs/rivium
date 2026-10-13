@@ -96,6 +96,36 @@ blank lines. A missing counter, missing crate or malformed measurement is a fail
 The feature check uses normal build targets under resolver 3; it does not remove dev-dependencies
 from manifests or regenerate the lockfile.
 
+### JVM contracts
+
+JVM tests need a full JDK via `JAVA_HOME`, with its `bin` directory on `PATH` (CI uses Temurin
+21 and compiles the test Java sources for Java 17). A missing JDK is a test failure, not a skip.
+Normal library builds and test compilation do not invoke Java or require a JDK.
+
+```bash
+export JAVA_HOME=/path/to/jdk-21
+export PATH="$JAVA_HOME/bin:$PATH"
+cargo test --package rivium-jni --test invocation --locked
+```
+
+The Invocation test creates a JVM in an isolated instance of its own Rust test executable;
+it does not need a prebuilt cdylib. The parent bounds the run and cleans up after the JVM exits.
+It tests the real native bridge, including Unicode, repeated start/stop, errors, flushed logs,
+and a negative stop timeout. JNI checker warnings fail the test.
+
+The separate loader contract uses the private `test-jni` cdylib and requires both normal and
+fault builds. Keep their output directories separate and do not export the fault flags globally:
+
+```bash
+cargo build --package test-jni --lib --target-dir target/jvm-normal --locked
+RUSTFLAGS="--cfg rivium_jni_fault" cargo build --package test-jni --lib --target-dir target/jvm-fault --locked
+crates/rivium-jni/tests/jvm/run.sh target/jvm-normal/debug test_jni rivium/tests target/jvm-fault/debug
+```
+
+This checks real loading, mismatched signatures and panic containment in all five methods.
+The normal library must ignore fault-injection settings. CI bounds the entire loader run with
+a timeout; neither missing fault artifacts nor checker warnings count as success.
+
 Maintainers install the git hooks that run the public-content check once:
 
 ```bash
