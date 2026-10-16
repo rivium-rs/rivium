@@ -4,12 +4,16 @@ version = "0.0.0"
 edition = "2024"
 rust-version = "1.92"
 publish = false
+
 [workspace]
+
 [lib]
 doctest = false
+
 [dependencies]
 loom = "0.7"
 tokio = { version = "1.53.3", default-features = false, features = ["time", "sync", "macros"] }
+
 [lints.rust]
 unsafe_code = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(rivium_scope_model)"] }

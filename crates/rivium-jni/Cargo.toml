@@ -7,9 +7,12 @@ license.workspace = true
 repository.workspace = true
 description = "A small JNI ABI for the Rivium embedded host"
 include = ["/src/**", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+
 [dependencies]
 rivium-host = { workspace = true, features = ["embedded"] }
+
 jni.workspace = true
+
 [dev-dependencies]
 rivium = { workspace = true, features = ["rt"] }
 

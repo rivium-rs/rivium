@@ -11,6 +11,7 @@ autobenches = false
 rivium = { workspace = true, features = ["task"] }
 rivium-util = { workspace = true, features = ["task", "log-export"] }
 rivium-test.workspace = true
+
 flate2 = { workspace = true, features = ["rust_backend"] }
 tracing = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }

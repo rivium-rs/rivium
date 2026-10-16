@@ -1,12 +1,17 @@
 [workspace]
 resolver = "3"
-members = [
-    "crates/rivium", "crates/rivium-util", "crates/rivium-host",
-    "crates/rivium-http", "crates/rivium-jni", "crates/rivium-test",
-    "tests-build", "tests-integration", "tests-integration/test-app",
-    "tests-integration/jni", "examples", "benches",
-]
 exclude = ["tests-loom"]
+members = [
+    "crates/*",
+
+    # Internal
+    "benches",
+    "examples",
+    "tests-build",
+    "tests-integration",
+    "tests-integration/test-app",
+    "tests-integration/jni",
+]
 
 [workspace.package]
 version = "0.2.0"
@@ -22,6 +27,7 @@ rivium-host = { path = "crates/rivium-host", version = "0.2.0", default-features
 rivium-http = { path = "crates/rivium-http", version = "0.2.0", default-features = false }
 rivium-jni = { path = "crates/rivium-jni", version = "0.2.0" }
 rivium-test = { path = "crates/rivium-test", version = "0.2.0" }
+
 axum = { version = "0.8.9", default-features = false }
 flate2 = { version = "1.1", default-features = false }
 futures-util = { version = "0.3", default-features = false }
@@ -46,7 +52,12 @@ zip = { version = "9.0.3", default-features = false }
 unsafe_code = "deny"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(rivium_jni_fault)", "cfg(qemu)", "cfg(docsrs)", "cfg(rivium_scope_model)"] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(rivium_jni_fault)",
+    "cfg(qemu)",
+    "cfg(docsrs)",
+    "cfg(rivium_scope_model)",
+] }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
