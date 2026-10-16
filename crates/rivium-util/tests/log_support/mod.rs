@@ -1,7 +1,7 @@
 // Each integration target compiles this shared fixture independently.
 #![allow(dead_code)]
 use rivium_test::TempDir;
-use rivium_util::log::{Logger, Settings};
+use rivium_util::log::{Category, Logger, Settings};
 #[cfg(feature = "log-export")]
 use std::time::{Duration, Instant};
 use std::{
@@ -26,6 +26,13 @@ pub(crate) fn tiny_budget(name: &str) -> Settings {
         settings.export.max_size = 1024;
     }
     settings
+}
+
+pub(crate) fn category(name: impl Into<String>, filter: &str) -> Category {
+    Category {
+        name: name.into(),
+        filter: filter.into(),
+    }
 }
 
 pub(crate) fn default_logger(root: &TempDir, name: &str) -> rivium::Result<Logger> {

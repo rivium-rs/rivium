@@ -3,7 +3,7 @@ mod log_support;
 use log_support::*;
 
 use rivium_test::TempDir;
-use rivium_util::log::{Category, Logger, Settings};
+use rivium_util::log::{Logger, Settings};
 use std::time::Duration;
 
 #[test]
@@ -12,10 +12,7 @@ fn independent_log_filters_flush_and_reload() {
     let mut settings = Settings::for_app("test");
     settings.filter = "info".into();
     settings.file.filter = "info,special=off".into();
-    settings.files.push(Category {
-        name: "special".into(),
-        filter: "special=info".into(),
-    });
+    settings.files.push(category("special", "special=info"));
     let mut log = Logger::new("test", temp.path(), settings.clone(), false, vec![]).unwrap();
     tracing::dispatcher::with_default(&log.dispatch(), || {
         tracing::info!("ordinary");
@@ -89,12 +86,7 @@ fn categories_and_budget_are_validated_before_creating_files() {
     let mut settings = Settings::for_app("valid");
     settings.file.max_file_size = 1024;
     settings.file.max_total_size = u64::MAX;
-    settings.files = (0..17)
-        .map(|i| Category {
-            name: format!("c{i}"),
-            filter: "info".into(),
-        })
-        .collect();
+    settings.files = (0..17).map(|i| category(format!("c{i}"), "info")).collect();
     assert!(settings.validate("valid").is_err());
     settings.files.truncate(16);
     assert!(settings.validate("valid").is_ok());
@@ -659,10 +651,7 @@ fn structural_reload_is_reported_without_moving_live_outputs() {
     candidate.file.dir = "elsewhere".into();
     candidate.file.max_file_size *= 2;
     candidate.console.format = rivium_util::log::Format::Json;
-    candidate.files.push(Category {
-        name: "audit".into(),
-        filter: "info".into(),
-    });
+    candidate.files.push(category("audit", "info"));
     #[cfg(feature = "log-export")]
     {
         candidate.export.max_size *= 2;

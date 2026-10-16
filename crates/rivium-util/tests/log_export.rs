@@ -257,7 +257,6 @@ fn cancellation_is_observed_before_close_confirms_export_worker_release() {
 
 #[test]
 fn export_uses_utc_dates_and_filters_configured_sinks() {
-    use rivium_util::log::Category;
     let (temp, dir) = log_directory("dates");
     for (name, content) in [
         ("dates.log", "active UTC leap day"),
@@ -276,10 +275,7 @@ fn export_uses_utc_dates_and_filters_configured_sinks() {
         std::time::UNIX_EPOCH + Duration::from_secs(951_782_400),
     );
     let mut settings = Settings::for_app("dates");
-    settings.files.push(Category {
-        name: "audit".into(),
-        filter: "off".into(),
-    });
+    settings.files.push(category("audit", "off"));
     let logger = Logger::new("dates", temp.path(), settings, false, vec![]).unwrap();
     let exporter = logger.exporter();
     assert_eq!(exporter.sinks(), ["dates", "audit"]);
@@ -336,17 +332,13 @@ fn export_uses_utc_dates_and_filters_configured_sinks() {
 
 #[test]
 fn eviction_uses_sequence_across_categories_when_archive_dates_go_backwards() {
-    use rivium_util::log::Category;
     let (temp, dir) = log_directory("sequence");
     let old = dir.join("audit.2099-01-01.00000000000000000001.log");
     let new = dir.join("sequence.1970-01-01.00000000000000000002.log");
     std::fs::write(&old, [1; 1024]).unwrap();
     std::fs::write(&new, [2; 1024]).unwrap();
     let mut settings = tiny_budget("sequence");
-    settings.files.push(Category {
-        name: "audit".into(),
-        filter: "off".into(),
-    });
+    settings.files.push(category("audit", "off"));
     let logger = Logger::new("sequence", temp.path(), settings, false, vec![]).unwrap();
     tracing::dispatcher::with_default(&logger.dispatch(), || tracing::info!("new active event"));
     logger.close(Duration::from_secs(2)).unwrap();
@@ -461,17 +453,13 @@ fn active_files_before_the_epoch_export_on_their_utc_calendar_day() {
 
 #[test]
 fn eviction_failure_prevents_growth_in_every_category() {
-    use rivium_util::log::Category;
     let (temp, dir) = log_directory("evictfail");
     let old = dir.join("evictfail.2026-01-01.00000000000000000001.log");
     std::fs::write(&old, [4; 1024]).unwrap();
     let other = dir.join("audit.2026-01-01.00000000000000000002.log");
     std::fs::write(&other, [5; 1024]).unwrap();
     let mut settings = tiny_budget("evictfail");
-    settings.files.push(Category {
-        name: "audit".into(),
-        filter: "audit=info".into(),
-    });
+    settings.files.push(category("audit", "audit=info"));
     let logger = Logger::new("evictfail", temp.path(), settings, false, vec![]).unwrap();
     std::fs::remove_file(&old).unwrap();
     std::fs::create_dir(&old).unwrap();
@@ -491,14 +479,10 @@ fn eviction_failure_prevents_growth_in_every_category() {
 
 #[test]
 fn category_rotation_holds_the_combined_budget_and_keeps_latest_events() {
-    use rivium_util::log::Category;
     let temp = TempDir::new().unwrap();
     let mut settings = tiny_budget("categories");
     settings.file.filter = "main=info".into();
-    settings.files.push(Category {
-        name: "audit".into(),
-        filter: "audit=info".into(),
-    });
+    settings.files.push(category("audit", "audit=info"));
     let logger = Logger::new("categories", temp.path(), settings, false, vec![]).unwrap();
     let before = rivium_util::log::counters()[2];
     let dir = temp.path().join("logs/categories");
