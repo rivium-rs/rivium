@@ -1,23 +1,17 @@
 [package]
 name = "rivium-jni"
-description = "JNI adapter for Rivium's embedded host: generated JNI_OnLoad and native methods"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-readme = "README.md"
-include = ["src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
-keywords = ["jni", "android", "ffi", "service"]
-categories = ["api-bindings"]
-
+description = "A small JNI ABI for the Rivium embedded host"
+include = ["/src/**", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
 [dependencies]
+rivium-host = { workspace = true, features = ["embedded"] }
 jni.workspace = true
-rivium.workspace = true
-
-[target.'cfg(not(target_os = "android"))'.dev-dependencies]
-test-app = { path = "../../test-app" }
-tests-integration = { path = "../../tests-integration", features = ["jvm"] }
+[dev-dependencies]
+rivium = { workspace = true, features = ["rt"] }
 
 [lints]
 workspace = true
