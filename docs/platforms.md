@@ -9,6 +9,7 @@ The minimum supported Rust version is **1.92**, checked by `ci/msrv`.
 - [Verification levels](#verification-levels)
 - [Current verification scope](#current-verification-scope)
 - [Release records](#release-records)
+- [0.2.0 candidate](#020-candidate)
 - [0.1.1](#011)
 - [0.1.0](#010)
 
@@ -43,7 +44,7 @@ run.** Do not carry the 0.1.0 results forward to a new version.
 | `armv7-unknown-linux-gnueabihf` | `daily` | Cross-build and library/process contracts under QEMU; not hardware verification |
 | `loongarch64-unknown-linux-gnu` (new-world ABI) | `daily` | Cross-build and library/process contracts under QEMU; not hardware or vendor old-world ABI verification |
 | `aarch64-linux-android` (arm64-v8a, API 30) | `daily` | NDK compilation/linking, JNI exports and 16 KB ELF LOAD alignment; no bionic, ART or device execution |
-| JNI contracts on a desktop JVM | `ci` | Invocation and library-loading contracts; not an Android runtime substitute for device acceptance |
+| JNI contracts on a desktop JVM | `ci` | Library-loading and signature contracts; not an Android runtime substitute for device acceptance |
 | Rust 1.92 | `ci/msrv` | Workspace build and tests on the MSRV; not a vendor-toolchain or hardware record |
 
 See [development checks](development.md) for exact commands, prerequisites and test exclusions.
@@ -53,7 +54,7 @@ cannot establish coverage outside those jobs.
 ### Known gaps
 
 - Real systemd, launchd and WinSW hosting are not established by the current jobs.
-- `host-notify` is an ordinary process host, not an sd-notify implementation.
+- No systemd notification protocol is implemented by the workspace.
 - Android bionic runtime tests, ART contracts and real-device checks are not run by the Android lane.
 - Vendor old-world LoongArch, physical hardware tests and additional architecture-specific ABI
   baselines require matching verification records.
@@ -74,6 +75,40 @@ The protected release reviewer checks that evidence before approving publication
 presence is not proof of its claims. A T3 target without a matching record remains **unverified**.
 See the [release guide](releasing.md) for the approval and publishing procedure. Historical
 records retain their original scope and dates.
+
+## 0.2.0 candidate
+
+Local verification on **2026-10-16** covers the unreleased six-package source rewrite on
+`codex/rebuild-020-full`, based on `v0.1.1` / `abc50bc2887d9487799dd99dfb9f967315bc875b`.
+The verified `crates` Git subtree is `792d22cecde7b20780299aefa7127db75f28b37e`;
+this identifies the library sources, manifests and tests independently of later documentation.
+These are local candidate results, not a release preview or a renewed native CI matrix.
+
+| Target or check | Actual result and scope |
+| --- | --- |
+| `aarch64-apple-darwin`, Rust 1.96.0 | Workspace all-feature tests: 340 passed; two opt-in sustained stress cases are recorded separately. Examples and the process fixture built successfully |
+| Rust 1.92, `aarch64-apple-darwin` | Same workspace suite: 340 passed, two opt-in stress cases excluded; examples and process fixture rebuilt with this toolchain |
+| Feature boundaries | 16 independent capability test configurations and 36 cargo-hack build configurations passed; isolated consumer guards checked dependency closures |
+| Desktop JVM, OpenJDK 27 | Rebuilt normal/fault JNI libraries passed loading, Unicode, signature rejection, restart and five-entry panic containment contracts with `-Xcheck:jni` |
+| `aarch64-linux-android` | NDK r28b / API 30 built and linked workspace libraries, binaries and tests; JNI exports and 16 KB ELF LOAD alignment passed. Compile/link checks only |
+| `x86_64-pc-windows-gnu` | All six production libraries passed cross-compilation checks with all features. No Windows or Wine test execution in this record |
+| Concurrency and static checks | Six Loom models passed; all-target/all-feature Clippy and rustdoc rejected warnings; script guards, ShellCheck, actionlint and dependency policy checks passed |
+| Sustained ownership tests | Seeded dynamic-task stress ran for 600 seconds; final host restart stress completed 153 blocked-and-released generations in 181 seconds. External watchdogs did not fire |
+| Package contents | All six actual 0.2.0 archives passed file whitelists, source-byte comparison and private-content scanning. Packaging used `--no-verify`; the workspace and isolated consumers supplied compilation evidence, not a registry publish dry-run |
+
+The historical 0.1.x Linux, macOS x86-64, Windows, QEMU, glibc and hardware results below
+are not evidence for this rewrite. Native Linux/Windows, QEMU/Wine execution, service-manager
+hosting, Android bionic/ART/devices and deployment workload acceptance remain unverified here.
+Microbenchmarks and bounded synthetic stress do not establish production tail-latency or
+RSS/FD capacity targets. Publishing still requires the candidate's complete release workflow.
+
+Three sequential microbenchmark processes per revision also compared this candidate with the
+earlier `aa48a03` implementation. The median batch mean for reserving/releasing 64 scope slots
+rose from 329 ns to 1,473 ns; reconciling 128 unchanged tasks on one worker rose from 4.68 µs to
+10.35 µs. The provisional performance regression target is **not met**. Logging without archives
+fell from 14.87 µs to 11.60 µs per event, and size rotation from 1.93 ms to 0.144 ms, including
+flush. These are synthetic batch means on the same machine/toolchain, with each revision's
+reviewed lockfile; they are neither per-operation percentiles nor deployment acceptance.
 
 ## 0.1.1
 
@@ -111,7 +146,7 @@ a future release tag must pass its own full workflow before publication.
 | Rust 1.92 | Workspace build and tests passed on the MSRV |
 
 The QEMU runs exclude exactly the five native signal/stop-deadline scenarios listed in the
-[development guide](development.md#extended-platform-checks); native CI still runs them. Wine
+[development guide](development.md#jvm-and-platform-boundaries); native CI still runs them. Wine
 permits no ignored tests. The CentOS run excludes JVM Invocation and Cargo/tokei-dependent
 build guards, which passed in native CI instead. Android compilation is not T2 runtime
 verification, and the declared 16 KB ELF alignment is not a real-device compatibility result.

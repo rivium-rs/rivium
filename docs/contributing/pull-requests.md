@@ -29,7 +29,7 @@ start the next unit from `main` once the previous one is merged. If a unit must 
 PR still under review, branch from that unit; after it merges, merge `main` into the dependent
 branch before requesting review. Do not rebase it or rewrite pushed history.
 
-Install the [local development tools](../development.md#setup) under `.tools/`, not globally.
+Install the [local development tools](../development.md) under `.tools/`, not globally.
 Workspace tests require a JDK. Contributors with the private denylist must also install the
 [public-content hooks](#public-content-checks); fork contributors use the maintainer-check path.
 
@@ -52,10 +52,10 @@ Use this table to find additional checks for your change; it does not waive requ
 | Change | Relevant verification |
 | --- | --- |
 | Library behavior or lifecycle | Native workspace tests and affected process or embedded contracts |
-| Public API, features or dependencies | [Feature and supply-chain checks](../development.md#native-checks), MSRV and [dependency review](dependencies.md#verification) |
-| JNI bridge or loading | [Invocation and loader contracts](../development.md#jvm-contracts); Android checks when affected |
-| Linux ABI, linker or cross-target behavior | [glibc](../development.md#linux-glibc-baseline) and [extended-platform checks](../development.md#extended-platform-checks) |
-| Verification scripts or workflows | Shell lint and [guard self-tests](../development.md#guard-self-tests), plus real execution where the claim needs it |
+| Public API, features or dependencies | [Feature and supply-chain checks](../development.md#native-and-feature-contracts), MSRV and [dependency review](dependencies.md#verification) |
+| JNI bridge or loading | [JVM loader contracts](../development.md#jvm-and-platform-boundaries); Android checks when affected |
+| Linux ABI, linker or cross-target behavior | [glibc](../development.md#jvm-and-platform-boundaries) and [extended-platform checks](../development.md#jvm-and-platform-boundaries) |
+| Verification scripts or workflows | Shell lint and [guard self-tests](../development.md#verification-tooling-and-publication), plus real execution where the claim needs it |
 | Documentation only | `git diff --check`, local links and anchors, command/API examples and the public-content check |
 
 Prebuild the test programs before process tests, using the same toolchain, target, build profile

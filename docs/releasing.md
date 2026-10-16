@@ -26,7 +26,7 @@ The release workflow has two deliberately different entry points:
   names an existing release, notes preview the next patch; packages keep the actual workspace
   version. This preview does not decide the appropriate next version.
 - **A push of a stable `vX.Y.Z` tag requests publication.** The tag must identify the checkout,
-  belong to `origin/main`, match all five public crates and their internal dependencies, and not
+  belong to `origin/main`, match all six public crates and their internal dependencies, and not
   already exist on crates.io. A new minor/major needs its upgrading chapter. Every version needs
   its own verification section in `docs/platforms.md`; its presence is a record requirement,
   not automatic proof of the claims in it.
@@ -47,7 +47,7 @@ The output directory must be scratch space, not a directory containing unrelated
 ```bash
 work=$(mktemp -d)
 scripts/release-check.sh preview "$work/release"
-cargo package -p rivium-error -p rivium -p rivium-http -p rivium-jni -p rivium-test \
+cargo package -p rivium -p rivium-util -p rivium-host -p rivium-http -p rivium-jni -p rivium-test \
   --all-features --locked --registry crates-io --no-verify --target-dir "$work/release/build"
 scripts/release-packages.sh scan "$work/release/build/package" "$work/release" \
   "$(git config --get rivium.denylist)" "$work/verified"
@@ -59,20 +59,26 @@ scripts/release-packages.sh verify "$work/release/build/package" "$work/release"
 The explicit package list is intentional: `cargo package --workspace` also attempts to package
 private members. Workspace publishing, by contrast, selects publishable crates and orders their
 dependencies. The helpers accept Cargo's known workspace staging layout, reject ambiguous/missing
-archives and compare all five packages plus the notes/metadata, not arbitrary files in `target`.
+archives and compare all six packages plus the notes/metadata, not arbitrary files in `target`.
 A dry run never needs `--allow-dirty`; change packaged source on a dedicated committed candidate
 if Cargo reports it dirty.
 
-The semver job checks every public crate against its published baseline, with all features. This
-plugin has no `--locked` switch; the workflow checks that the root lockfile is unchanged. Ordinary
-Cargo packaging/build commands remain locked. Missing baselines and registry errors are failures,
-not first-release exceptions.
+The semver job checks the four continuing packages (rivium, rivium-http, rivium-jni,
+and rivium-test) against published baselines. rivium-util and rivium-host are new package
+identities and use package/feature/MSRV verification for their first release. The checker
+has no --locked switch; CI verifies that the root lockfile stays unchanged. Missing existing
+baselines and registry errors remain failures. New package names and Trusted Publishing
+settings require maintainer provisioning before publication.
+
+The release aggregate requires the dedicated Loom job for the same candidate as well as
+native/daily/package/content checks. Failure, cancellation or a skipped prerequisite is
+not a successful release gate.
 
 ## Protected publishing and recovery
 
 The repository must have the `PUBLIC_DENYLIST` secret and a **protected `crates-io` environment**
 with a required reviewer and a deployment policy allowing the version tags. Configure Trusted
-Publishing for each of the five existing crates, bound to this repository, `release.yml` and
+Publishing for each of the six public crates, bound to this repository, `release.yml` and
 that environment. These are maintainer-managed settings; adding the workflow does not set them.
 The workflow checks reviewer protection through the read-only environments API. It has no
 long-lived-token fallback and does not provision new crate names.
@@ -89,7 +95,7 @@ the generated notes file rather than interpolating its contents into a shell com
 Publications are serialized and never automatically replayed after an ambiguous failure. If some
 crates were uploaded, an API times out, or the GitHub announcement fails, **inspect remote state
 first**. The read-only `scripts/release-registry.sh published <version> <verified-artifact-dir>`
-checks all five uploaded versions against the retained archives. A partial publication needs a
+checks all six uploaded versions against the retained archives. A partial publication needs a
 maintainer-directed recovery; do not delete/recreate tags, assume rollback, or blindly rerun an
 upload. If all crates are verified and only the announcement is missing, recover the announcement
 without uploading the crates again. Preview artifacts are retained for seven days; expired or

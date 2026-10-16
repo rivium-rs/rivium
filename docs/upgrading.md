@@ -1,58 +1,77 @@
 # Upgrading
 
-How a service built on Rivium takes a new release. Every Rivium crate (`rivium-error`,
-`rivium`, `rivium-http`, `rivium-jni`, `rivium-test`) is released at the same version as the
-others. The release notes of each version are on its
-[GitHub release](https://github.com/rivium-rs/rivium/releases).
+Keep all Rivium packages on the same version. This page distinguishes the unreleased
+0.2 source rewrite from historical 0.1 maintenance records below.
 
-## A patch release: `cargo update`
+## 0.2.0
 
-A patch release (0.1.0 to 0.1.1) fixes without changing the API, the configuration or the exit
-codes. Take it for every Rivium crate at once, so that they stay at one version:
+Unreleased rewrite candidate.
 
-```bash
-cargo update -p rivium-error -p rivium -p rivium-test
-```
+This is a complete production-source rewrite on the 0.1.1 history. Old implementations
+serve as behavior evidence; Rust compatibility shims are not included. Preserve your
+application configuration/data before migrating, and test actual external protocols.
 
-(add `-p rivium-http` and `-p rivium-jni` if the service uses them). Only `Cargo.lock` changes.
-Then build for every platform, run the tests, including the lifecycle contract tests, and deploy
-as usual.
+| 0.1 / earlier candidate | 0.2 destination or behavior |
+|---|---|
+| rivium-error | rivium::error; default core has no dependencies |
+| rivium::App/process/embedded | rivium-host with explicit process/embedded features |
+| Configuration/logging/task helpers in the service foundation | independently selected rivium-util features |
+| Supervisor::run -> Outcome | RunReport with separate outcome and drain |
+| Implicit spawn failure conversion | match SubmitError, especially Closed during normal shutdown |
+| Error context exposed in HTTP | explicit with_public_message opt-in; server/upstream diagnostics remain private |
+| Broad error helper/macro facade | Error getters, source/chain, ResultExt, Side and Retry; no tracing dependency in default core |
+| ResultExt over error types | accepts foreign standard errors; typed errors keep their classification and retry hint |
+| Atomic write IO error only | AtomicWriteError includes stage and committed status |
+| Manager arbitrary desired iterator / active-only capacity | finite Vec input, capacity includes all tracked keys; DesiredRejected preserves live tasks |
+| HTTP Settings | ContractSettings with request capacity; ServerLimits separately bounds connections |
+| Custom serve_listener with three arguments | explicit fourth ServerLimits argument |
+| Context::control returning core Control | generation-bound HostControl; stop/restart also close reload admission synchronously |
+| Host drain only service tasks | CleanupReport for the captured generation, including reload/log owners and errors |
 
-## A breaking release: the steps below
+The six public packages are rivium, rivium-util, rivium-host, rivium-http, rivium-jni and
+rivium-test. The last belongs in dev-dependencies. Core, utility, host and HTTP feature
+sets are additive; see their README files for the actual default closure.
 
-Before 1.0, a new minor version (0.1 to 0.2) may change the API, configuration keys or their
-meaning. Each such version has a section here, written as steps that a person or a coding agent
-can follow in order. Every step says what to change (a file or a symbol), how, and how to check
-it. To cross several versions, follow their sections from the oldest. Every section starts and
-ends the same way:
+Update error construction to Error::new(kind, diagnostic), context/with_source and explicit
+Retry hints. Display prints the current diagnostic hop; alternate formatting (`{:#}`) prints
+the cause chain. Retry hints never establish that a non-idempotent operation may be repeated.
 
-1. In the workspace `Cargo.toml`, set every Rivium crate to the new version, then run `cargo
-   update -p rivium-error -p rivium` (and the other Rivium crates the service uses).
-2. The steps of the version.
-3. If the service keeps its default configuration in a file, regenerate it with the program's
-   `default-config` and review its diff: it shows every default that changed.
-4. Build for every platform and run the service's checks and tests, including the lifecycle
-   contract tests.
+Before disposing shared state, inspect drain/cleanup, not merely Phase::Stopped or a stop
+request. Started blocking closures cannot be killed by Tokio. In-process restart reconstructs
+configuration, services and logging only after the old owners release; the session runtime
+is reused. Host.stop budgets the caller's total wait; zero requests stop and returns promptly.
+An already-finished session returns NotRunning, preserving its previous report for inspection.
 
-## An urgent fix
+Reload defaults to restart-only configuration. Implement App::reload_config as a pure selection
+of actual hot fields, validate the effective combination, and read one snapshot per logical
+operation. Writing the file does not reload it. Capacity/resource settings that are consumed
+only at startup must stay cold. The loader limits documents to 1 MiB by default.
 
-When a service cannot wait for a release, point its Rivium crates at a branch with the fix:
+File logging now drops an oversized event whole above 64 KiB; it does not publish truncated
+JSON/text as a successful event. Observe instance counters and cleanup failures. Category
+names and total budgets are validated. Historical log names/formats outside the documented
+recognized archive set need an application migration; never assume every old log is imported.
 
-```toml
-[patch.crates-io]
-rivium = { git = "https://github.com/rivium-rs/rivium", branch = "<the fix's branch>" }
-```
+HTTP handler timeouts end at response headers. Response/request body ownership continues until
+release. Unknown-length body limits only apply to bytes actually read. NoEnvelope preserves
+application protocol shapes while keeping admission and input limits. TLS remains an application
+adapter. Existing clients with custom response/status conventions must keep their adapter.
 
-(one line for each Rivium crate the service uses), and remove the patch once the release that
-contains the fix is out.
+The JNI five-method ABI and process result codes remain stable, but Java last-error strings are
+safe summaries. Exact private diagnostic text and global panic-hook output are not contracts.
+SIGQUIT keeps its operating-system disposition; the process host handles SIGINT/SIGTERM.
+
+All historical test/benchmark/CI assets were saved before source removal. Passing counts are not
+proof of equal coverage: migrated contract mappings and actual checks determine acceptance.
+Platform evidence is version-specific; see [platforms](platforms.md).
 
 ## 0.1.1
 
 This is a compatible maintenance update of the five library crates. Their production Rust
 implementation, public APIs, configuration defaults, exit codes and Rust 1.92 MSRV are unchanged
 from 0.1.0. Existing services do not need source or configuration migration. Keep all Rivium
-crates on the same version and use the [patch-update commands](#a-patch-release-cargo-update)
-above; dependency requirements such as `rivium = "0.1"` already allow 0.1.1.
+crates on the same version and update the lockfile with `cargo update -p rivium --precise 0.1.1`;
+dependency requirements such as `rivium = "0.1"` already allow 0.1.1.
 
 The repository workflow changed even though the library contract did not:
 
