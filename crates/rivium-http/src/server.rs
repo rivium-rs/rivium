@@ -1,393 +1,328 @@
-//! The HTTP server service and its settings: the contract layer, the probes and the listener,
-//! with the hooks for layers outside the contract layer and for TLS.
-
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::convert::Infallible;
-use std::future::Future;
-use std::io;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Duration;
-
-use axum::extract::{Request, State};
-use axum::http::StatusCode;
-use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{Route, get};
-use axum::serve::{Listener, ListenerExt};
-use axum::{Extension, Router};
-use rivium::config::de::{bytes, duration, serialize_bytes, serialize_duration};
-use rivium::error::{OrErr, kinds};
-use rivium::{
-    AppContext, BoxFuture, Health, Readiness, Result, Service, ServiceContext, ServiceKind,
-    StopSignal,
+use crate::{ContractSettings, Observer, body, contract};
+use axum::{
+    Extension, Router,
+    extract::{ConnectInfo, Request},
+    http::StatusCode,
+    response::Response,
+    routing::get,
+    serve::{IncomingStream, Listener},
 };
-use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinSet;
-use tower::Layer;
-use tracing::{Instrument, Span};
+use rivium::{
+    BoxFuture, Context, Kind, Phase, Result, Service, Stop,
+    scope::{Reservation, TaskScope},
+};
+use std::{
+    convert::Infallible,
+    fmt::Debug,
+    io,
+    net::SocketAddr,
+    num::NonZeroUsize,
+    pin::Pin,
+    sync::Arc,
+    task::{Context as TaskContext, Poll},
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, ReadBuf},
+    net::TcpListener,
+    sync::{OwnedSemaphorePermit, Semaphore},
+};
+use tower::{Service as TowerService, ServiceExt};
+use tracing::{Instrument, instrument::WithSubscriber};
 
-use crate::{ApiResponse, ContractSettings, HttpObserver, NoEnvelope, contract};
-
-/// How long an [`Acceptor`] may take for one connection.
-const HANDSHAKE: Duration = Duration::from_secs(10);
-
-/// `[http]`: an HTTP server's settings, for the service's own configuration; the defaults:
-///
-/// ```toml
-/// [http]
-/// addr = "127.0.0.1:8080"      # where to listen
-/// request_timeout = "30s"      # a slower handler is answered with 503 and Retry-After
-/// body_limit = "1MiB"          # a larger request body read by an extractor is answered with 413
-/// expose_internal_detail = false  # server errors show the whole error, not a fixed phrase
-/// probes = true                # serve /livez and /readyz
-/// ```
-///
-/// The three keys in the middle are the contract layer's [`ContractSettings`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct HttpSettings {
-    /// Where to listen.
-    pub addr: SocketAddr,
-    /// How long a handler may take, from 1 second to 1 hour.
-    #[serde(
-        serialize_with = "serialize_duration",
-        deserialize_with = "duration::<_, 1, 3600>"
-    )]
-    pub request_timeout: Duration,
-    /// The largest request body, in bytes, at most 1 GiB, for the extractors that read a
-    /// limited body (`Bytes`, `String`, `Json`, `Multipart`); a handler that reads the
-    /// `Request` or its `Body` itself is not limited.
-    #[serde(
-        serialize_with = "serialize_bytes",
-        deserialize_with = "bytes::<_, 0, { 1 << 30 }>"
-    )]
-    pub body_limit: u64,
-    /// Whether server errors describe the whole error instead of a fixed phrase.
-    pub expose_internal_detail: bool,
-    /// Whether to serve `/livez` and `/readyz`.
-    pub probes: bool,
+/// Per-listener connection budget, acquired before `Listener::accept` is polled.
+#[derive(Clone, Copy, Debug)]
+pub struct ServerLimits {
+    pub connections: NonZeroUsize,
 }
-
-impl Default for HttpSettings {
+impl Default for ServerLimits {
     fn default() -> Self {
-        HttpSettings {
-            addr: SocketAddr::from(([127, 0, 0, 1], 8080)),
-            request_timeout: Duration::from_secs(30),
-            body_limit: 1 << 20,
-            expose_internal_detail: false,
-            probes: true,
+        Self {
+            connections: NonZeroUsize::new(256).unwrap(),
         }
     }
 }
-
-/// Turns an accepted connection into the stream that HTTP is served on, such as a TLS stream
-/// of the service's own TLS library: see [`HttpServer::accept_with`].
-pub trait Acceptor: Send + Sync + 'static {
-    /// The stream that HTTP is served on.
-    type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
-
-    /// Turns `stream`, just accepted, into the stream that HTTP is served on, such as with a
-    /// TLS handshake. An error drops the connection; the acceptor logs it if it should be.
-    fn accept(&self, stream: TcpStream) -> impl Future<Output = io::Result<Self::Stream>> + Send;
+enum Binding {
+    Address(SocketAddr),
+    Listener(TcpListener),
 }
-
-/// An HTTP server, as a frontline service named `http` unless [named](Self::named) otherwise:
-/// the router with the probes, in the [contract layer](crate::contract).
-///
-/// It binds `addr` while it starts, logs the `listening` event, and serves the router until the
-/// service is asked to stop. Every request runs in the service's span, so the lines it logs
-/// name the server, and carries its peer's address as `ConnectInfo<SocketAddr>` and the
-/// service's [`StopSignal`] as an extension: a long response, such as server-sent events or a
-/// streamed download, reads `Extension<StopSignal>` and ends itself before the stop deadline.
-///
-/// At the stop it stops listening at once, closes idle connections and waits for the requests
-/// in flight. Requests still running at the stop deadline, and a connection whose first request
-/// head has not fully arrived, make the stop time out; their connections end when the host
-/// shuts the runtime down, except across an in-process restart, which keeps the runtime: there
-/// they may run past the deadline, bounded by the request timeout. Connections that upgrade,
-/// such as WebSocket sessions, are axum's own tasks and end at the stop only if they read the
-/// stop signal.
-///
-/// With probes on, it serves `/livez` (always 200) and `/readyz` (200 once the service runs and
-/// every health item is healthy, else 503), and the router must not have these two routes
-/// itself. Static files can be served with tower-http's `ServeDir` as a nested service or the
-/// router's fallback.
+/// A frontline HTTP/1 service with safe contracts and explicit connection ownership.
 pub struct HttpServer {
-    name: Cow<'static, str>,
-    settings: HttpSettings,
+    name: String,
+    binding: Binding,
     router: Router,
-    readiness: Readiness,
-    observers: Vec<Arc<dyn HttpObserver>>,
-    layers: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
-    acceptor: Option<Arc<dyn Accept>>,
+    settings: ContractSettings,
+    limits: ServerLimits,
+    observers: Vec<Observer>,
+    outer: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
 }
-
 impl HttpServer {
-    /// A server of `router` with these settings, reporting the readiness of `ctx`'s run.
-    #[must_use]
-    pub fn new(settings: &HttpSettings, router: Router, ctx: &AppContext) -> Self {
-        HttpServer {
-            name: Cow::Borrowed("http"),
-            settings: settings.clone(),
-            router,
-            readiness: ctx.readiness().clone(),
-            observers: Vec::new(),
-            layers: Vec::new(),
-            acceptor: None,
-        }
-    }
-
-    /// The same server under another service name, for a service with more than one.
-    #[must_use]
-    pub fn named(self, name: impl Into<Cow<'static, str>>) -> Self {
-        HttpServer {
+    /// Bind during supervised initialization.
+    pub fn new(name: impl Into<String>, address: SocketAddr, router: Router) -> Self {
+        Self {
             name: name.into(),
-            ..self
+            binding: Binding::Address(address),
+            router,
+            settings: ContractSettings::default(),
+            limits: ServerLimits::default(),
+            observers: Vec::new(),
+            outer: Vec::new(),
         }
     }
-
-    /// Adds an observer of every response, to the contract layer's.
-    #[must_use]
-    pub fn observe(mut self, observer: Arc<dyn HttpObserver>) -> Self {
+    /// Take ownership of an already bound listener, without beginning acceptance.
+    pub fn from_listener(
+        name: impl Into<String>,
+        listener: TcpListener,
+        router: Router,
+    ) -> Result<Self> {
+        let address = listener.local_addr()?;
+        let mut server = Self::new(name, address, router);
+        server.binding = Binding::Listener(listener);
+        Ok(server)
+    }
+    /// Configure shared request admission and header/body budgets.
+    pub fn settings(mut self, settings: ContractSettings) -> Self {
+        self.settings = settings;
+        self
+    }
+    /// Configure accepted-connection budget.
+    pub fn limits(mut self, limits: ServerLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+    /// Add a short synchronous access observer.
+    pub fn observe(mut self, observer: Observer) -> Self {
         self.observers.push(observer);
         self
     }
-
-    /// Adds `layer` outside the contract layer, as `Router::layer` adds it to the router the
-    /// contract layer is on, so that it sees every final response, the answers to timeouts and
-    /// panics among them: CORS, compression, or a layer that puts a
-    /// [`RequestId`](crate::RequestId) of the service's own rules in the request. A layer added
-    /// later runs outside those added before.
-    #[must_use]
-    pub fn layer<L>(mut self, layer: L) -> Self
-    where
-        L: Layer<Route> + Clone + Send + Sync + 'static,
-        L::Service: tower::Service<Request> + Clone + Send + Sync + 'static,
-        <L::Service as tower::Service<Request>>::Response: IntoResponse + 'static,
-        <L::Service as tower::Service<Request>>::Error: Into<Infallible> + 'static,
-        <L::Service as tower::Service<Request>>::Future: Send + 'static,
-    {
-        self.layers
-            .push(Box::new(move |router| router.layer(layer)));
+    /// Apply application layers after the contract, on its outside.
+    pub fn outer(mut self, layer: impl FnOnce(Router) -> Router + Send + 'static) -> Self {
+        self.outer.push(Box::new(layer));
         self
-    }
-
-    /// Serves HTTP on the streams that `acceptor` makes of the accepted connections, such as
-    /// the TLS streams of the service's own TLS library; the service still binds `addr`.
-    /// Handshakes run side by side, each for at most 10 seconds, so that a client that never
-    /// finishes one holds back no other. A connection whose handshake fails or takes longer is
-    /// dropped, and the handshakes still running at the stop end with the listener.
-    #[must_use]
-    pub fn accept_with(mut self, acceptor: impl Acceptor) -> Self {
-        self.acceptor = Some(Arc::new(acceptor));
-        self
-    }
-
-    /// The router with the probes, in the contract layer, with the outer layers, the stop
-    /// signal and the service's span.
-    fn app(self, stop: StopSignal) -> Router {
-        let mut router = self.router;
-        if self.settings.probes {
-            let live = || async { ApiResponse::Data(BTreeMap::from([("status", "live")])) };
-            router = router
-                .route("/livez", get(live))
-                .route("/readyz", get(ready).with_state(self.readiness));
-        }
-        let mut settings = ContractSettings::default();
-        settings.request_timeout = self.settings.request_timeout;
-        settings.body_limit = self.settings.body_limit;
-        settings.expose_internal_detail = self.settings.expose_internal_detail;
-        let mut app = contract(router, &settings, self.observers);
-        for layer in self.layers {
-            app = layer(app);
-        }
-        // axum serves each connection in a task of its own, outside the service's span.
-        let span = Span::current();
-        app.layer(Extension(stop))
-            .layer(middleware::from_fn_with_state(span, in_span))
     }
 }
-
 impl Service for HttpServer {
-    fn name(&self) -> Cow<'static, str> {
-        self.name.clone()
+    fn name(&self) -> &str {
+        &self.name
     }
-
-    fn kind(&self) -> ServiceKind {
-        ServiceKind::Frontline
+    fn kind(&self) -> Kind {
+        Kind::Frontline
     }
-
-    fn run(self: Box<Self>, ctx: ServiceContext) -> BoxFuture<'static, Result<()>> {
+    fn run(self: Box<Self>, context: Context) -> BoxFuture<Result<()>> {
         Box::pin(async move {
-            let addr = self.settings.addr;
-            let listener = TcpListener::bind(addr).await;
-            let listener =
-                listener.or_err_with(kinds::UNAVAILABLE, || format!("binding {addr}"))?;
-            let bound = listener.local_addr();
-            ctx.listening(bound.or_err(kinds::UNAVAILABLE, "reading the bound address")?);
-            let acceptor = self.acceptor.clone();
-            let app = self.app(ctx.stop_signal());
-            let app = app.into_make_service_with_connect_info::<SocketAddr>();
-            ctx.ready();
-            let stopped = ctx.stopped();
-            let served = match acceptor {
-                None => {
-                    axum::serve(listener, app)
-                        .with_graceful_shutdown(stopped)
-                        .await
-                }
-                Some(acceptor) => {
-                    // `tap_io` gives the listener axum's connect info for its address.
-                    let listener = Accepting::new(listener, acceptor).tap_io(|_| {});
-                    axum::serve(listener, app)
-                        .with_graceful_shutdown(stopped)
-                        .await
-                }
+            let listener = match self.binding {
+                Binding::Address(address) => TcpListener::bind(address).await?,
+                Binding::Listener(listener) => listener,
             };
-            served.or_err(kinds::UNAVAILABLE, "serving HTTP")
+            let live = context.readiness();
+            let ready = live.clone();
+            let router = self
+                .router
+                .route(
+                    "/livez",
+                    get(move || {
+                        let state = live.clone();
+                        async move {
+                            if state.phase() == Phase::Stopped {
+                                StatusCode::SERVICE_UNAVAILABLE
+                            } else {
+                                StatusCode::OK
+                            }
+                        }
+                    }),
+                )
+                .route(
+                    "/readyz",
+                    get(move || {
+                        let state = ready.clone();
+                        async move {
+                            if state.is_ready() {
+                                StatusCode::OK
+                            } else {
+                                StatusCode::SERVICE_UNAVAILABLE
+                            }
+                        }
+                    }),
+                );
+            let mut router = contract(router, &self.settings, self.observers);
+            for layer in self.outer {
+                router = layer(router);
+            }
+            tracing::info!(
+                service = %context.name(),
+                address = %listener.local_addr()?,
+                "listener bound"
+            );
+            serve_listener(listener, router, context, self.limits).await
         })
     }
 }
-
-/// Runs the request in `span`, the service's.
-async fn in_span(State(span): State<Span>, request: Request, next: Next) -> Response {
-    next.run(request).instrument(span).await
+struct ConnectionLease {
+    _capacity: OwnedSemaphorePermit,
+    _scope: Reservation,
 }
-
-/// A stream that HTTP can be served on.
-trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
-
-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
-
-/// An [`Acceptor`] whose stream type is erased, so that `HttpServer` stays one type.
-trait Accept: Send + Sync + 'static {
-    fn accept(&self, stream: TcpStream) -> BoxFuture<'_, io::Result<Box<dyn Io>>>;
+struct OwnedIo<I> {
+    inner: I,
+    lease: Arc<ConnectionLease>,
 }
-
-impl<A: Acceptor> Accept for A {
-    fn accept(&self, stream: TcpStream) -> BoxFuture<'_, io::Result<Box<dyn Io>>> {
-        Box::pin(async move {
-            let stream = Acceptor::accept(self, stream).await?;
-            Ok(Box::new(stream) as Box<dyn Io>)
-        })
+impl<I: AsyncRead + Unpin> AsyncRead for OwnedIo<I> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut TaskContext<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_read(cx, buffer)
     }
 }
-
-/// The listener of a server with an acceptor: it hands axum a connection once the acceptor is
-/// done with it. Handshakes run side by side, each for at most [`HANDSHAKE`], and those still
-/// running when axum drops the listener at the stop end with it.
-struct Accepting {
-    tcp: TcpListener,
-    acceptor: Arc<dyn Accept>,
-    handshakes: JoinSet<Option<(Box<dyn Io>, SocketAddr)>>,
+impl<I: AsyncWrite + Unpin> AsyncWrite for OwnedIo<I> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut TaskContext<'_>,
+        buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.get_mut().inner).poll_write(cx, buffer)
+    }
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_flush(cx)
+    }
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
+    }
+    fn is_write_vectored(&self) -> bool {
+        self.inner.is_write_vectored()
+    }
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut TaskContext<'_>,
+        buffers: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.get_mut().inner).poll_write_vectored(cx, buffers)
+    }
 }
-
-impl Accepting {
-    fn new(tcp: TcpListener, acceptor: Arc<dyn Accept>) -> Self {
-        Accepting {
-            tcp,
-            acceptor,
-            handshakes: JoinSet::new(),
+struct Bounded<L> {
+    inner: L,
+    capacity: Arc<Semaphore>,
+    scope: TaskScope,
+    stop: Stop,
+}
+impl<L: Listener> Listener for Bounded<L> {
+    type Io = OwnedIo<L::Io>;
+    type Addr = L::Addr;
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            let permit = tokio::select! {
+                biased;
+                _ = self.stop.stopped() => std::future::pending().await,
+                permit = self.capacity.clone().acquire_owned() =>
+                    permit.expect("connection capacity is never closed")
+            };
+            let (io, address) = tokio::select! {
+                biased;
+                _ = self.stop.stopped() => std::future::pending().await,
+                accepted = self.inner.accept() => accepted
+            };
+            if let Some(mut reservations) = self.scope.reserve(1) {
+                let lease = Arc::new(ConnectionLease {
+                    _capacity: permit,
+                    _scope: reservations.pop().unwrap(),
+                });
+                return (OwnedIo { inner: io, lease }, address);
+            }
+            // Closure races must release the accepted IO before its capacity permit.
+            drop(io);
+            drop(permit);
         }
     }
+    fn local_addr(&self) -> io::Result<Self::Addr> {
+        self.inner.local_addr()
+    }
 }
-
-impl Listener for Accepting {
-    type Io = Box<dyn Io>;
-    type Addr = SocketAddr;
-
-    async fn accept(&mut self) -> (Box<dyn Io>, SocketAddr) {
-        loop {
-            tokio::select! {
-                (stream, peer) = Listener::accept(&mut self.tcp) => {
-                    let acceptor = Arc::clone(&self.acceptor);
-                    self.handshakes.spawn(async move {
-                        let handshake = tokio::time::timeout(HANDSHAKE, acceptor.accept(stream));
-                        match handshake.await {
-                            Ok(Ok(stream)) => Some((stream, peer)),
-                            _ => None,
-                        }
-                    });
-                }
-                Some(done) = self.handshakes.join_next(), if !self.handshakes.is_empty() => {
-                    if let Ok(Some(accepted)) = done {
-                        return accepted;
-                    }
-                }
+#[derive(Clone)]
+struct ConnectionService<A> {
+    router: Router,
+    address: A,
+    lease: Arc<ConnectionLease>,
+    dispatch: tracing::Dispatch,
+    span: tracing::Span,
+}
+impl<A: Clone + Send + Sync + 'static> TowerService<Request> for ConnectionService<A> {
+    type Response = Response;
+    type Error = Infallible;
+    type Future = BoxFuture<std::result::Result<Response, Infallible>>;
+    fn poll_ready(&mut self, _: &mut TaskContext<'_>) -> Poll<std::result::Result<(), Infallible>> {
+        Poll::Ready(Ok(()))
+    }
+    fn call(&mut self, mut request: Request) -> Self::Future {
+        request
+            .extensions_mut()
+            .insert(ConnectInfo(self.address.clone()));
+        let (parts, incoming) = request.into_parts();
+        let lease = self.lease.clone();
+        let router = self.router.clone();
+        Box::pin(
+            (async move {
+                let response = router
+                    .oneshot(Request::from_parts(
+                        parts,
+                        body::hold(incoming, lease.clone()),
+                    ))
+                    .await?;
+                let (parts, outgoing) = response.into_parts();
+                Ok(Response::from_parts(parts, body::hold(outgoing, lease)))
+            })
+            .instrument(self.span.clone())
+            .with_subscriber(self.dispatch.clone()),
+        )
+    }
+}
+/// Serve a cancellation-safe Axum listener, including a TLS adapter, with owned connections.
+/// The router is used as supplied; call `contract` for request budgets and envelopes.
+/// `limits` is explicit. The listener must not hide unbounded prefetch/handshake workers.
+pub async fn serve_listener<L>(
+    listener: L,
+    router: Router,
+    context: Context,
+    limits: ServerLimits,
+) -> Result<()>
+where
+    L: Listener,
+    L::Addr: Clone + Debug + Send + Sync + 'static,
+{
+    let stop = context.stop();
+    context.ready();
+    let mut readiness = context.readiness();
+    while readiness.phase() != Phase::Running {
+        tokio::select! {
+            biased;
+            _ = stop.stopped() => return Ok(()),
+            changed = readiness.changed() => if changed.is_none() {
+                return Ok(());
             }
         }
     }
-
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.tcp.local_addr()
-    }
-}
-
-/// `/readyz`: 200 or 503, with the phase and each health item's state, without reasons.
-async fn ready(State(readiness): State<Readiness>) -> Response {
-    let checks: BTreeMap<String, &str> = (readiness.checks().into_iter())
-        .map(|(name, health)| {
-            let state = match health {
-                Health::Healthy => "healthy",
-                Health::Unhealthy(_) => "unhealthy",
-            };
-            (name.into_owned(), state)
-        })
-        .collect();
-    let (status, word) = match readiness.is_ready() {
-        true => (StatusCode::OK, "ready"),
-        false => (StatusCode::SERVICE_UNAVAILABLE, "not ready"),
+    let scope = context.task_scope();
+    let listener = Bounded {
+        inner: listener,
+        capacity: Arc::new(Semaphore::new(limits.connections.get())),
+        scope: scope.clone(),
+        stop: stop.clone(),
     };
-    #[derive(Serialize)]
-    struct Ready<'a> {
-        status: &'a str,
-        phase: &'a str,
-        checks: BTreeMap<String, &'a str>,
-    }
-    let phase = readiness.phase().as_str();
-    let ready = Ready {
-        status: word,
-        phase,
-        checks,
-    };
-    // Not the envelope, even when not ready.
-    (status, NoEnvelope, ApiResponse::Data(ready)).into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::HttpSettings;
-
-    #[test]
-    fn settings_write_and_read_durations_and_sizes_as_text() {
-        let defaults = HttpSettings::default();
-        let written = serde_json::to_value(&defaults).unwrap();
-        let expected = json!({
-            "addr": "127.0.0.1:8080",
-            "request_timeout": "30s",
-            "body_limit": "1MiB",
-            "expose_internal_detail": false,
-            "probes": true,
-        });
-        assert_eq!(written, expected);
-        assert_eq!(
-            serde_json::from_value::<HttpSettings>(written).unwrap(),
-            defaults
-        );
-        for (key, value, why) in [
-            ("request_timeout", "0s", "must be between 1s and 1h"),
-            ("body_limit", "2GiB", "must be between 0 and 1GiB"),
-        ] {
-            let mut settings = expected.clone();
-            settings[key] = value.into();
-            let error = serde_json::from_value::<HttpSettings>(settings).unwrap_err();
-            assert!(error.to_string().contains(why), "{key}: {error}");
-        }
-    }
+    let router = router.layer(Extension(stop.clone()));
+    let dispatch = tracing::dispatcher::get_default(Clone::clone);
+    let span = tracing::Span::current();
+    let make = tower::service_fn(move |incoming: IncomingStream<'_, Bounded<L>>| {
+        let lease = incoming.io().lease.clone();
+        let address = incoming.remote_addr().clone();
+        std::future::ready(Ok::<_, Infallible>(ConnectionService {
+            router: router.clone(),
+            address,
+            lease,
+            dispatch: dispatch.clone(),
+            span: span.clone(),
+        }))
+    });
+    axum::serve(listener, make)
+        .with_graceful_shutdown(async move { stop.stopped().await })
+        .await?;
+    scope.wait().await;
+    Ok(())
 }

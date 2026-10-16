@@ -4,9 +4,10 @@ members = [
     "crates/rivium",
     "crates/rivium-util",
     "crates/rivium-host",
+    "crates/rivium-http",
     "crates/rivium-test",
 ]
-exclude = ["benches", "crates/rivium-error", "crates/rivium-http", "crates/rivium-jni", "examples", "test-app", "test-app/jni", "tests-build", "tests-integration", "tests-integration/jni", "tests-integration/test-app", "tests-loom"]
+exclude = ["benches", "crates/rivium-error", "crates/rivium-jni", "examples", "test-app", "test-app/jni", "tests-build", "tests-integration", "tests-integration/jni", "tests-integration/test-app", "tests-loom"]
 
 [workspace.package]
 version = "0.2.0"
