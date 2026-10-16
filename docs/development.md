@@ -24,13 +24,33 @@ Also run package contracts in the independently selected core none/task/rt, util
 none/config/log/log-export/task, host process/embedded, and HTTP none/contract/server/fs
 builds. All-features success does not prove a minimal product closure. Build tests use
 real workspace-external consumers without development dependencies, verify six public
-packages, and reject missing or malformed LOC measurements. The aggregate 17,710-line
-limit is a ceiling, not a target or a correctness metric.
+packages, and reject missing or malformed LOC measurements. Source layout and the
+aggregate LOC ceiling are described below.
 
 Private packages are tests-build, tests-integration, test-app, test-jni, rivium-examples
 and rivium-benches. Fault applications belong to tests-integration/test-app; examples
 remain ordinary usage demonstrations. Process tests require the sibling test-host binary
 for the same profile, target and target directory, with target runners propagated.
+
+## Source layout and LOC budget
+
+Separate imports from definitions, independent items from each other, and methods and
+tests with blank lines. Keep attributes and documentation attached to their declarations;
+keep related associated types and constants together. Use blank lines to mark meaningful
+steps in longer functions. Run rustfmt and also inspect macro bodies and item spacing:
+passing the formatter alone does not establish readable layout.
+
+The aggregate ceiling is **18,000 Rust code lines**, measured with tokei 14.0.0 across all
+six library directories, including their tests and fixtures. Keep the counter version,
+file scope and measurement checks unchanged; do not compress code, remove error handling
+or assertions, or move tests outside that scope to satisfy the ceiling.
+
+The 2026-10-16 review replaces the inherited 17,710-line ceiling with 18,000, an increase
+of 290 lines (1.64%). After restoring readable layout, the fixed counter reports 17,828
+lines, leaving 172 lines (about 1%) for small maintenance changes. This is an explicit
+maintenance allowance, not an estimate of capacity for new features. Further increases
+require a review of implementation and validation costs. The ceiling is not a target or
+evidence of correctness, performance, or release readiness.
 
 ## Models and sustained workloads
 

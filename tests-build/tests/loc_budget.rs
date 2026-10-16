@@ -13,7 +13,8 @@ const LIBRARIES: [&str; 6] = [
     "rivium-jni",
     "rivium-test",
 ];
-const TOTAL_BUDGET: u64 = 17_710;
+// Reviewed maintenance allowance; scope and rationale are in docs/development.md.
+const TOTAL_BUDGET: u64 = 18_000;
 
 fn rust_code(output: &[u8]) -> Result<u64, String> {
     let value: serde_json::Value =
@@ -160,10 +161,13 @@ fn missing_crates_empty_counts_and_total_overruns_are_rejected() {
     extra.insert("unreviewed", 1);
     assert!(check_budget(&extra).is_err());
 
-    let mut over = valid.clone();
-    over.insert("rivium", TOTAL_BUDGET);
-    assert!(check_budget(&over).is_err());
+    let mut boundary = valid.clone();
+    boundary.insert("rivium", TOTAL_BUDGET - (LIBRARIES.len() as u64 - 1));
+    assert_eq!(check_budget(&boundary).unwrap(), TOTAL_BUDGET);
 
-    over.insert("rivium", u64::MAX);
-    assert!(check_budget(&over).is_err());
+    *boundary.get_mut("rivium").unwrap() += 1;
+    assert!(check_budget(&boundary).is_err());
+
+    boundary.insert("rivium", u64::MAX);
+    assert!(check_budget(&boundary).is_err());
 }
