@@ -27,15 +27,7 @@ async fn request(
     router: Router,
     path: &str,
 ) -> (StatusCode, axum::http::HeaderMap, serde_json::Value) {
-    let response = common::response(
-        &router,
-        Request::builder()
-            .uri(path)
-            .header("x-request-id", "test-id")
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
+    let response = common::response(&router, common::request_with_id(path, "test-id")).await;
     let status = response.status();
     let headers = response.headers().clone();
     let bytes = to_bytes(response.into_body(), 10000).await.unwrap();

@@ -127,10 +127,7 @@ async fn forced_stop_keeps_request_owned(entry: Entry, streaming: bool) {
         .with(server(listener, router, scope, entry));
     let (control, readiness, run) = common::ready(supervisor).await;
     let mut client = TcpStream::connect(addr).await.unwrap();
-    client
-        .write_all(b"GET /wait HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-        .await
-        .unwrap();
+    common::send(&mut client, "/wait").await;
     tokio::time::timeout(Duration::from_secs(1), entered.notified())
         .await
         .unwrap();

@@ -67,6 +67,13 @@ pub(crate) fn request(path: &str) -> axum::extract::Request {
         .body(axum::body::Body::empty())
         .unwrap()
 }
+pub(crate) fn request_with_id(path: &str, id: &str) -> axum::extract::Request {
+    let mut request = request(path);
+    request
+        .headers_mut()
+        .insert("x-request-id", id.parse().unwrap());
+    request
+}
 pub(crate) async fn body_text(response: impl axum::response::IntoResponse, limit: usize) -> String {
     let bytes = axum::body::to_bytes(response.into_response().into_body(), limit)
         .await

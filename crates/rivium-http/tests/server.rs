@@ -32,12 +32,9 @@ async fn real_server_probes_and_inflight_shutdown() {
         );
     let server = rivium_http::HttpServer::from_listener("http", listener, router).unwrap();
     let sup = rivium::Supervisor::default().with(Box::new(server));
-    let control = sup.control();
-    let mut readiness = sup.readiness();
-    let check = readiness.health().register("database").unwrap();
+    let check = sup.readiness().health().register("database").unwrap();
     check.set(rivium::Health::Healthy);
-    let run = tokio::spawn(sup.run());
-    rivium_test::until_ready(&mut readiness).await.unwrap();
+    let (control, _readiness, run) = common::ready(sup).await;
     assert!(
         common::call(addr, "/readyz", None)
             .await

@@ -116,15 +116,7 @@ async fn public_render_and_request_id_compose_without_the_contract_layer() {
             }),
         )
         .layer(middleware::from_fn(primitives));
-    let response = common::response(
-        &app,
-        Request::builder()
-            .uri("/error")
-            .header("x-request-id", "caller-id")
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
+    let response = common::response(&app, common::request_with_id("/error", "caller-id")).await;
     assert_eq!(response.headers()["x-request-id"], "caller-id");
     assert_eq!(error_of(&response).unwrap().message(), "private");
     let body = common::body_text(response, 4096).await;
@@ -352,15 +344,7 @@ async fn invalid_and_absent_request_ids_generate_uuid_v7_and_valid_ids_are_prese
         assert_eq!(serde_json::from_slice::<String>(&bytes).unwrap(), id);
     }
     let valid = "x".repeat(128);
-    let response = common::response(
-        &app,
-        Request::builder()
-            .uri("/")
-            .header("x-request-id", &valid)
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
+    let response = common::response(&app, common::request_with_id("/", &valid)).await;
     assert_eq!(response.headers()["x-request-id"], valid);
 }
 
