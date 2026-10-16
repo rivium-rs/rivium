@@ -1,30 +1,37 @@
 #![cfg(feature = "embedded")]
+
 use rivium::{Kind, Result, Service};
 use rivium_host::{App, Code, Context, embedded::Host};
 use rivium_test::TempDir;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
+
 // Only the repeated App adapter; each service body and hook stays explicit.
 macro_rules! fixture_app {
     ($name:ident, $id:expr, $config:ty, |$cfg:pat_param, $cx:pat_param| $body:block $($hook:item)*) => {
         struct $name;
+
         impl App for $name {
             const NAME: &'static str = $id;
             const VERSION: &'static str = "test";
             type Config = $config;
+
             fn services(
                 $cfg: &Self::Config,
                 $cx: &Context<Self::Config>,
             ) -> Result<Vec<Box<dyn Service>>> $body
+
             $($hook)*
         }
     };
 }
+
 fn setup<A: App>() -> (TempDir, Arc<Host>, Vec<String>) {
     let root = TempDir::new().unwrap();
     let args = vec!["--root".into(), root.path().display().to_string()];
     (root, Arc::new(Host::new::<A>()), args)
 }
+
 fn failed_start<A: App>() -> rivium_host::HostReport {
     let (_root, host, args) = setup::<A>();
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -38,13 +45,16 @@ fn failed_start<A: App>() -> rivium_host::HostReport {
     worker.join().unwrap();
     host.last_report().unwrap()
 }
+
 #[derive(Default, Serialize, Deserialize)]
 struct Config {}
+
 fixture_app! {
     Basic, "host-basic", Config, |_, _| {
         Ok(vec![rivium_test::idle("worker", Kind::Frontline)])
     }
 }
+
 #[test]
 fn embedded_host_reports_ready_and_confirmed_cleanup() {
     let (_root, host, args) = setup::<Basic>();
@@ -84,6 +94,7 @@ fn stopping_before_readiness_returns_cancelled_to_the_start_caller() {
             )])
         }
     }
+
     let (_root, host, args) = setup::<Waiting>();
     let start_host = host.clone();
     let starting = std::thread::spawn(move || start_host.start(&args));
@@ -121,11 +132,13 @@ fn host_reserved_sections_cannot_be_application_fields() {
     struct Reserved {
         log: String,
     }
+
     fixture_app! {
         Invalid, "reserved-config", Reserved, |_, _| {
             panic!("invalid config must not construct services")
         }
     }
+
     let (root, host, args) = setup::<Invalid>();
     assert_eq!(host.start(&args), Code::Config);
     assert!(!root.path().join("logs").exists());
@@ -134,10 +147,12 @@ fn host_reserved_sections_cannot_be_application_fields() {
 #[test]
 fn logger_cleanup_failure_is_retained_alongside_the_primary_failure() {
     struct Noisy<const FAIL: bool>;
+
     impl<const FAIL: bool> App for Noisy<FAIL> {
         const NAME: &'static str = "noisy-host";
         const VERSION: &'static str = "test";
         type Config = Config;
+
         fn services(_: &Config, _: &Context<Config>) -> Result<Vec<Box<dyn Service>>> {
             Ok(vec![rivium::service(
                 "worker",
@@ -155,6 +170,7 @@ fn logger_cleanup_failure_is_retained_alongside_the_primary_failure() {
             )])
         }
     }
+
     fn verify<const FAIL: bool>() {
         let (_root, host, mut args) = setup::<Noisy<FAIL>>();
         args.extend(["--set".into(), "log.file.max_file_size=1024".into()]);
@@ -168,6 +184,7 @@ fn logger_cleanup_failure_is_retained_alongside_the_primary_failure() {
         } else {
             assert_eq!(host.stop(Duration::from_secs(2)), Code::Fault);
         }
+
         for _ in 0..2 {
             let report = host.last_report().unwrap();
             assert_eq!(report.code, Code::Fault);
@@ -202,6 +219,7 @@ fn service_readiness_completes_start_even_when_health_is_unknown() {
             Ok(vec![rivium_test::idle("ready-service", Kind::Frontline)])
         }
     }
+
     let (_root, host, args) = setup::<Degraded>();
     let (sender, receiver) = std::sync::mpsc::channel();
     let start_host = host.clone();
@@ -215,6 +233,7 @@ fn service_readiness_completes_start_even_when_health_is_unknown() {
 #[test]
 fn subscriber_panic_finishes_start_and_preserves_cleanup_ownership() {
     struct PanickingLayer;
+
     impl tracing_subscriber::Layer<tracing_subscriber::Registry> for PanickingLayer {
         fn on_event(
             &self,
@@ -224,14 +243,17 @@ fn subscriber_panic_finishes_start_and_preserves_cleanup_ownership() {
             panic!("private subscriber callback failure");
         }
     }
+
     fixture_app! {
         Panicking, "panic-layer-host", Config, |_, _| {
             Ok(vec![rivium_test::idle("worker", Kind::Frontline)])
         }
+
         fn log_layers() -> Vec<rivium_host::log::ExtraLayer> {
             vec![Box::new(PanickingLayer)]
         }
     }
+
     let report = failed_start::<Panicking>();
     assert!(report.primary.is_some());
     assert!(report.cleanup.is_drained());
@@ -240,6 +262,7 @@ fn subscriber_panic_finishes_start_and_preserves_cleanup_ownership() {
 #[test]
 fn supervisor_span_panic_returns_fault_with_a_closed_scope() {
     struct SpanPanic;
+
     impl tracing_subscriber::Layer<tracing_subscriber::Registry> for SpanPanic {
         fn on_new_span(
             &self,
@@ -252,14 +275,17 @@ fn supervisor_span_panic_returns_fault_with_a_closed_scope() {
             }
         }
     }
+
     fixture_app! {
         Panicking, "panic-span-host", Config, |_, _| {
             Ok(vec![rivium_test::idle("worker", Kind::Frontline)])
         }
+
         fn log_layers() -> Vec<rivium_host::log::ExtraLayer> {
             vec![Box::new(SpanPanic)]
         }
     }
+
     let report = failed_start::<Panicking>();
     assert!(report.run.unwrap().drain.is_complete());
     assert!(report.cleanup.is_drained());
@@ -299,16 +325,20 @@ async fn one_stop_during_service_construction_is_not_a_second_stop() {
         atomic::{AtomicBool, Ordering},
         mpsc,
     };
+
     #[derive(Clone, Default, Serialize, Deserialize)]
     struct Value {
         value: u16,
     }
+
     struct Gate {
         entered: mpsc::Sender<()>,
         release: Mutex<mpsc::Receiver<()>>,
     }
+
     type Build = (Arc<Gate>, Option<Context<Value>>);
     static BUILD: Mutex<Option<Build>> = Mutex::new(None);
+
     fn pause() {
         let gate = BUILD.lock().unwrap().as_ref().unwrap().0.clone();
         gate.entered.send(()).unwrap();
@@ -318,7 +348,9 @@ async fn one_stop_during_service_construction_is_not_a_second_stop() {
             .recv_timeout(Duration::from_secs(5))
             .unwrap();
     }
+
     struct PauseFailure(AtomicBool);
+
     impl tracing_subscriber::Layer<tracing_subscriber::Registry> for PauseFailure {
         fn on_event(
             &self,
@@ -339,6 +371,7 @@ async fn one_stop_during_service_construction_is_not_a_second_stop() {
             }
         }
     }
+
     fixture_app! {
         Building, "stop-construction", Value, |value, context| {
             BUILD.lock().unwrap().as_mut().unwrap().1 = Some(context.clone());
@@ -361,13 +394,16 @@ async fn one_stop_during_service_construction_is_not_a_second_stop() {
             pause();
             Ok(vec![rivium_test::idle("worker", Kind::Frontline)])
         }
+
         fn reload_config(_: &Value, candidate: &Value) -> Result<Option<Value>> {
             Ok(Some(candidate.clone()))
         }
+
         fn log_layers() -> Vec<rivium_host::log::ExtraLayer> {
             vec![Box::new(PauseFailure(AtomicBool::new(false)))]
         }
     }
+
     for mode in 0..4 {
         let (root, host, mut args) = setup::<Building>();
         let (entered, observed) = mpsc::channel();
@@ -382,6 +418,7 @@ async fn one_stop_during_service_construction_is_not_a_second_stop() {
         if mode >= 2 {
             args.extend(["--set".into(), format!("value={mode}")]);
         }
+
         let started = host.clone();
         let worker = std::thread::spawn(move || started.start(&args));
         observed.recv_timeout(Duration::from_secs(5)).unwrap();

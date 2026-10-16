@@ -172,6 +172,7 @@ fn atomic_write_impl(
 }
 
 struct Temporary(PathBuf);
+
 impl Drop for Temporary {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
@@ -251,6 +252,7 @@ mod tests {
             "temporary files survived the failed operation"
         );
     }
+
     #[test]
     fn create_failure_keeps_original_files() {
         assert_failure(
@@ -260,22 +262,27 @@ mod tests {
             b"earlier backup",
         );
     }
+
     #[test]
     fn write_failure_removes_the_temporary_file() {
         assert_failure(AtomicWriteStage::Write, false, b"old", b"earlier backup");
     }
+
     #[test]
     fn file_sync_failure_does_not_replace_or_back_up_the_target() {
         assert_failure(AtomicWriteStage::SyncFile, false, b"old", b"earlier backup");
     }
+
     #[test]
     fn backup_failure_keeps_original_files() {
         assert_failure(AtomicWriteStage::Backup, false, b"old", b"earlier backup");
     }
+
     #[test]
     fn rename_failure_keeps_target_and_completed_backup() {
         assert_failure(AtomicWriteStage::Replace, false, b"old", b"old");
     }
+
     #[cfg(unix)]
     #[test]
     fn directory_sync_failure_preserves_the_committed_new_target() {

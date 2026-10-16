@@ -1,4 +1,5 @@
 //! Dependency-free batched microbenchmarks; see docs/development.md for limitations.
+
 use std::{hint::black_box, time::Instant};
 
 use rivium::scope::TaskScope;
@@ -12,6 +13,7 @@ fn measure(name: &str, iterations: usize, mut batch: impl FnMut(usize)) {
         batch(1);
         return;
     }
+
     batch(iterations); // Untimed warm-up, including runtime scheduling and allocation.
     let mut samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
@@ -19,6 +21,7 @@ fn measure(name: &str, iterations: usize, mut batch: impl FnMut(usize)) {
         batch(iterations);
         samples.push(start.elapsed().as_nanos() as f64 / iterations as f64);
     }
+
     samples.sort_by(f64::total_cmp);
     println!(
         "{name}, {iterations}, {SAMPLES}, {:.1}, {:.1}, {:.1}",
@@ -45,6 +48,7 @@ fn manager_benches(runtime: &Runtime, label: &str) {
             assert_eq!(report.started.len(), size);
             tokio::task::yield_now().await;
         });
+
         let mut generation = 0;
         let operation = if replacing { "replace" } else { "unchanged" };
         measure(
@@ -65,6 +69,7 @@ fn manager_benches(runtime: &Runtime, label: &str) {
                 });
             },
         );
+
         runtime.block_on(manager.shutdown()).unwrap();
         assert!(manager.is_empty());
         assert_eq!(scope.active_tasks(), 0);
@@ -84,6 +89,7 @@ fn main() {
         });
         assert_eq!(scope.active_tasks(), 0);
     }
+
     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
     measure("scope/reserve_track_ready/1", 100_000, |n| {
         runtime.block_on(async {
@@ -94,12 +100,14 @@ fn main() {
         });
     });
     assert_eq!(scope.active_tasks(), 0);
+
     scope.close();
     measure("scope/closed_rejection", 100_000, |n| {
         for _ in 0..n {
             assert!(black_box(scope.reserve(1)).is_none());
         }
     });
+
     manager_benches(&runtime, "current_thread");
     let runtime = Builder::new_multi_thread()
         .worker_threads(2)

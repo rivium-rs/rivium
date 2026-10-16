@@ -1,4 +1,5 @@
 mod common;
+
 use axum::http::StatusCode;
 
 #[test]
@@ -17,6 +18,7 @@ async fn only_explicit_caller_text_can_cross_the_http_boundary() {
         error::{Class, ErrorKind},
     };
     use rivium_http::ApiError;
+
     const AUTH: &ErrorKind = &ErrorKind::new("Auth", Class::Unauthenticated);
     const DENIED: &ErrorKind = &ErrorKind::new("Deny", Class::Forbidden);
     for error in [
@@ -43,7 +45,9 @@ async fn only_explicit_caller_text_can_cross_the_http_boundary() {
 async fn serialization_failure_is_private_and_cannot_become_a_created_success() {
     use axum::response::IntoResponse;
     use rivium_http::{ApiResponse, Json};
+
     struct Broken;
+
     impl serde::Serialize for Broken {
         fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
             Err(serde::ser::Error::custom("credential=secret"))
@@ -115,6 +119,7 @@ async fn successful_shapes_and_retry_hint_remain_explicit() {
 async fn typed_query_and_path_rejections_keep_details_private_without_middleware() {
     use axum::{Router, routing::get};
     use rivium_http::{Path, Query};
+
     #[derive(serde::Deserialize)]
     struct Page {
         page: u64,

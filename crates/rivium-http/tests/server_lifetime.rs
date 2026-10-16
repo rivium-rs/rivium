@@ -1,4 +1,5 @@
 #![cfg(feature = "server")]
+
 mod common;
 
 use axum::{Router, body::Body, routing::get, serve::Listener};
@@ -26,6 +27,7 @@ enum Entry {
 
 // A custom listener can return a distinct IO type, as TLS listeners do.
 struct CustomListener(TcpListener);
+
 impl Listener for CustomListener {
     type Io = Box<TcpStream>;
     type Addr = SocketAddr;
@@ -72,6 +74,7 @@ struct Resource {
     untracked_drops: Arc<AtomicUsize>,
     scope: Arc<OnceLock<rivium::scope::TaskScope>>,
 }
+
 impl Drop for Resource {
     fn drop(&mut self) {
         if self.scope.get().unwrap().active_tasks() == 0 {

@@ -1,5 +1,7 @@
 #![cfg(feature = "contract")]
+
 mod common;
+
 use axum::{
     Router,
     body::{Body, Bytes, to_bytes},
@@ -28,16 +30,20 @@ fn upstream_throttling_remains_service_unavailable() {
         StatusCode::SERVICE_UNAVAILABLE
     );
 }
+
 struct Frames(VecDeque<Frame<Bytes>>);
+
 impl HttpBody for Frames {
     type Data = Bytes;
     type Error = Infallible;
+
     fn poll_frame(
         self: Pin<&mut Self>,
         _: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, Infallible>>> {
         Poll::Ready(self.get_mut().0.pop_front().map(Ok))
     }
+
     fn size_hint(&self) -> SizeHint {
         SizeHint::with_exact(
             self.0
@@ -48,6 +54,7 @@ impl HttpBody for Frames {
         )
     }
 }
+
 #[tokio::test]
 async fn response_ownership_wrappers_preserve_data_trailers_and_size_hint() {
     let app = contract(
@@ -90,6 +97,7 @@ async fn response_ownership_wrappers_preserve_data_trailers_and_size_hint() {
             .is_none()
     );
 }
+
 async fn primitives(mut request: Request, next: Next) -> Response {
     let id = RequestId::from_headers(request.headers());
     request.extensions_mut().insert(id.clone());
@@ -100,6 +108,7 @@ async fn primitives(mut request: Request, next: Next) -> Response {
     );
     response
 }
+
 #[tokio::test]
 async fn public_render_and_request_id_compose_without_the_contract_layer() {
     let app = Router::new()
@@ -125,6 +134,7 @@ async fn public_render_and_request_id_compose_without_the_contract_layer() {
     let raw = common::response(&app, common::request("/raw")).await;
     assert_eq!(to_bytes(raw.into_body(), 4096).await.unwrap(), "custom");
 }
+
 #[cfg(feature = "fs")]
 #[tokio::test]
 async fn download_names_encode_quotes_unicode_and_header_control_bytes() {
@@ -158,15 +168,18 @@ mod server_contracts {
         },
     };
     use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf};
+
     struct ObservedIo {
         inner: DuplexStream,
         dropped: Arc<AtomicBool>,
     }
+
     impl Drop for ObservedIo {
         fn drop(&mut self) {
             self.dropped.store(true, Ordering::SeqCst);
         }
     }
+
     impl AsyncRead for ObservedIo {
         fn poll_read(
             self: Pin<&mut Self>,
@@ -176,6 +189,7 @@ mod server_contracts {
             Pin::new(&mut self.get_mut().inner).poll_read(cx, buffer)
         }
     }
+
     impl AsyncWrite for ObservedIo {
         fn poll_write(
             self: Pin<&mut Self>,
@@ -184,27 +198,34 @@ mod server_contracts {
         ) -> Poll<io::Result<usize>> {
             Pin::new(&mut self.get_mut().inner).poll_write(cx, buffer)
         }
+
         fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             Pin::new(&mut self.get_mut().inner).poll_flush(cx)
         }
+
         fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
         }
     }
+
     struct OneConnection(Option<ObservedIo>);
+
     impl axum::serve::Listener for OneConnection {
         type Io = ObservedIo;
         type Addr = ();
+
         async fn accept(&mut self) -> (ObservedIo, ()) {
             match self.0.take() {
                 Some(io) => (io, ()),
                 None => std::future::pending().await,
             }
         }
+
         fn local_addr(&self) -> io::Result<()> {
             Ok(())
         }
     }
+
     #[tokio::test]
     async fn a_transferred_request_body_keeps_the_connection_lease_after_io_is_dropped() {
         let (server_io, mut client) = tokio::io::duplex(4096);
@@ -258,6 +279,7 @@ mod server_contracts {
         control.stop(StopReason::Requested);
         assert!(run.await.unwrap().drain.is_complete());
     }
+
     async fn outer(mut request: Request, next: Next) -> Response {
         request.extensions_mut().insert(RequestId::new("outer"));
         let mut response = next.run(request).await;
@@ -266,6 +288,7 @@ mod server_contracts {
             .insert("x-outer", HeaderValue::from_static("seen"));
         response
     }
+
     #[tokio::test]
     async fn outer_layers_and_observers_remain_isolated_per_server() {
         let (first, first_address) = common::bind().await;

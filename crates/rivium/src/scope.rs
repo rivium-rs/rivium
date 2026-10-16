@@ -1,4 +1,5 @@
 //! Task admission and proof of execution-resource release.
+
 #[cfg(rivium_scope_model)]
 use crate::model_support::{Arc, CancellationToken, Mutex};
 #[cfg(not(rivium_scope_model))]
@@ -24,6 +25,7 @@ pub enum Drain {
         active_tasks: usize,
     },
 }
+
 impl Drain {
     /// True only when closure and resource release were both confirmed.
     pub fn is_complete(self) -> bool {
@@ -36,6 +38,7 @@ struct Counts {
     closed: bool,
     active: usize,
 }
+
 struct Inner {
     counts: Mutex<Counts>,
     changed: Arc<Notify>,
@@ -47,6 +50,7 @@ struct Inner {
 pub struct TaskScope {
     inner: Arc<Inner>,
 }
+
 impl std::fmt::Debug for TaskScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TaskScope")
@@ -55,16 +59,19 @@ impl std::fmt::Debug for TaskScope {
             .finish()
     }
 }
+
 impl Default for TaskScope {
     fn default() -> Self {
         Self::new()
     }
 }
+
 impl TaskScope {
     /// Create an open, empty scope.
     pub fn new() -> Self {
         Self::with_notify(Arc::new(Notify::new()))
     }
+
     pub(crate) fn with_notify(changed: Arc<Notify>) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -74,6 +81,7 @@ impl TaskScope {
             }),
         }
     }
+
     /// Reserve all `count` entries atomically, or reject after closure/cancellation.
     /// A zero-sized reservation is still rejected by a closed scope.
     pub fn reserve(&self, count: usize) -> Option<Vec<Reservation>> {
@@ -90,6 +98,7 @@ impl TaskScope {
         }));
         Some(reservations)
     }
+
     /// Permanently close admission without cancelling accepted work.
     pub fn close(&self) {
         self.inner
@@ -99,15 +108,18 @@ impl TaskScope {
             .closed = true;
         self.inner.changed.notify_waiters();
     }
+
     /// Permanently close admission and request cooperative cancellation.
     pub fn cancel(&self) {
         self.close();
         self.inner.cancel.cancel();
     }
+
     /// Cancellation token shared with accepted work.
     pub fn cancellation_token(&self) -> CancellationToken {
         self.inner.cancel.clone()
     }
+
     /// Whether new reservations are permanently rejected.
     pub fn is_closed(&self) -> bool {
         self.inner
@@ -117,6 +129,7 @@ impl TaskScope {
             .closed
             || self.inner.cancel.is_cancelled()
     }
+
     /// Number of accepted execution bodies plus unused reservations.
     pub fn active_tasks(&self) -> usize {
         self.inner
@@ -125,6 +138,7 @@ impl TaskScope {
             .unwrap_or_else(|p| p.into_inner())
             .active
     }
+
     /// Current resource-release state, without waiting.
     pub fn state(&self) -> Drain {
         let counts = self.inner.counts.lock().unwrap_or_else(|p| p.into_inner());
@@ -136,6 +150,7 @@ impl TaskScope {
             }
         }
     }
+
     /// Wait for both admission closure and execution-resource release.
     pub async fn wait(&self) {
         loop {
@@ -155,6 +170,7 @@ impl TaskScope {
             }
         }
     }
+
     /// Observe release within one total wait budget; this does not request stop.
     pub async fn drain(&self, within: Duration) -> Drain {
         if !self.state().is_complete() && !within.is_zero() {
@@ -169,6 +185,7 @@ impl TaskScope {
 pub struct Reservation {
     scope: TaskScope,
 }
+
 impl Reservation {
     /// Keep the reservation until the future and all its captures are dropped.
     pub fn track<F: Future>(self, future: F) -> Tracked<F> {
@@ -177,6 +194,7 @@ impl Reservation {
             reservation: Some(self),
         }
     }
+
     /// Run a blocking closure while retaining its reservation through unwinding.
     pub fn run<T>(self, work: impl FnOnce() -> T) -> T {
         let output = work();
@@ -184,6 +202,7 @@ impl Reservation {
         output
     }
 }
+
 impl Drop for Reservation {
     fn drop(&mut self) {
         {
@@ -206,8 +225,10 @@ pub struct Tracked<F: Future> {
     future: Option<Pin<Box<F>>>,
     reservation: Option<Reservation>,
 }
+
 impl<F: Future> Future for Tracked<F> {
     type Output = F::Output;
+
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         let result = this

@@ -1,4 +1,5 @@
 #![cfg(all(feature = "task", feature = "rt"))]
+
 use rivium::{Kind, Readiness, Supervisor, scope::TaskScope, service};
 use std::{
     future::Future,
@@ -9,10 +10,12 @@ use std::{
     task::{Context, Wake, Waker},
     time::Duration,
 };
+
 struct AdmissionObserver {
     scope: TaskScope,
     unlocked: AtomicBool,
 }
+
 impl Wake for AdmissionObserver {
     fn wake(self: Arc<Self>) {
         let scope = self.scope.clone();
@@ -29,6 +32,7 @@ impl Wake for AdmissionObserver {
         );
     }
 }
+
 #[test]
 fn closing_an_empty_scope_wakes_without_holding_the_admission_lock() {
     let scope = TaskScope::new();
@@ -51,16 +55,19 @@ fn closing_an_empty_scope_wakes_without_holding_the_admission_lock() {
             .is_ready()
     );
 }
+
 struct GenerationObserver {
     readiness: Readiness,
     count: AtomicUsize,
 }
+
 impl Wake for GenerationObserver {
     fn wake(self: Arc<Self>) {
         self.count
             .store(self.readiness.active_tasks(), Ordering::SeqCst);
     }
 }
+
 #[tokio::test]
 async fn child_drain_notification_observes_release_in_the_run_count() {
     let supervisor =

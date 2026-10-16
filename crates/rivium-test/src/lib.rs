@@ -1,4 +1,5 @@
 //! Consumer-side test tools. Add this crate only as a development dependency.
+
 use std::{
     fs,
     io::{self, Write},
@@ -16,6 +17,7 @@ static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 pub struct TempDir {
     path: PathBuf,
 }
+
 impl TempDir {
     pub fn new() -> io::Result<Self> {
         loop {
@@ -28,10 +30,12 @@ impl TempDir {
             }
         }
     }
+
     pub fn path(&self) -> &Path {
         &self.path
     }
 }
+
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
@@ -45,6 +49,7 @@ pub struct Logs {
     // Keep tracing's multi-dispatch callsite registration active across threads.
     _callsites: tracing::Dispatch,
 }
+
 impl Default for Logs {
     fn default() -> Self {
         Self {
@@ -53,10 +58,12 @@ impl Default for Logs {
         }
     }
 }
+
 impl Logs {
     pub fn text(&self) -> String {
         String::from_utf8_lossy(&self.bytes.lock().unwrap_or_else(|e| e.into_inner())).into_owned()
     }
+
     pub fn dispatch(&self) -> tracing::Dispatch {
         tracing::Dispatch::new(
             tracing_subscriber::fmt()
@@ -66,6 +73,7 @@ impl Logs {
         )
     }
 }
+
 impl Write for Logs {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         self.bytes
@@ -74,12 +82,15 @@ impl Write for Logs {
             .extend_from_slice(data);
         Ok(data.len())
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
+
 impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Logs {
     type Writer = Self;
+
     fn make_writer(&'a self) -> Self {
         self.clone()
     }
@@ -122,6 +133,7 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     };
     command_with_runner(program.as_ref(), runner.as_deref())
 }
+
 fn command_with_runner(program: &std::ffi::OsStr, runner: Option<&str>) -> std::process::Command {
     if let Some(runner) = runner {
         let mut words = runner.split_whitespace();
@@ -136,6 +148,7 @@ fn command_with_runner(program: &std::ffi::OsStr, runner: Option<&str>) -> std::
 #[cfg(test)]
 mod contracts {
     use super::*;
+
     #[test]
     fn temporary_directories_are_unique_and_release_their_contents() {
         let a = TempDir::new().unwrap();
@@ -147,6 +160,7 @@ mod contracts {
         assert!(!path.exists());
         assert!(b.path().is_dir());
     }
+
     #[test]
     fn captured_logs_retain_fields_without_terminal_escapes() {
         let output = Logs::default();
@@ -157,6 +171,7 @@ mod contracts {
         assert!(text.contains("observed") && text.contains("attempt=3"));
         assert!(!text.contains('\u{1b}'));
     }
+
     #[test]
     fn target_commands_preserve_runner_prefix_and_reject_an_empty_runner() {
         let executable = std::ffi::OsStr::new("target/app with spaces");
@@ -172,6 +187,7 @@ mod contracts {
         );
         assert!(std::panic::catch_unwind(|| command_with_runner(executable, Some("  "))).is_err());
     }
+
     #[test]
     #[cfg(not(windows))]
     fn compiled_target_wins_over_runtime_build_target() {
@@ -182,6 +198,7 @@ mod contracts {
             );
             return;
         }
+
         let runner_key = format!(
             "CARGO_TARGET_{}_RUNNER",
             env!("RIVIUM_HELPER_TARGET")

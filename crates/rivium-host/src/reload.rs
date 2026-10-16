@@ -18,15 +18,18 @@ struct Shared {
     failure: Mutex<Option<Error>>,
     finished: Condvar,
 }
+
 enum Command {
     Reload(oneshot::Sender<Result<config::ReloadReport>>),
     Close,
 }
+
 #[derive(Clone)]
 pub(crate) struct Requester {
     sender: mpsc::SyncSender<Command>,
     shared: Arc<Shared>,
 }
+
 impl Requester {
     pub(crate) fn start<A: App>(
         options: Options,
@@ -51,12 +54,14 @@ impl Requester {
             .name(format!("{}-config", A::NAME))
             .spawn(move || {
                 struct Finished(Arc<Shared>);
+
                 impl Drop for Finished {
                     fn drop(&mut self) {
                         *crate::lock(&self.0.done) = true;
                         self.0.finished.notify_all();
                     }
                 }
+
                 let _finished = Finished(owner.clone());
                 let completed = catch_unwind(AssertUnwindSafe(
                     || tracing::dispatcher::with_default(&dispatch, || {
@@ -73,6 +78,7 @@ impl Requester {
                             if reply.is_closed() {
                                 continue;
                             }
+
                             let result = catch_unwind(AssertUnwindSafe(|| {
                                 let candidate = session::load::<A>(&options, None, true)?;
                                 let current = store.handle().snapshot();
@@ -80,10 +86,12 @@ impl Requester {
                                 if let Some(value) = &effective {
                                     A::validate(value)?;
                                 }
+
                                 let mut next = baseline.clone();
                                 if let Some(value) = &effective {
                                     session::replace_application(&mut next, value)?;
                                 }
+
                                 let published = session::differences(&baseline, &next);
                                 let requires_restart = session::differences(&next, &candidate.all);
                                 let guard = crate::lock(&owner.gate);
@@ -91,6 +99,7 @@ impl Requester {
                                     drop(guard);
                                     return Err(unavailable());
                                 }
+
                                 let generation = if published.is_empty() {
                                     drop(guard);
                                     current.generation
@@ -113,6 +122,7 @@ impl Requester {
                             if let Err(error) = &result {
                                 tracing::warn!(class = ?error.class(), "configuration reload rejected");
                             }
+
                             let _ = reply.send(result);
                             if !*crate::lock(&owner.gate) {
                                 break;
@@ -130,6 +140,7 @@ impl Requester {
             .map_err(Error::from)?;
         Ok((Self { sender, shared }, handle))
     }
+
     pub(crate) async fn request(&self) -> Result<config::ReloadReport> {
         let mut closed = self.shared.closed.subscribe();
         let (reply, result) = oneshot::channel();
@@ -156,6 +167,7 @@ impl Requester {
             result = result => result.unwrap_or_else(|_| Err(unavailable())),
         }
     }
+
     pub(crate) fn close(&self) {
         *crate::lock(&self.shared.gate) = false;
         let notified = *self.shared.closed.borrow();
@@ -164,12 +176,15 @@ impl Requester {
             let _ = self.sender.try_send(Command::Close);
         }
     }
+
     pub(crate) fn failure(&self) -> Option<Error> {
         crate::lock(&self.shared.failure).clone()
     }
+
     pub(crate) fn pending(&self) -> usize {
         usize::from(!*crate::lock(&self.shared.done))
     }
+
     pub(crate) fn wait(&self, deadline: Instant) {
         let mut done = crate::lock(&self.shared.done);
         while !*done {
@@ -186,6 +201,7 @@ impl Requester {
         }
     }
 }
+
 fn unavailable() -> Error {
     Error::new(kinds::UNAVAILABLE, "configuration generation is closed")
 }

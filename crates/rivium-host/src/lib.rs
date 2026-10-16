@@ -1,4 +1,5 @@
 //! Explicit process and embedded ownership for a long-running application.
+
 #[cfg(feature = "embedded")]
 pub mod embedded;
 mod options;
@@ -21,14 +22,17 @@ pub trait App: Send + Sync + 'static {
     const NAME: &'static str;
     const VERSION: &'static str;
     type Config: Default + Serialize + DeserializeOwned + Send + Sync + 'static;
+
     /// Construct services without starting their work.
     fn services(
         config: &Self::Config,
         context: &Context<Self::Config>,
     ) -> Result<Vec<Box<dyn Service>>>;
+
     fn validate(_config: &Self::Config) -> Result<()> {
         Ok(())
     }
+
     /// Purely select live fields; `None` keeps all application fields cold.
     fn reload_config(
         _current: &Self::Config,
@@ -36,6 +40,7 @@ pub trait App: Send + Sync + 'static {
     ) -> Result<Option<Self::Config>> {
         Ok(None)
     }
+
     fn log_layers() -> Vec<log::ExtraLayer> {
         Vec::new()
     }
@@ -47,12 +52,14 @@ pub struct HostControl {
     pub(crate) inner: rivium::Control,
     pub(crate) reload: reload::Requester,
 }
+
 impl HostControl {
     /// Close publication admission and request this generation's stop.
     pub fn stop(&self, reason: rivium::StopReason) {
         self.reload.close();
         self.inner.stop(reason);
     }
+
     /// Close publication admission and request a replacement generation.
     pub fn restart(&self, reason: impl Into<String>) {
         self.reload.close();
@@ -80,6 +87,7 @@ pub struct Context<C> {
     #[cfg(feature = "log-export")]
     pub(crate) exporter: log::Exporter,
 }
+
 impl<C> Clone for Context<C> {
     fn clone(&self) -> Self {
         Self {
@@ -95,28 +103,36 @@ impl<C> Clone for Context<C> {
         }
     }
 }
+
 impl<C> Context<C> {
     pub fn config(&self) -> config::Handle<C> {
         self.config.clone()
     }
+
     pub async fn reload(&self) -> Result<config::ReloadReport> {
         self.reload.request().await
     }
+
     pub fn paths(&self) -> &Paths {
         &self.paths
     }
+
     pub fn readiness(&self) -> Readiness {
         self.readiness.clone()
     }
+
     pub fn health(&self) -> &HealthRegistry {
         &self.health
     }
+
     pub fn control(&self) -> &HostControl {
         &self.control
     }
+
     pub fn check_config(&self, text: &str) -> Result<()> {
         (self.check)(text)
     }
+
     /// Validate and save without publishing or restarting. The source chain
     /// retains `AtomicWriteError`, including its committed/durability status.
     pub fn write_config(&self, text: &str) -> Result<()> {
@@ -124,6 +140,7 @@ impl<C> Context<C> {
         rivium_util::fs::atomic_write(self.paths.config_file(), text.as_bytes(), true)
             .map_err(|error| Error::internal(error.to_string()).with_source(error))
     }
+
     #[cfg(feature = "log-export")]
     pub fn log_exporter(&self) -> log::Exporter {
         self.exporter.clone()
@@ -149,6 +166,7 @@ pub enum Code {
     Aborted(i32),
     Panicked,
 }
+
 impl Code {
     pub const fn exit(self) -> u8 {
         match self {
@@ -165,6 +183,7 @@ impl Code {
             _ => 70,
         }
     }
+
     pub const fn ffi(self) -> i32 {
         match self {
             Self::Ok => 0,
@@ -177,6 +196,7 @@ impl Code {
         }
     }
 }
+
 impl std::process::Termination for Code {
     fn report(self) -> std::process::ExitCode {
         self.exit().into()
@@ -190,6 +210,7 @@ pub struct PendingResources {
     pub reload_preparing: usize,
     pub log_workers: usize,
 }
+
 /// At most one retained failure per cleanup stage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CleanupStage {
@@ -198,11 +219,13 @@ pub enum CleanupStage {
     Logger,
     Runtime,
 }
+
 #[derive(Clone, Debug)]
 pub struct CleanupFailure {
     pub stage: CleanupStage,
     pub error: Error,
 }
+
 /// Closure, remaining ownership and errors are independent facts.
 #[derive(Clone, Debug)]
 pub struct CleanupReport {
@@ -210,14 +233,17 @@ pub struct CleanupReport {
     pub pending: PendingResources,
     pub failures: Vec<CleanupFailure>,
 }
+
 impl CleanupReport {
     pub fn is_drained(&self) -> bool {
         self.closed && self.pending == PendingResources::default()
     }
+
     pub fn is_success(&self) -> bool {
         self.is_drained() && self.failures.is_empty()
     }
 }
+
 impl Default for CleanupReport {
     fn default() -> Self {
         Self {
@@ -227,6 +253,7 @@ impl Default for CleanupReport {
         }
     }
 }
+
 /// Preserves the primary cause alongside service and cleanup evidence.
 #[derive(Clone, Debug)]
 pub struct HostReport {
@@ -238,6 +265,7 @@ pub struct HostReport {
 
 #[cfg_attr(not(any(feature = "process", feature = "embedded")), allow(dead_code))]
 const CLEANUP: Duration = Duration::from_secs(1);
+
 /// Process-lifetime counters; individual logger counters are available separately.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Stats {
@@ -247,6 +275,7 @@ pub struct Stats {
     pub restarts: u64,
     pub faults: u64,
 }
+
 pub fn stats() -> Stats {
     let [log_bytes, log_failures, log_deleted] = log::counters();
     Stats {

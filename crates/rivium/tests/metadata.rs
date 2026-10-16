@@ -1,4 +1,5 @@
 #![cfg(feature = "rt")]
+
 use rivium::{BoxFuture, Context, Kind, Outcome, Result, Service, Supervisor, scope::Drain};
 use std::sync::{
     Arc,
@@ -11,17 +12,20 @@ struct Metadata {
     names: Arc<AtomicUsize>,
     kinds: Arc<AtomicUsize>,
 }
+
 impl Service for Metadata {
     fn name(&self) -> &str {
         self.names.fetch_add(1, Ordering::SeqCst);
         assert!(!self.panic_name, "name panic");
         "metadata"
     }
+
     fn kind(&self) -> Kind {
         self.kinds.fetch_add(1, Ordering::SeqCst);
         assert!(!self.panic_kind, "kind panic");
         Kind::Background
     }
+
     fn run(self: Box<Self>, cx: Context) -> BoxFuture<Result<()>> {
         Box::pin(async move {
             cx.ready();
@@ -29,6 +33,7 @@ impl Service for Metadata {
         })
     }
 }
+
 #[tokio::test]
 async fn metadata_panics_produce_a_complete_startup_failure_report() {
     for (panic_name, panic_kind) in [(true, false), (false, true)] {
@@ -45,6 +50,7 @@ async fn metadata_panics_produce_a_complete_startup_failure_report() {
         assert_eq!(report.drain, Drain::Complete);
     }
 }
+
 #[tokio::test]
 async fn validated_metadata_is_read_once_and_reused_for_launch() {
     let names = Arc::new(AtomicUsize::new(0));

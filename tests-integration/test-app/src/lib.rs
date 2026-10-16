@@ -26,6 +26,7 @@ impl App for TestApp {
         }
         if config.mode == "restart-backoff" {
             use std::io::Write;
+
             let mut builds = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)

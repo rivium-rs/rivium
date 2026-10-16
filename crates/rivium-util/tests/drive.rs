@@ -25,9 +25,11 @@ enum FixedSource {
     Timeout,
     Replacement,
 }
+
 impl DesiredSource for FixedSource {
     type Key = &'static str;
     type Spec = u32;
+
     async fn list_desired(&mut self) -> Result<Vec<(Self::Key, Self::Spec)>> {
         match self {
             Self::Duplicate => Ok(vec![("worker", 1), ("worker", 2)]),
@@ -35,6 +37,7 @@ impl DesiredSource for FixedSource {
             Self::Replacement => Ok(vec![("worker", 2)]),
         }
     }
+
     fn tick_interval(&mut self) -> Duration {
         Duration::from_secs(if matches!(self, Self::Replacement) {
             60
@@ -112,6 +115,7 @@ type BackgroundDriver = (
     Arc<Mutex<Vec<String>>>,
     tokio::task::JoinHandle<Result<()>>,
 );
+
 fn drive_in_background(
     mut manager: Manager<&'static str, u32>,
     source: Source,

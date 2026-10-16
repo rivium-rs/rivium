@@ -1,4 +1,5 @@
 #![cfg(feature = "task")]
+
 use rivium_util::task::{Context, DesiredError, Manager, Policy, ReconcileError};
 
 #[tokio::test]

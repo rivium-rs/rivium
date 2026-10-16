@@ -1,15 +1,19 @@
 use std::{collections::BTreeSet, process::Command};
+
 fn graph(package: &str, features: &str) -> std::collections::BTreeMap<String, BTreeSet<String>> {
     use std::sync::{Mutex, OnceLock};
+
     type Graph = std::collections::BTreeMap<String, BTreeSet<String>>;
     static CACHE: OnceLock<Mutex<std::collections::BTreeMap<(String, String), Graph>>> =
         OnceLock::new();
+
     let cache = CACHE.get_or_init(Default::default);
     let key = (package.to_owned(), features.to_owned());
     let mut cache = cache.lock().unwrap();
     if let Some(found) = cache.get(&key) {
         return found.clone();
     }
+
     let consumer = tests_build::Consumer::new(package, features);
     tests_build::Consumer::checked(consumer.cargo("check").arg("--lib").output().unwrap());
     let text = tests_build::Consumer::checked(
@@ -27,6 +31,7 @@ fn graph(package: &str, features: &str) -> std::collections::BTreeMap<String, BT
             .output()
             .unwrap(),
     );
+
     let mut result: Graph = Default::default();
     for line in text.lines() {
         let Some((package, features)) = line.split_once('|') else {
@@ -46,16 +51,20 @@ fn graph(package: &str, features: &str) -> std::collections::BTreeMap<String, BT
                 .map(str::to_owned),
         );
     }
+
     cache.insert(key, result.clone());
     result
 }
+
 fn closure(package: &str, features: &str) -> BTreeSet<String> {
     graph(package, features).into_keys().collect()
 }
+
 #[test]
 fn core_default_has_no_runtime_or_integrations() {
     assert_eq!(closure("rivium", ""), BTreeSet::from(["rivium".into()]));
 }
+
 #[test]
 fn adapters_do_not_pull_in_siblings() {
     for (package, forbidden) in [
@@ -89,6 +98,7 @@ fn adapters_do_not_pull_in_siblings() {
         }
     }
 }
+
 #[test]
 fn utility_features_are_independent() {
     for (feature, present, absent) in [
@@ -102,6 +112,7 @@ fn utility_features_are_independent() {
         assert!(!names.contains(absent));
     }
 }
+
 #[test]
 fn test_helpers_keep_logging_dependencies_minimal() {
     let names = closure("rivium-test", "");
@@ -119,6 +130,7 @@ fn test_helpers_keep_logging_dependencies_minimal() {
         );
     }
 }
+
 #[test]
 fn only_six_library_packages_are_publishable() {
     let output = Command::new(env!("CARGO"))
@@ -158,6 +170,7 @@ fn only_six_library_packages_are_publishable() {
         ])
     );
 }
+
 #[test]
 fn release_packages_exclude_internal_material() {
     for package in [

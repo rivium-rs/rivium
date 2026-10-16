@@ -1,5 +1,7 @@
 #![cfg(feature = "rt")]
+
 mod common;
+
 use rivium::{
     Error, Health, Kind, Outcome, Phase, Supervisor,
     error::Class,

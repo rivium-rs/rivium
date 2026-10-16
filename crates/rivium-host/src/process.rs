@@ -1,13 +1,16 @@
 //! Process entrypoints. Signal ownership is enabled only here.
+
 use crate::{
     App, Code, Options,
     session::{self, Run},
 };
 use rivium::StopReason;
 use std::{ffi::OsString, sync::Arc};
+
 pub fn run<A: App>() -> Code {
     run_args::<A>(std::env::args_os().skip(1))
 }
+
 pub fn run_args<A: App>(args: impl IntoIterator<Item = OsString>) -> Code {
     let options = match Options::parse(A::NAME, args, true) {
         Ok(value) => value,
@@ -19,10 +22,12 @@ pub fn run_args<A: App>(args: impl IntoIterator<Item = OsString>) -> Code {
     if let Some(code) = session::inspect::<A>(&options) {
         return code;
     }
+
     let run = Arc::new(Run::new());
     session::run::<A>(options, run.clone(), false);
     run.report().map_or(Code::Fault, |report| report.code)
 }
+
 fn register<T>(call: impl FnOnce() -> std::io::Result<T>) -> std::io::Result<T> {
     #[cfg(test)]
     if FAIL_REGISTRATION.with(|remaining| match remaining.get() {
@@ -39,6 +44,7 @@ fn register<T>(call: impl FnOnce() -> std::io::Result<T>) -> std::io::Result<T> 
     }
     call()
 }
+
 pub(crate) fn signals(
     run: Arc<Run>,
 ) -> std::io::Result<impl std::future::Future<Output = ()> + Send> {
@@ -87,6 +93,7 @@ pub(crate) fn signals(
         }
     })
 }
+
 #[cfg(test)]
 thread_local! {
     static FAIL_REGISTRATION: std::cell::Cell<Option<usize>> = const {
@@ -102,15 +109,18 @@ fn console_event(name: &str) -> StopReason {
         15
     })
 }
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn signal_registration_failure_prevents_application_start() {
         struct App;
+
         impl crate::App for App {
             const NAME: &'static str = "signal-failure";
             const VERSION: &'static str = "test";
             type Config = ();
+
             fn services(
                 _: &(),
                 _: &crate::Context<()>,
@@ -118,6 +128,7 @@ mod tests {
                 panic!("signal setup must fail before services");
             }
         }
+
         for stage in [0, 1] {
             let root = rivium_test::TempDir::new().unwrap();
             let options = crate::Options::parse(
@@ -141,6 +152,7 @@ mod tests {
             assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
         }
     }
+
     #[test]
     fn console_control_events_stand_for_sigint_or_sigterm() {
         for (event, number) in [

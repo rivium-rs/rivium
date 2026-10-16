@@ -1,4 +1,5 @@
 //! Restartable hosts that do not install process signals or read environment.
+
 pub use crate::session::Status;
 use crate::{
     Action, App, CleanupReport, Code, HostReport, Options, config,
@@ -12,12 +13,14 @@ use std::{
 };
 
 type Runner = fn(Options, Arc<Run>, bool);
+
 /// A type-erased, thread-safe controller. Each start captures its own run record.
 pub struct Host {
     name: &'static str,
     runner: Runner,
     current: Mutex<Option<Arc<Run>>>,
 }
+
 impl Host {
     pub fn new<A: App>() -> Self {
         Self {
@@ -26,13 +29,16 @@ impl Host {
             current: Mutex::new(None),
         }
     }
+
     fn current(&self) -> Option<Arc<Run>> {
         crate::lock(&self.current).clone()
     }
+
     pub fn status(&self) -> Status {
         self.current()
             .map_or(Status::Idle, |run| crate::lock(&run.state).status)
     }
+
     /// A safe classification summary; configuration text and sources stay private.
     pub fn last_error(&self) -> Option<String> {
         self.last_report()
@@ -44,13 +50,16 @@ impl Host {
                 )
             })
     }
+
     pub fn last_report(&self) -> Option<HostReport> {
         self.current().and_then(|run| run.report())
     }
+
     pub fn active_tasks(&self) -> usize {
         self.current()
             .map_or(0, |run| run.cleanup().pending.service_tasks)
     }
+
     /// Wait for this captured run to close and release resources; never sends stop.
     pub async fn drain(&self, within: Duration) -> CleanupReport {
         let Some(run) = self.current() else {
@@ -68,6 +77,7 @@ impl Host {
             if report.is_drained() || tokio::time::Instant::now() >= end {
                 return report;
             }
+
             let poll_at = if report.closed {
                 end.min(tokio::time::Instant::now() + Duration::from_millis(5))
             } else {
@@ -79,6 +89,7 @@ impl Host {
             }
         }
     }
+
     fn rejected_start(&self, error: Error) -> Code {
         let mut current = crate::lock(&self.current);
         if let Some(run) = current.as_ref() {
@@ -87,6 +98,7 @@ impl Host {
                 return Code::Usage;
             }
         }
+
         let run = Arc::new(Run::new());
         run.finish(Code::Usage, Some(error), None);
         let old = current.replace(run);
@@ -94,6 +106,7 @@ impl Host {
         drop(old);
         Code::Usage
     }
+
     /// Start and wait for initial readiness or a reported startup failure.
     pub fn start(&self, args: &[String]) -> Code {
         let options = match Options::parse(self.name, args.iter().map(OsString::from), false) {
@@ -104,6 +117,7 @@ impl Host {
             return self
                 .rejected_start(Error::invalid("embedded host accepts only the run command"));
         }
+
         let run = Arc::new(Run::new());
         {
             let mut current = crate::lock(&self.current);
@@ -121,10 +135,12 @@ impl Host {
                     return Code::Busy;
                 }
             }
+
             let old = current.replace(run.clone());
             drop(current);
             drop(old);
         }
+
         let task = run.clone();
         let runner = self.runner;
         if let Err(error) = std::thread::Builder::new()
@@ -134,12 +150,14 @@ impl Host {
             run.finish(Code::OsError, Some(error.into()), None);
             return Code::OsError;
         }
+
         let mut state = crate::lock(&run.state);
         while state.first.is_none() {
             state = run.changed.wait(state).unwrap_or_else(|e| e.into_inner());
         }
         state.first.unwrap()
     }
+
     pub async fn reload(&self) -> Result<config::ReloadReport> {
         let run = self
             .current()
@@ -150,6 +168,7 @@ impl Host {
             .ok_or_else(|| Error::new(kinds::UNAVAILABLE, "host configuration is initializing"))?;
         reload.request().await
     }
+
     /// Request stop and spend at most `within` waiting for its captured run.
     /// A zero budget sends the request and returns immediately.
     pub fn stop(&self, within: Duration) -> Code {
@@ -174,6 +193,7 @@ impl Host {
                     .as_ref()
                     .map_or(Code::Fault, |report| report.code);
             }
+
             let remaining = end.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Code::StopTimedOut;
@@ -186,6 +206,7 @@ impl Host {
         }
     }
 }
+
 impl Drop for Host {
     fn drop(&mut self) {
         if let Some(run) = self.current() {

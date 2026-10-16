@@ -1,8 +1,10 @@
 //! Aggregate budget with complete, internally consistent per-file measurements.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     process::Command,
 };
+
 const LIBRARIES: [&str; 6] = [
     "rivium",
     "rivium-util",
@@ -44,6 +46,7 @@ fn rust_code(output: &[u8]) -> Result<u64, String> {
     }
     Ok(code)
 }
+
 fn check_budget(counts: &BTreeMap<&str, u64>) -> Result<u64, String> {
     if counts.keys().copied().collect::<BTreeSet<_>>() != LIBRARIES.into_iter().collect() {
         return Err("missing or unexpected library measurement".into());
@@ -62,6 +65,7 @@ fn check_budget(counts: &BTreeMap<&str, u64>) -> Result<u64, String> {
     }
     Ok(total)
 }
+
 #[test]
 fn library_code_stays_within_budget() {
     let version = Command::new("tokei")
@@ -113,6 +117,7 @@ fn library_code_stays_within_budget() {
     }
     println!("total: {} / {TOTAL_BUDGET}", check_budget(&counts).unwrap());
 }
+
 #[test]
 fn missing_or_inconsistent_counter_output_is_rejected() {
     for bad in [
@@ -128,6 +133,7 @@ fn missing_or_inconsistent_counter_output_is_rejected() {
             "accepted malformed counter output: {bad}"
         );
     }
+
     assert_eq!(
         rust_code(
             br#"{"Rust":{"code":3,"reports":[{"name":"a.rs","stats":{"code":1}},{"name":"b.rs","stats":{"code":2}}]}}"#
@@ -136,22 +142,28 @@ fn missing_or_inconsistent_counter_output_is_rejected() {
         3
     );
 }
+
 #[test]
 fn missing_crates_empty_counts_and_total_overruns_are_rejected() {
     let valid: BTreeMap<_, _> = LIBRARIES.map(|name| (name, 1)).into_iter().collect();
     assert_eq!(check_budget(&valid).unwrap(), 6);
+
     let mut missing = valid.clone();
     missing.remove("rivium-jni");
     assert!(check_budget(&missing).is_err());
+
     let mut empty = valid.clone();
     empty.insert("rivium-jni", 0);
     assert!(check_budget(&empty).is_err());
+
     let mut extra = valid.clone();
     extra.insert("unreviewed", 1);
     assert!(check_budget(&extra).is_err());
+
     let mut over = valid.clone();
     over.insert("rivium", TOTAL_BUDGET);
     assert!(check_budget(&over).is_err());
+
     over.insert("rivium", u64::MAX);
     assert!(check_budget(&over).is_err());
 }

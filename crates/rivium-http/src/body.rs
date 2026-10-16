@@ -11,15 +11,18 @@ struct HeldBody {
     inner: Option<Body>,
     lease: Option<Arc<dyn Send + Sync>>,
 }
+
 pub(crate) fn hold(body: Body, lease: Arc<dyn Send + Sync>) -> Body {
     Body::new(HeldBody {
         inner: Some(body),
         lease: Some(lease),
     })
 }
+
 impl HttpBody for HeldBody {
     type Data = Bytes;
     type Error = axum::Error;
+
     fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -37,9 +40,11 @@ impl HttpBody for HeldBody {
         }
         frame
     }
+
     fn is_end_stream(&self) -> bool {
         self.inner.as_ref().is_none_or(HttpBody::is_end_stream)
     }
+
     fn size_hint(&self) -> SizeHint {
         self.inner
             .as_ref()
@@ -50,25 +55,31 @@ impl HttpBody for HeldBody {
 
 #[derive(Debug)]
 pub(crate) struct BodyLimitExceeded;
+
 impl std::fmt::Display for BodyLimitExceeded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("request body limit exceeded")
     }
 }
+
 impl std::error::Error for BodyLimitExceeded {}
+
 struct LimitedBody {
     inner: Option<Body>,
     remaining: usize,
 }
+
 pub(crate) fn limit(body: Body, bytes: usize) -> Body {
     Body::new(LimitedBody {
         inner: Some(body),
         remaining: bytes,
     })
 }
+
 impl HttpBody for LimitedBody {
     type Data = Bytes;
     type Error = axum::BoxError;
+
     fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -99,9 +110,11 @@ impl HttpBody for LimitedBody {
             }
         }
     }
+
     fn is_end_stream(&self) -> bool {
         self.inner.as_ref().is_none_or(HttpBody::is_end_stream)
     }
+
     fn size_hint(&self) -> SizeHint {
         self.inner
             .as_ref()

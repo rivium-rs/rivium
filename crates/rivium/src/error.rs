@@ -1,4 +1,5 @@
 //! Transport-independent failures with opt-in public disclosure.
+
 use std::{fmt, sync::Arc, time::Duration};
 
 /// Broad failure category; transports choose their own mapping.
@@ -61,6 +62,7 @@ pub struct ErrorKind {
     /// Safe transport-facing title.
     pub title: Option<&'static str>,
 }
+
 impl ErrorKind {
     /// Define an application-specific stable kind.
     pub const fn new(name: &'static str, class: Class) -> Self {
@@ -70,20 +72,24 @@ impl ErrorKind {
             title: None,
         }
     }
+
     /// Attach a safe default title.
     pub const fn titled(mut self, title: &'static str) -> Self {
         self.title = Some(title);
         self
     }
+
     /// Stable machine-readable name.
     pub const fn name(self) -> &'static str {
         self.name
     }
+
     /// Broad classification.
     pub const fn class(self) -> Class {
         self.class
     }
 }
+
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name)
@@ -96,29 +102,40 @@ pub type ErrorType = &'static ErrorKind;
 /// Built-in stable kinds.
 pub mod kinds {
     use super::{Class, ErrorKind, ErrorType};
+
     /// Invalid caller input.
     pub const INVALID_INPUT: ErrorType = &ErrorKind::new("InvalidInput", Class::InvalidInput);
+
     /// Malformed request body.
     pub const INVALID_BODY: ErrorType = &ErrorKind::new("InvalidBody", Class::InvalidBody);
+
     /// Request payload exceeds its limit.
     pub const PAYLOAD_TOO_LARGE: ErrorType =
         &ErrorKind::new("PayloadTooLarge", Class::PayloadTooLarge);
+
     /// Missing or invalid credentials.
     pub const UNAUTHENTICATED: ErrorType =
         &ErrorKind::new("Unauthenticated", Class::Unauthenticated);
+
     /// Insufficient permission.
     pub const FORBIDDEN: ErrorType = &ErrorKind::new("Forbidden", Class::Forbidden);
+
     /// Requested item absent.
     pub const NOT_FOUND: ErrorType = &ErrorKind::new("NotFound", Class::NotFound);
+
     /// Current state conflicts with an operation.
     pub const CONFLICT: ErrorType = &ErrorKind::new("Conflict", Class::Conflict);
+
     /// Resource limit reached.
     pub const TOO_MANY_REQUESTS: ErrorType =
         &ErrorKind::new("TooManyRequests", Class::TooManyRequests);
+
     /// Deadline exceeded.
     pub const TIMEOUT: ErrorType = &ErrorKind::new("Timeout", Class::Timeout);
+
     /// Dependency unavailable.
     pub const UNAVAILABLE: ErrorType = &ErrorKind::new("Unavailable", Class::Unavailable);
+
     /// Unexpected implementation failure.
     pub const INTERNAL: ErrorType = &ErrorKind::new("Internal", Class::Internal);
 }
@@ -133,6 +150,7 @@ pub struct Error {
     public: Option<Arc<str>>,
     source: Option<Arc<dyn std::error::Error + Send + Sync>>,
 }
+
 impl Error {
     /// Construct a failure with private diagnostic text.
     pub fn new(kind: ErrorType, message: impl Into<String>) -> Self {
@@ -156,57 +174,70 @@ impl Error {
             source: None,
         }
     }
+
     /// Unexpected implementation failure.
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(kinds::INTERNAL, message)
     }
+
     /// Invalid input failure.
     pub fn invalid_input(message: impl Into<String>) -> Self {
         Self::new(kinds::INVALID_INPUT, message)
     }
+
     /// Invalid input failure.
     pub fn invalid(message: impl Into<String>) -> Self {
         Self::invalid_input(message)
     }
+
     /// Mark a dependency as the source of a failure.
     pub fn upstream(mut self) -> Self {
         self.side = Side::Upstream;
         self
     }
+
     /// Stable kind.
     pub fn kind(&self) -> ErrorType {
         self.kind
     }
+
     /// Broad category.
     pub fn class(&self) -> Class {
         self.kind.class()
     }
+
     /// Responsible party.
     pub fn side(&self) -> Side {
         self.side
     }
+
     /// Provider retry hint.
     pub fn retry(&self) -> Retry {
         self.retry
     }
+
     /// Private diagnostic message.
     pub fn message(&self) -> &str {
         &self.message
     }
+
     /// Explicitly approved public text, if any.
     pub fn public_message(&self) -> Option<&str> {
         self.public.as_deref()
     }
+
     /// Set the responsible party.
     pub fn with_side(mut self, side: Side) -> Self {
         self.side = side;
         self
     }
+
     /// Set the operation provider's retry hint.
     pub fn with_retry(mut self, retry: Retry) -> Self {
         self.retry = retry;
         self
     }
+
     /// Opt in to disclosure, truncated to at most 1024 UTF-8 bytes.
     pub fn with_public_message(mut self, message: impl Into<String>) -> Self {
         let mut text = message.into();
@@ -220,17 +251,20 @@ impl Error {
         self.public = Some(text.into());
         self
     }
+
     /// Traverse this diagnostic failure followed by its original causes.
     pub fn chain(&self) -> impl Iterator<Item = &(dyn std::error::Error + 'static)> {
         std::iter::successors(Some(self as &(dyn std::error::Error + 'static)), |error| {
             error.source()
         })
     }
+
     /// Attach the original diagnostic cause.
     pub fn with_source(mut self, source: impl std::error::Error + Send + Sync + 'static) -> Self {
         self.source = Some(Arc::new(source));
         self
     }
+
     /// Add private context while preserving all classification and public text.
     pub fn context(self, message: impl Into<String>) -> Self {
         Self {
@@ -240,6 +274,7 @@ impl Error {
         }
     }
 }
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)?;
@@ -251,11 +286,13 @@ impl fmt::Display for Error {
         Ok(())
     }
 }
+
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.source.as_deref().map(|source| source as _)
     }
 }
+
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Self::new(kinds::INTERNAL, error.to_string())
@@ -263,15 +300,19 @@ impl From<std::io::Error> for Error {
             .with_source(error)
     }
 }
+
 /// Default result type.
 pub type Result<T = ()> = std::result::Result<T, Error>;
+
 /// Attach diagnostic context without losing classification.
 pub trait ResultExt<T> {
     /// Add diagnostic context on failure.
     fn context(self, message: impl Into<String>) -> Result<T>;
+
     /// Lazily produce diagnostic context on failure.
     fn with_context(self, message: impl FnOnce() -> String) -> Result<T>;
 }
+
 impl<T, E: std::error::Error + Send + Sync + 'static> ResultExt<T> for std::result::Result<T, E> {
     fn context(self, message: impl Into<String>) -> Result<T> {
         self.map_err(
@@ -281,6 +322,7 @@ impl<T, E: std::error::Error + Send + Sync + 'static> ResultExt<T> for std::resu
             },
         )
     }
+
     fn with_context(self, message: impl FnOnce() -> String) -> Result<T> {
         match self {
             Ok(value) => Ok(value),

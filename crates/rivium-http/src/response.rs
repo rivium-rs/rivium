@@ -24,16 +24,20 @@ pub enum ApiResponse<T> {
     /// JSON data with status 201.
     Created(T),
 }
+
 /// Handler result using the standard HTTP error adapter.
 pub type ApiResult<T = ()> = std::result::Result<ApiResponse<T>, ApiError>;
+
 /// HTTP adapter retaining the original private diagnostic error in extensions.
 #[derive(Clone, Debug)]
 pub struct ApiError(pub Error);
+
 impl From<Error> for ApiError {
     fn from(error: Error) -> Self {
         Self(error)
     }
 }
+
 /// Preserve an application's response body instead of applying the default envelope.
 #[derive(Clone, Copy, Debug)]
 pub struct NoEnvelope;
@@ -44,6 +48,7 @@ struct Envelope<'a> {
     code: u16,
     description: &'a str,
 }
+
 impl<T: Serialize> IntoResponse for ApiResponse<T> {
     fn into_response(self) -> Response {
         match self {
@@ -58,6 +63,7 @@ impl<T: Serialize> IntoResponse for ApiResponse<T> {
         }
     }
 }
+
 pub(crate) fn json_response(data: impl Serialize, status: StatusCode) -> Response {
     match serde_json::to_vec(&data) {
         Ok(bytes) => (
@@ -75,6 +81,7 @@ pub(crate) fn json_response(data: impl Serialize, status: StatusCode) -> Respons
         }
     }
 }
+
 /// Map a transport-independent failure without treating upstream input as caller error.
 pub fn status_of(error: &Error) -> StatusCode {
     if error.side() == Side::Upstream {
@@ -99,6 +106,7 @@ pub fn status_of(error: &Error) -> StatusCode {
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut response = status_of(&self.0).into_response();
@@ -114,10 +122,12 @@ impl IntoResponse for ApiError {
         render(response, None)
     }
 }
+
 /// Clone the original diagnostic error attached by `ApiError`.
 pub fn error_of(response: &Response) -> Option<Error> {
     response.extensions().get::<Error>().cloned()
 }
+
 /// Apply a safe envelope to errors, preserving status, headers, and extensions.
 /// Private message/context/source text is never selected for disclosure.
 pub fn render(mut response: Response, request_id: Option<&str>) -> Response {
@@ -165,13 +175,16 @@ pub fn render(mut response: Response, request_id: Option<&str>) -> Response {
 /// Explicit request correlation value; the contract validates it before transport use.
 #[derive(Clone, Debug)]
 pub struct RequestId(pub String);
+
 impl RequestId {
     /// Correlation header name.
     pub const HEADER: &'static str = "x-request-id";
+
     /// Supply an explicit opaque ID; this constructor does not generate identifiers.
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
+
     #[cfg(feature = "contract")]
     pub(crate) fn validated(value: &str) -> Option<Self> {
         (!value.is_empty()
@@ -179,6 +192,7 @@ impl RequestId {
             && value.bytes().all(|byte| (33..=126).contains(&byte)))
         .then(|| Self(value.to_owned()))
     }
+
     /// Read a valid incoming header, or generate UUIDv7. Requires `contract`.
     #[cfg(feature = "contract")]
     pub fn from_headers(headers: &HeaderMap) -> Self {
@@ -188,25 +202,30 @@ impl RequestId {
             .and_then(Self::validated)
             .unwrap_or_default()
     }
+
     /// Opaque text; the contract validates externally supplied values.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
+
 #[cfg(feature = "contract")]
 impl Default for RequestId {
     fn default() -> Self {
         Self(uuid::Uuid::now_v7().to_string())
     }
 }
+
 impl std::fmt::Display for RequestId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
 }
+
 #[cfg(feature = "contract")]
 impl<S: Send + Sync> FromRequestParts<S> for RequestId {
     type Rejection = Infallible;
+
     async fn from_request_parts(
         parts: &mut Parts,
         _: &S,

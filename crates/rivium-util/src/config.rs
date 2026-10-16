@@ -102,6 +102,7 @@ impl fmt::Display for Report {
         Ok(())
     }
 }
+
 impl std::error::Error for Report {}
 
 /// Bounds applied before a configuration document is parsed.
@@ -110,6 +111,7 @@ pub struct LoadLimits {
     /// Maximum number of UTF-8 bytes in the TOML input.
     pub max_document_bytes: usize,
 }
+
 impl Default for LoadLimits {
     fn default() -> Self {
         Self {
@@ -395,6 +397,7 @@ impl Loader {
 fn empty_table() -> Value {
     Value::Table(Default::default())
 }
+
 fn dotted(parent: &str, child: &str) -> String {
     if parent.is_empty() {
         child.into()
@@ -404,14 +407,17 @@ fn dotted(parent: &str, child: &str) -> String {
         format!("{parent}.{child}")
     }
 }
+
 fn lookup<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.')
         .try_fold(value, |value, part| value.as_table()?.get(part))
 }
+
 fn clear_branch<T>(entries: &mut BTreeMap<String, T>, key: &str) {
     let prefix = format!("{key}.");
     entries.retain(|path, _| path != key && !path.starts_with(&prefix));
 }
+
 fn record_sources(
     value: &Value,
     path: &str,
@@ -427,6 +433,7 @@ fn record_sources(
         }
     }
 }
+
 fn merge_file(
     target: &mut Value,
     incoming: Value,
@@ -450,6 +457,7 @@ fn merge_file(
         record_sources(target, path, source, sources);
     }
 }
+
 fn assign(document: &mut Document, path: &str, text: &str, source: Source) -> Result<(), Report> {
     let parts: Vec<_> = path.split('.').collect();
     if parts.iter().any(|part| {
@@ -493,6 +501,7 @@ fn assign(document: &mut Document, path: &str, text: &str, source: Source) -> Re
     record_sources(&parsed, path, &source, &mut document.sources);
     Ok(())
 }
+
 fn list_leaves(value: &Value, path: &str, output: &mut impl FnMut(&str, &Value)) {
     match value {
         Value::Table(table) if !table.is_empty() => {
@@ -503,6 +512,7 @@ fn list_leaves(value: &Value, path: &str, output: &mut impl FnMut(&str, &Value))
         _ => output(path, value),
     }
 }
+
 fn substitute(value: &mut Value, defaults: &Value, path: &str) -> bool {
     // One invalid element invalidates its containing collection; recovering the
     // whole field still permits diagnostics for independent sibling fields.
@@ -553,6 +563,7 @@ pub struct Snapshot<T> {
     /// Immutable shared configuration value.
     pub value: Arc<T>,
 }
+
 impl<T> Clone for Snapshot<T> {
     fn clone(&self) -> Self {
         Self {
@@ -573,6 +584,7 @@ pub struct Handle<T> {
     state: Arc<RwLock<Snapshot<T>>>,
     notify: watch::Receiver<u64>,
 }
+
 impl<T> Clone for Handle<T> {
     fn clone(&self) -> Self {
         Self {
@@ -581,6 +593,7 @@ impl<T> Clone for Handle<T> {
         }
     }
 }
+
 impl<T> Store<T> {
     /// Create the initial, revision-zero configuration.
     pub fn new(value: T) -> Self {
@@ -593,6 +606,7 @@ impl<T> Store<T> {
             notify,
         }
     }
+
     /// Create a reader without exposing publication authority.
     pub fn handle(&self) -> Handle<T> {
         Handle {
@@ -600,10 +614,12 @@ impl<T> Store<T> {
             notify: self.notify.subscribe(),
         }
     }
+
     /// Publish a validated effective value; overflow leaves the store unchanged.
     pub fn publish(&mut self, effective: T) -> Result<u64, Error> {
         self.publish_guarded(effective, ())
     }
+
     /// Publish while owning a caller-provided admission guard.
     ///
     /// The snapshot changes before releasing `guard`. Notification and release
@@ -636,6 +652,7 @@ impl<T> Store<T> {
         Ok(generation)
     }
 }
+
 impl<T> Handle<T> {
     /// Read one consistent value/revision pair without consuming a notification.
     pub fn snapshot(&self) -> Snapshot<T> {
@@ -644,14 +661,17 @@ impl<T> Handle<T> {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
     }
+
     /// Read the most recently published value.
     pub fn current(&self) -> Arc<T> {
         self.snapshot().value
     }
+
     /// Read the most recently published revision; use `snapshot` when pairing it.
     pub fn generation(&self) -> u64 {
         self.snapshot().generation
     }
+
     /// Wait for a publication, or return `None` after the last unseen publication
     /// has been delivered and the writer has closed.
     pub async fn changed(&mut self) -> Option<Arc<T>> {

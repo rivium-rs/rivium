@@ -17,6 +17,7 @@ use std::{
 /// Monotonically allocated identifier within one process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ExportId(pub u64);
+
 /// Date interval and optional subset of configured sink names.
 #[derive(Clone, Debug)]
 pub struct ExportRequest {
@@ -27,6 +28,7 @@ pub struct ExportRequest {
     /// Empty selects all configured sinks.
     pub sinks: Vec<String>,
 }
+
 /// Ready archive metadata. The file is removed on cancellation or expiry.
 #[derive(Clone, Debug)]
 pub struct Archive {
@@ -37,6 +39,7 @@ pub struct Archive {
     /// Safe generated basename.
     pub file_name: String,
 }
+
 /// Observable lifecycle of the sole export job.
 #[derive(Clone, Debug)]
 pub enum ExportState {
@@ -51,6 +54,7 @@ pub enum ExportState {
     /// The ready archive passed its retention deadline and was removed.
     Expired,
 }
+
 struct Job {
     id: ExportId,
     request: Option<ExportRequest>,
@@ -58,12 +62,14 @@ struct Job {
     cancel: bool,
     expires: Option<Instant>,
 }
+
 struct State {
     job: Option<Job>,
     closed: bool,
     done: bool,
     failure: Option<String>,
 }
+
 struct Control {
     #[cfg(test)]
     release_gate: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
@@ -72,9 +78,11 @@ struct Control {
     changed: Condvar,
     sinks: Vec<String>,
 }
+
 /// Bounded, single-job diagnostic archive controller.
 #[derive(Clone)]
 pub struct Exporter(Arc<Control>);
+
 impl Exporter {
     pub(super) fn new(
         directory: Arc<Directory>,
@@ -152,16 +160,19 @@ impl Exporter {
         *export.0._thread.lock().unwrap_or_else(|e| e.into_inner()) = Some(thread);
         Ok(export)
     }
+
     #[cfg(test)]
     pub(super) fn hold_release(&self) -> std::sync::mpsc::Sender<()> {
         let (release, gate) = std::sync::mpsc::channel();
         *self.0.release_gate.lock().unwrap() = Some(gate);
         release
     }
+
     /// Configured sink names, including the main file.
     pub fn sinks(&self) -> Vec<String> {
         self.0.sinks.clone()
     }
+
     /// Start the only job; a running or retained ready job must first be cancelled.
     pub fn start(&self, request: ExportRequest) -> Result<ExportId> {
         if !files::valid_date(&request.from)
@@ -213,6 +224,7 @@ impl Exporter {
         self.0.changed.notify_all();
         Ok(id)
     }
+
     /// Inspect the current job. Old/replaced IDs return not found.
     pub fn progress(&self, id: ExportId) -> Result<ExportState> {
         super::lock(&self.0.state)
@@ -222,6 +234,7 @@ impl Exporter {
             .map(|j| j.state.clone())
             .ok_or_else(|| Error::new(rivium::error::kinds::NOT_FOUND, "unknown export"))
     }
+
     /// Return metadata only when the archive is ready.
     pub fn archive(&self, id: ExportId) -> Result<Archive> {
         match self.progress(id)? {
@@ -232,6 +245,7 @@ impl Exporter {
             )),
         }
     }
+
     /// Cancel a job. A ready archive is removed before this method returns;
     /// running jobs check cancellation between fixed-size read/write chunks.
     pub fn cancel(&self, id: ExportId) {
@@ -257,6 +271,7 @@ impl Exporter {
                 .unwrap_or_else(|e| e.into_inner());
         }
     }
+
     /// Permanently close admission and signal cancellation without waiting.
     pub fn close(&self) {
         let mut state = super::lock(&self.0.state);
@@ -267,9 +282,11 @@ impl Exporter {
         drop(state);
         self.0.changed.notify_all();
     }
+
     pub(super) fn pending(&self) -> usize {
         usize::from(!super::lock(&self.0.state).done)
     }
+
     pub(super) fn wait_closed(&self, until: Instant) -> Result<()> {
         let mut state = super::lock(&self.0.state);
         while !state.done {
@@ -295,11 +312,13 @@ impl Exporter {
             .map_or(Ok(()), |e| Err(Error::internal(e.clone())))
     }
 }
+
 enum Work {
     Pack(ExportId, ExportRequest),
     Remove(ExportId, PathBuf, bool),
     Exit,
 }
+
 fn run_export(
     directory: &Directory,
     output: &std::path::Path,
@@ -424,12 +443,14 @@ fn run_export(
         }
     }
 }
+
 fn remove_archive(path: &std::path::Path) -> io::Result<()> {
     match fs::remove_file(path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         result => result,
     }
 }
+
 fn cancelled(control: &Control, id: ExportId) -> io::Result<()> {
     let state = super::lock(&control.state);
     if state.closed || state.job.as_ref().is_none_or(|j| j.id != id || j.cancel) {
@@ -441,11 +462,13 @@ fn cancelled(control: &Control, id: ExportId) -> io::Result<()> {
         Ok(())
     }
 }
+
 struct ZipOutput {
     file: File,
     position: u64,
     maximum: u64,
 }
+
 impl Write for ZipOutput {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if self
@@ -462,16 +485,19 @@ impl Write for ZipOutput {
         self.position += written as u64;
         Ok(written)
     }
+
     fn flush(&mut self) -> io::Result<()> {
         self.file.flush()
     }
 }
+
 impl Seek for ZipOutput {
     fn seek(&mut self, offset: SeekFrom) -> io::Result<u64> {
         self.position = self.file.seek(offset)?;
         Ok(self.position)
     }
 }
+
 fn pack(
     directory: &Directory,
     control: &Control,

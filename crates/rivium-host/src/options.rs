@@ -12,23 +12,28 @@ pub enum Action {
     Version,
     Help,
 }
+
 #[derive(Clone, Debug)]
 pub struct Paths {
     root: PathBuf,
     config: PathBuf,
     explicit_config: bool,
 }
+
 impl Paths {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
     pub fn config_file(&self) -> &Path {
         &self.config
     }
+
     pub(crate) fn explicit_config(&self) -> bool {
         self.explicit_config
     }
 }
+
 #[derive(Clone, Debug)]
 pub struct Options {
     pub action: Action,
@@ -37,6 +42,7 @@ pub struct Options {
     pub environment: Vec<(String, String)>,
     pub prefix: String,
 }
+
 impl Options {
     /// Parse arguments excluding `argv[0]`. Only process callers enable environment.
     pub fn parse(
@@ -51,6 +57,7 @@ impl Options {
         {
             return Err(Error::invalid("invalid application name"));
         }
+
         let prefix = name.to_ascii_uppercase().replace('-', "_");
         let mut root = None;
         let mut config = None;
@@ -96,6 +103,7 @@ impl Options {
                 _ => return Err(Error::invalid("unknown argument or repeated command")),
             }
         }
+
         let mut environment = Vec::new();
         if read_env {
             for (key, value) in std::env::vars_os() {
@@ -125,6 +133,7 @@ impl Options {
         if !read_env && root.is_none() && matches!(action, Action::Run | Action::CheckConfig) {
             return Err(Error::invalid("embedded host requires --root"));
         }
+
         let root = match root {
             Some(root) => {
                 if root.is_absolute() {

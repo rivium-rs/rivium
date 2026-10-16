@@ -15,6 +15,7 @@ use std::{
 static WRITTEN: AtomicU64 = AtomicU64::new(0);
 static FAILURES: AtomicU64 = AtomicU64::new(0);
 static DELETED: AtomicU64 = AtomicU64::new(0);
+
 pub(super) fn counters() -> [u64; 3] {
     [
         WRITTEN.load(Ordering::Relaxed),
@@ -28,6 +29,7 @@ pub(super) struct Directory {
     pub(super) io: Mutex<()>,
     _lock: File,
 }
+
 impl Directory {
     pub(super) fn open(path: &Path) -> Result<Arc<Self>> {
         fs::create_dir_all(path).map_err(io_error)?;
@@ -53,12 +55,15 @@ impl Directory {
         }))
     }
 }
+
 pub(super) fn io_error(e: io::Error) -> Error {
     Error::internal(format!("log IO: {e}")).with_source(e)
 }
+
 fn failure(message: &str) -> Error {
     Error::internal(message.to_owned())
 }
+
 pub(super) fn reject_symlink(path: &Path) -> io::Result<()> {
     match fs::symlink_metadata(path) {
         Ok(m) if !m.file_type().is_file() => {
@@ -69,10 +74,12 @@ pub(super) fn reject_symlink(path: &Path) -> io::Result<()> {
         Err(e) => Err(e),
     }
 }
+
 struct Event {
     sink: usize,
     data: Vec<u8>,
 }
+
 struct Queue {
     events: VecDeque<Event>,
     bytes: usize,
@@ -85,6 +92,7 @@ struct Queue {
     done: bool,
     failure: Option<String>,
 }
+
 struct Control {
     #[cfg(all(test, feature = "log-export"))]
     release_gate: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
@@ -95,8 +103,10 @@ struct Control {
     oversized: AtomicU64,
     failures: AtomicU64,
 }
+
 #[derive(Clone)]
 pub(super) struct Worker(Arc<Control>);
+
 impl Worker {
     pub(super) fn new(
         directory: Arc<Directory>,
@@ -220,12 +230,14 @@ impl Worker {
         *worker.0._thread.lock().unwrap_or_else(|e| e.into_inner()) = Some(thread);
         Ok(worker)
     }
+
     #[cfg(all(test, feature = "log-export"))]
     pub(super) fn hold_release(&self) -> std::sync::mpsc::Sender<()> {
         let (release, gate) = std::sync::mpsc::channel();
         *self.0.release_gate.lock().unwrap() = Some(gate);
         release
     }
+
     pub(super) fn push(&self, sink: usize, data: Vec<u8>) {
         let mut queue = super::lock(&self.0.queue);
         if queue.closed {
@@ -241,9 +253,11 @@ impl Worker {
         drop(queue);
         self.0.changed.notify_one();
     }
+
     pub(super) fn oversized(&self) {
         self.0.oversized.fetch_add(1, Ordering::Relaxed);
     }
+
     pub(super) fn stats(&self) -> LogStats {
         let queue = super::lock(&self.0.queue);
         LogStats {
@@ -254,19 +268,24 @@ impl Worker {
             write_failures: self.0.failures.load(Ordering::Relaxed),
         }
     }
+
     pub(super) fn closed(&self) -> bool {
         super::lock(&self.0.queue).closed
     }
+
     pub(super) fn pending(&self) -> usize {
         usize::from(!super::lock(&self.0.queue).done)
     }
+
     pub(super) fn request_close(&self) {
         super::lock(&self.0.queue).closed = true;
         self.0.changed.notify_all();
     }
+
     pub(super) fn wait_closed(&self, until: Instant) -> Result<()> {
         self.wait(until, None)
     }
+
     pub(super) fn flush(&self, within: Duration) -> Result<()> {
         let until = Instant::now()
             .checked_add(within)
@@ -280,6 +299,7 @@ impl Worker {
         self.0.changed.notify_all();
         self.wait(until, Some(serial))
     }
+
     fn wait(&self, until: Instant, serial: Option<u64>) -> Result<()> {
         let mut queue = super::lock(&self.0.queue);
         loop {
@@ -304,12 +324,14 @@ impl Worker {
         }
     }
 }
+
 struct Active {
     name: String,
     file: File,
     size: u64,
     day: String,
 }
+
 struct Files {
     active: Vec<Active>,
     archives: BTreeMap<String, u64>,
@@ -319,6 +341,7 @@ struct Files {
     next: u64,
     failed: bool,
 }
+
 impl Files {
     fn new(
         directory: &Directory,
@@ -380,6 +403,7 @@ impl Files {
         files.make_room(&directory.path, 0)?;
         Ok(files)
     }
+
     fn write(&mut self, path: &Path, event: Event) -> io::Result<()> {
         if self.failed {
             return Ok(());
@@ -402,6 +426,7 @@ impl Files {
         self.size += len;
         Ok(())
     }
+
     fn rotate(&mut self, path: &Path, sink: usize) -> io::Result<()> {
         let active = &mut self.active[sink];
         active.file.flush()?;
@@ -462,6 +487,7 @@ impl Files {
         }
         Ok(())
     }
+
     fn make_room(&mut self, path: &Path, incoming: u64) -> io::Result<()> {
         while self
             .size
@@ -483,6 +509,7 @@ impl Files {
         }
         Ok(())
     }
+
     fn flush(&mut self, path: &Path) -> io::Result<()> {
         for active in &mut self.active {
             active.file.flush()?;
@@ -491,6 +518,7 @@ impl Files {
         self.reconcile(path)?;
         self.make_room(path, 0)
     }
+
     fn reconcile(&mut self, path: &Path) -> io::Result<()> {
         let names: Vec<_> = self.active.iter().map(|a| a.name.clone()).collect();
         let entries = owned_files(path, &names)?;
@@ -523,10 +551,12 @@ impl Files {
         Ok(())
     }
 }
+
 pub(super) struct Limited<T> {
     pub(super) inner: T,
     pub(super) remaining: u64,
 }
+
 impl<T: Write> Write for Limited<T> {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         if data.len() as u64 > self.remaining {
@@ -539,10 +569,12 @@ impl<T: Write> Write for Limited<T> {
         self.remaining -= n as u64;
         Ok(n)
     }
+
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
     }
 }
+
 pub(super) fn owned_files(path: &Path, names: &[String]) -> io::Result<Vec<(String, u64)>> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(path)? {
@@ -565,6 +597,7 @@ pub(super) fn owned_files(path: &Path, names: &[String]) -> io::Result<Vec<(Stri
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(entries)
 }
+
 pub(super) fn file_sink<'a, 'b>(
     file: &'b str,
     names: &'a [String],
@@ -593,6 +626,7 @@ pub(super) fn file_sink<'a, 'b>(
     }
     None
 }
+
 pub(super) fn valid_date(value: &str) -> bool {
     if value.len() != 10 || !value.is_ascii() {
         return false;
@@ -623,9 +657,11 @@ pub(super) fn valid_date(value: &str) -> bool {
     };
     (1..=max).contains(&day)
 }
+
 fn sequence(name: &str) -> Option<u64> {
     name.split('.').nth(2)?.parse().ok()
 }
+
 pub(super) fn date(time: SystemTime) -> String {
     // Floor negative timestamps so the last instant before the epoch remains in 1969.
     let seconds = match time.duration_since(UNIX_EPOCH) {

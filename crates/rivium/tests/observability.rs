@@ -1,5 +1,7 @@
 #![cfg(feature = "rt")]
+
 use rivium::{Kind, Supervisor, service};
+
 #[tokio::test]
 async fn phase_and_finish_events_are_emitted_once_and_children_inherit_dispatch() {
     use tracing::instrument::WithSubscriber;

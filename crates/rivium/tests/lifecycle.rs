@@ -1,5 +1,7 @@
 #![cfg(feature = "rt")]
+
 mod common;
+
 use common::Dropped;
 
 use rivium::{Kind, Outcome, Phase, Supervisor, rt::StopReason, service};
@@ -15,6 +17,7 @@ use std::{
 fn supervisor() -> Supervisor {
     Supervisor::new(Duration::from_millis(100), Duration::from_millis(100))
 }
+
 fn stalled(name: &str, stops: &'static [StopReason]) -> (Supervisor, Arc<AtomicBool>) {
     let dropped = Arc::new(AtomicBool::new(false));
     let guard = Dropped(dropped.clone());
@@ -60,6 +63,7 @@ async fn foreground_drains_before_background() {
             Ok(())
         }));
     }
+
     let (stop, _readiness, run) = common::ready(sup).await;
     stop.stop(StopReason::Requested);
     assert!(matches!(run.await.unwrap().outcome, Outcome::Stopped));
@@ -155,6 +159,7 @@ async fn blocking_shutdown(second_stop: bool) {
         releases.push(release);
         gates.push(gate);
     }
+
     let (stopping_tx, stopping_rx) = tokio::sync::oneshot::channel();
     let sup = Supervisor::new(Duration::from_secs(5), Duration::from_millis(20)).with(service(
         "parent",
@@ -171,6 +176,7 @@ async fn blocking_shutdown(second_stop: bool) {
                 })
                 .map_err(|error| rivium::Error::internal(error.to_string()))?;
             }
+
             for start in started {
                 start.await.unwrap();
             }

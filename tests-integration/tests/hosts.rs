@@ -242,18 +242,24 @@ fn process_signals_and_deadline() {
         );
     }
 }
+
 #[test]
 fn blocking_timeout_refuses_restart_until_work_really_exits() {
     use std::sync::{Mutex, mpsc};
+
     type Work = (mpsc::Receiver<()>, mpsc::Sender<()>);
     static WORK: Mutex<Option<Work>> = Mutex::new(None);
+
     #[derive(Default, serde::Serialize, serde::Deserialize)]
     struct Config {}
+
     struct Blocking;
+
     impl rivium_host::App for Blocking {
         const NAME: &'static str = "blocking";
         const VERSION: &'static str = "test";
         type Config = Config;
+
         fn services(
             _: &Config,
             _: &rivium_host::Context<Config>,
@@ -278,16 +284,19 @@ fn blocking_timeout_refuses_restart_until_work_really_exits() {
             )])
         }
     }
+
     let (release, rx) = mpsc::channel();
     let (tx, started) = mpsc::channel();
     *WORK.lock().unwrap() = Some((rx, tx));
     let dir = TempDir::new().unwrap();
     let host = Host::new::<Blocking>();
     let args = vec!["--root".into(), dir.path().display().to_string()];
+
     assert_eq!(host.start(&args), Code::Ok);
     started.recv_timeout(Duration::from_secs(2)).unwrap();
     assert_eq!(host.stop(Duration::from_secs(1)), Code::StopTimedOut);
     assert_eq!(host.start(&args), Code::Busy);
+
     release.send(()).unwrap();
     let end = std::time::Instant::now() + Duration::from_secs(2);
     loop {

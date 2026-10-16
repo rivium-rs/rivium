@@ -1,4 +1,5 @@
 #![cfg(feature = "contract")]
+
 mod common;
 
 use axum::{
@@ -23,6 +24,7 @@ fn json_app(body_limit: usize) -> Router {
         vec![],
     )
 }
+
 async fn request(
     router: Router,
     path: &str,

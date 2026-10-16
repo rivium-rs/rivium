@@ -1,5 +1,7 @@
 #![cfg(feature = "rt")]
+
 mod common;
+
 use rivium::{
     Error, Health, Kind, Outcome, Phase, StopReason, Supervisor,
     error::{Class, kinds},
@@ -14,6 +16,7 @@ async fn healthy_store() -> (common::Run, rivium::HealthHandle) {
     check.set(Health::Healthy);
     (common::ready(supervisor).await, check)
 }
+
 #[tokio::test]
 async fn empty_root_sets_and_empty_names_fail_before_execution() {
     for supervisor in [
@@ -30,6 +33,7 @@ async fn empty_root_sets_and_empty_names_fail_before_execution() {
         assert_eq!(report.drain, Drain::Complete);
     }
 }
+
 #[tokio::test]
 async fn a_ready_service_failure_is_a_runtime_fault_while_another_service_initializes() {
     let supervisor = Supervisor::default()
@@ -49,6 +53,7 @@ async fn a_ready_service_failure_is_a_runtime_fault_while_another_service_initia
     );
     assert_eq!(report.drain, Drain::Complete);
 }
+
 #[tokio::test]
 async fn running_panic_and_frontline_early_return_are_faults() {
     for panic in [false, true] {
@@ -61,6 +66,7 @@ async fn running_panic_and_frontline_early_return_are_faults() {
         assert!(matches!(supervisor.run().await.outcome, Outcome::Failed(_)));
     }
 }
+
 #[tokio::test]
 async fn ready_is_idempotent_and_phases_do_not_move_back_after_stop_or_finish() {
     let (context_tx, context_rx) = tokio::sync::oneshot::channel();
@@ -102,6 +108,7 @@ async fn ready_is_idempotent_and_phases_do_not_move_back_after_stop_or_finish() 
     assert!(!readiness.is_ready());
     assert_eq!(readiness.drain(Duration::ZERO).await, Drain::Complete);
 }
+
 #[tokio::test]
 async fn a_health_observer_can_request_restart_and_receive_its_reason() {
     let ((control, readiness, run), check) = healthy_store().await;
@@ -112,6 +119,7 @@ async fn a_health_observer_can_request_restart_and_receive_its_reason() {
     assert!(matches!(report.outcome,Outcome::Restart(ref why) if why=="configuration changed"));
     assert_eq!(report.drain, Drain::Complete);
 }
+
 #[tokio::test]
 async fn a_failure_during_stop_or_restart_replaces_only_the_successful_reason() {
     for restart in [false, true] {
@@ -129,6 +137,7 @@ async fn a_failure_during_stop_or_restart_replaces_only_the_successful_reason() 
         assert!(matches!(supervisor.run().await.outcome, Outcome::Failed(_)));
     }
 }
+
 #[tokio::test]
 async fn child_failure_keeps_its_kind_name_and_cause_when_the_root_also_fails() {
     let supervisor =
@@ -151,6 +160,7 @@ async fn child_failure_keeps_its_kind_name_and_cause_when_the_root_also_fails() 
     assert!(chain.contains("connection reset"));
     assert!(!chain.contains("later root failure"));
 }
+
 #[tokio::test(start_paused = true)]
 async fn a_stop_shortens_a_restart_deadline_and_timeout_remains_a_timeout() {
     let (context_tx, context_rx) = tokio::sync::oneshot::channel();
@@ -177,6 +187,7 @@ async fn a_stop_shortens_a_restart_deadline_and_timeout_remains_a_timeout() {
     ));
     assert_eq!(start.elapsed(), Duration::from_millis(20));
 }
+
 #[tokio::test(start_paused = true)]
 async fn a_primary_failure_survives_a_later_stop_and_cleanup_deadline() {
     let supervisor = Supervisor::new(Duration::from_secs(1), Duration::from_millis(10))
@@ -198,6 +209,7 @@ async fn a_primary_failure_survives_a_later_stop_and_cleanup_deadline() {
     ));
     assert_eq!(report.drain, Drain::Complete);
 }
+
 #[test]
 fn public_outcomes_are_stable_across_runtime_and_registration_order() {
     for multi in [false, true] {
@@ -270,6 +282,7 @@ async fn a_ready_background_completion_does_not_skip_another_roots_initializatio
     control.stop(StopReason::Requested);
     assert!(matches!(run.await.unwrap().outcome, Outcome::Stopped));
 }
+
 #[tokio::test]
 async fn health_entries_remain_registered_after_their_last_update_handle_drops() {
     let ((control, readiness, run), check) = healthy_store().await;
@@ -284,6 +297,7 @@ async fn health_entries_remain_registered_after_their_last_update_handle_drops()
     control.stop(StopReason::Requested);
     assert!(run.await.unwrap().drain.is_complete());
 }
+
 #[tokio::test(start_paused = true)]
 async fn startup_timeout_and_stop_budgets_use_the_configured_clock_deadlines() {
     let start = tokio::time::Instant::now();
@@ -357,6 +371,7 @@ async fn dropping_the_driver_drops_both_root_and_admitted_child_captures() {
     assert!(root.load(Ordering::Acquire));
     assert!(child.load(Ordering::Acquire));
 }
+
 #[tokio::test]
 async fn every_service_stop_token_is_cancelled_after_timeout_abort_or_driver_drop() {
     for action in 0..3 {
@@ -383,6 +398,7 @@ async fn every_service_stop_token_is_cancelled_after_timeout_abort_or_driver_dro
             }
             _ => run.abort(),
         }
+
         let report = run.await;
         match action {
             0 => assert!(matches!(report.unwrap().outcome, Outcome::TimedOut { .. })),

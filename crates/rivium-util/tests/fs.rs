@@ -59,7 +59,9 @@ fn a_directory_sync_failure_reports_already_committed_bytes() {
     std::fs::create_dir(&directory).unwrap();
     let target = directory.join("config");
     std::fs::write(&target, b"old").unwrap();
+
     struct Restore(std::path::PathBuf);
+
     impl Drop for Restore {
         fn drop(&mut self) {
             std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700)).unwrap();

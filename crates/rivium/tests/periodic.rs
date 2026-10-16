@@ -1,4 +1,5 @@
 #![cfg(feature = "rt")]
+
 use rivium::{Error, Outcome, Supervisor, periodic, rt::StopReason};
 use std::{
     sync::{

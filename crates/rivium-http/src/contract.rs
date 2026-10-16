@@ -30,6 +30,7 @@ pub struct ContractSettings {
     /// Maximum declared or actually consumed request body bytes.
     pub body_limit: usize,
 }
+
 impl Default for ContractSettings {
     fn default() -> Self {
         Self {
@@ -39,6 +40,7 @@ impl Default for ContractSettings {
         }
     }
 }
+
 /// Header-completion observation; payload completion is a separate ownership event.
 #[derive(Clone, Debug)]
 pub struct Access {
@@ -51,19 +53,24 @@ pub struct Access {
     /// Private diagnostic failure; never copy its message into client responses.
     pub error: Option<Error>,
 }
+
 /// Synchronous short callback. Panics are contained; blocking callbacks remain caller misuse.
 pub type Observer = Arc<dyn Fn(&Access) + Send + Sync>;
+
 static OBSERVER_PANICS: AtomicU64 = AtomicU64::new(0);
+
 /// Process-cumulative contained observer panics.
 pub fn observer_panics() -> u64 {
     OBSERVER_PANICS.load(Ordering::Relaxed)
 }
+
 #[derive(Clone)]
 struct Contract {
     settings: ContractSettings,
     capacity: Arc<Semaphore>,
     observers: Vec<Observer>,
 }
+
 /// Add request IDs, bounded admission/bodies, header deadlines, panic isolation and safe envelopes.
 pub fn contract(router: Router, settings: &ContractSettings, observers: Vec<Observer>) -> Router {
     let state = Contract {
@@ -75,6 +82,7 @@ pub fn contract(router: Router, settings: &ContractSettings, observers: Vec<Obse
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(state, enforce))
 }
+
 async fn enforce(State(contract): State<Contract>, mut request: Request, next: Next) -> Response {
     let started = Instant::now();
     let id = request
@@ -90,6 +98,7 @@ async fn enforce(State(contract): State<Contract>, mut request: Request, next: N
         .map(|p| p.as_str())
         .unwrap_or(request.uri().path())
         .to_owned();
+
     let mut lease = None;
     let response = match contract.capacity.clone().try_acquire_owned() {
         Err(_) => ApiError(Error::new(
@@ -136,6 +145,7 @@ async fn enforce(State(contract): State<Contract>, mut request: Request, next: N
             }
         }
     };
+
     let mut response = render(response, Some(id.as_str()));
     response.headers_mut().insert(
         RequestId::HEADER,
@@ -149,12 +159,14 @@ async fn enforce(State(contract): State<Contract>, mut request: Request, next: N
         elapsed: started.elapsed(),
         error: error_of(&response),
     };
+
     for observer in &contract.observers {
         if std::panic::catch_unwind(AssertUnwindSafe(|| observer(&access))).is_err() {
             OBSERVER_PANICS.fetch_add(1, Ordering::Relaxed);
         }
     }
     log_access(&access);
+
     if let Some(lease) = lease {
         let (parts, response_body) = response.into_parts();
         response = Response::from_parts(parts, body::hold(response_body, lease));
@@ -191,6 +203,7 @@ fn log_access(access: &Access) {
             )
         };
     }
+
     match (access.path.as_str(), access.status) {
         ("/livez" | "/readyz", _) => record!(tracing::Level::DEBUG),
         (_, 429 | 503 | 504) => record!(tracing::Level::WARN),

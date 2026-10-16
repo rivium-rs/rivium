@@ -38,6 +38,7 @@ fn exported_jni_entry_has_checked_types_syntax_and_symbol_uniqueness() {
         }"#,
     );
     tests_build::Consumer::checked(consumer.cargo("build").arg("--lib").output().unwrap());
+
     for (source, expected) in [
         (
             r#"subject::export!(class = "rivium/tests/Isolated", app = ());"#,

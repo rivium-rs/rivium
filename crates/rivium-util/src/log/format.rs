@@ -11,10 +11,12 @@ use tracing::{
 use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 
 pub(super) const EVENT_LIMIT: usize = 64 * 1024;
+
 struct Buffer {
     text: String,
     overflow: bool,
 }
+
 impl Buffer {
     fn new() -> Self {
         Self {
@@ -23,6 +25,7 @@ impl Buffer {
         }
     }
 }
+
 impl fmt::Write for Buffer {
     fn write_str(&mut self, value: &str) -> fmt::Result {
         if self.overflow || value.len() > EVENT_LIMIT - self.text.len() {
@@ -40,7 +43,9 @@ impl fmt::Write for Buffer {
         Ok(())
     }
 }
+
 struct Escaped<'a>(&'a mut Buffer);
+
 impl fmt::Write for Escaped<'_> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
         for ch in value.chars() {
@@ -57,16 +62,19 @@ impl fmt::Write for Escaped<'_> {
         Ok(())
     }
 }
+
 fn quoted(buffer: &mut Buffer, value: &str) {
     let _ = buffer.write_char('"');
     let _ = Escaped(buffer).write_str(value);
     let _ = buffer.write_char('"');
 }
+
 struct Fields<'a> {
     out: &'a mut Buffer,
     json: bool,
     first: bool,
 }
+
 impl Fields<'_> {
     fn name(&mut self, field: &Field) {
         if self.json {
@@ -81,6 +89,7 @@ impl Fields<'_> {
         self.first = false;
     }
 }
+
 impl Visit for Fields<'_> {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
         self.name(field);
@@ -92,6 +101,7 @@ impl Visit for Fields<'_> {
             let _ = write!(self.out, "{value:?}");
         }
     }
+
     fn record_str(&mut self, field: &Field, value: &str) {
         self.name(field);
         if self.json {
@@ -100,18 +110,22 @@ impl Visit for Fields<'_> {
             let _ = self.out.write_str(value);
         }
     }
+
     fn record_i64(&mut self, field: &Field, value: i64) {
         self.name(field);
         let _ = write!(self.out, "{value}");
     }
+
     fn record_u64(&mut self, field: &Field, value: u64) {
         self.name(field);
         let _ = write!(self.out, "{value}");
     }
+
     fn record_bool(&mut self, field: &Field, value: bool) {
         self.name(field);
         let _ = write!(self.out, "{value}");
     }
+
     fn record_f64(&mut self, field: &Field, value: f64) {
         self.name(field);
         if self.json && !value.is_finite() {
@@ -121,11 +135,13 @@ impl Visit for Fields<'_> {
         }
     }
 }
+
 struct SpanFields {
     values: std::collections::BTreeMap<String, String>,
     bytes: usize,
     overflow: bool,
 }
+
 impl SpanFields {
     fn new() -> Self {
         Self {
@@ -134,6 +150,7 @@ impl SpanFields {
             overflow: false,
         }
     }
+
     fn save(&mut self, field: &Field, value: Buffer) {
         let previous = self.values.get(field.name());
         let old = previous.map_or(0, String::len);
@@ -150,18 +167,21 @@ impl SpanFields {
         self.values.insert(field.name().to_owned(), value.text);
     }
 }
+
 impl Visit for SpanFields {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
         let mut out = Buffer::new();
         let _ = write!(out, "{value:?}");
         self.save(field, out);
     }
+
     fn record_str(&mut self, field: &Field, value: &str) {
         let mut out = Buffer::new();
         let _ = out.write_str(value);
         self.save(field, out);
     }
 }
+
 enum Output {
     File(Worker, usize),
     Console {
@@ -171,20 +191,24 @@ enum Output {
     #[cfg(target_os = "android")]
     Logcat(std::ffi::CString),
 }
+
 pub(super) struct EventLayer {
     output: Output,
 }
+
 impl EventLayer {
     pub(super) fn file(worker: Worker, category: usize) -> Self {
         Self {
             output: Output::File(worker, category),
         }
     }
+
     pub(super) fn console(format: Format, color: bool) -> Self {
         Self {
             output: Output::Console { format, color },
         }
     }
+
     #[cfg(target_os = "android")]
     pub(super) fn logcat(name: &str) -> Self {
         Self {
@@ -192,6 +216,7 @@ impl EventLayer {
         }
     }
 }
+
 impl<S> Layer<S> for EventLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -206,6 +231,7 @@ where
             }
         }
     }
+
     fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
         if let Some(span) = ctx.span(id) {
             let mut extensions = span.extensions_mut();
@@ -214,6 +240,7 @@ where
             }
         }
     }
+
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
         let json = matches!(
             self.output,
@@ -339,6 +366,7 @@ where
         }
     }
 }
+
 #[cfg(target_os = "android")]
 #[allow(unsafe_code)]
 fn android_write(tag: &std::ffi::CStr, level: &tracing::Level, value: &str) {

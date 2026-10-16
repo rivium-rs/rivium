@@ -1,4 +1,5 @@
 #![cfg(feature = "server")]
+
 mod common;
 
 use axum::{Router, routing::get};

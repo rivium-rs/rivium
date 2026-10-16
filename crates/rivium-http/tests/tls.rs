@@ -1,5 +1,7 @@
 #![cfg(feature = "server")]
+
 mod common;
+
 use axum::{Router, routing::get, serve::Listener};
 use rivium::{Kind, Outcome, StopReason, Supervisor, scope::Drain};
 use rivium_http::{ContractSettings, ServerLimits, contract, serve_listener};
@@ -25,20 +27,24 @@ use tokio_rustls::{
 };
 
 struct Handshake(Arc<AtomicUsize>);
+
 impl Drop for Handshake {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
+
 struct TlsListener {
     tcp: TcpListener,
     tls: TlsAcceptor,
     accepts: Arc<AtomicUsize>,
     handshakes: Arc<AtomicUsize>,
 }
+
 impl Listener for TlsListener {
     type Io = tokio_rustls::server::TlsStream<TcpStream>;
     type Addr = SocketAddr;
+
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
             self.accepts.fetch_add(1, Ordering::SeqCst);
@@ -51,10 +57,12 @@ impl Listener for TlsListener {
             }
         }
     }
+
     fn local_addr(&self) -> std::io::Result<Self::Addr> {
         self.tcp.local_addr()
     }
 }
+
 fn configurations() -> (TlsAcceptor, TlsConnector) {
     let cert = CertificateDer::from(include_bytes!("fixtures/localhost.der").to_vec());
     let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
@@ -74,6 +82,7 @@ fn configurations() -> (TlsAcceptor, TlsConnector) {
         TlsConnector::from(Arc::new(client)),
     )
 }
+
 async fn until(count: &AtomicUsize, value: usize) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while count.load(Ordering::SeqCst) != value {

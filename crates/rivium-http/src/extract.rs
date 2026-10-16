@@ -1,4 +1,5 @@
 //! Supported collectors translate failures into the safe HTTP vocabulary.
+
 use crate::ApiError;
 use axum::{
     extract::{FromRequest, FromRequestParts, Request},
@@ -10,17 +11,20 @@ use serde::{Serialize, de::DeserializeOwned};
 
 /// JSON collector and response body.
 pub struct Json<T>(pub T);
+
 impl<T: Serialize> IntoResponse for Json<T> {
     fn into_response(self) -> Response {
         crate::response::json_response(self.0, StatusCode::OK)
     }
 }
+
 impl<S, T> FromRequest<S> for Json<T>
 where
     S: Send + Sync,
     T: DeserializeOwned,
 {
     type Rejection = ApiError;
+
     async fn from_request(
         request: Request,
         state: &S,
@@ -51,14 +55,17 @@ where
             })
     }
 }
+
 /// Query-string decoder.
 pub struct Query<T>(pub T);
+
 impl<S, T> FromRequestParts<S> for Query<T>
 where
     S: Send + Sync,
     T: DeserializeOwned,
 {
     type Rejection = ApiError;
+
     async fn from_request_parts(
         parts: &mut Parts,
         state: &S,
@@ -71,14 +78,17 @@ where
             })
     }
 }
+
 /// Typed route-parameter decoder.
 pub struct Path<T>(pub T);
+
 impl<S, T> FromRequestParts<S> for Path<T>
 where
     S: Send + Sync,
     T: DeserializeOwned + Send,
 {
     type Rejection = ApiError;
+
     async fn from_request_parts(
         parts: &mut Parts,
         state: &S,

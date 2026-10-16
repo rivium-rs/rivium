@@ -4,8 +4,10 @@ use std::{
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
+
 #[cfg(unix)]
 struct Reap(Child);
+
 #[cfg(unix)]
 impl Drop for Reap {
     fn drop(&mut self) {
@@ -13,6 +15,7 @@ impl Drop for Reap {
         let _ = self.0.wait();
     }
 }
+
 #[cfg(unix)]
 fn wait_ready(child: &mut Child, root: &std::path::Path) {
     let end = Instant::now() + Duration::from_secs(10);
@@ -28,6 +31,7 @@ fn wait_ready(child: &mut Child, root: &std::path::Path) {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
 #[cfg(unix)]
 fn wait_exit(child: &mut Child) -> std::process::ExitStatus {
     let end = Instant::now() + Duration::from_secs(5);
@@ -39,6 +43,7 @@ fn wait_exit(child: &mut Child) -> std::process::ExitStatus {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
 #[test]
 fn an_uncreatable_log_directory_exits_73_before_starting_services() {
     let root = TempDir::new().unwrap();
@@ -57,6 +62,7 @@ fn an_uncreatable_log_directory_exits_73_before_starting_services() {
     );
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
 }
+
 #[test]
 fn cli_aliases_and_existing_config_inspection_are_read_only() {
     let root = TempDir::new().unwrap();
@@ -71,6 +77,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
         assert!(!output.stdout.is_empty());
     }
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+
     let defaults = tests_integration::command()
         .args(["default-config", "--root"])
         .arg(root.path())
@@ -78,6 +85,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
         .unwrap();
     assert!(defaults.status.success());
     assert!(String::from_utf8_lossy(&defaults.stdout).contains("[lifecycle]"));
+
     let file = root.path().join("config.toml");
     std::fs::write(&file, &defaults.stdout).unwrap();
     let checked = tests_integration::command()
@@ -91,6 +99,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
         ])
         .output()
         .unwrap();
+
     assert!(
         checked.status.success(),
         "{}",
@@ -99,6 +108,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
     assert_eq!(std::fs::read(&file).unwrap(), defaults.stdout);
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
 }
+
 #[cfg(unix)]
 #[cfg_attr(qemu, ignore = "native Unix signal delivery is verified separately")]
 #[test]
@@ -133,11 +143,13 @@ fn normal_sigterm_flushes_the_final_run_record_before_process_exit() {
     );
     assert!(log.contains("drain=Complete"), "{log}");
 }
+
 #[cfg(unix)]
 #[cfg_attr(qemu, ignore = "native Unix signal delivery is verified separately")]
 #[test]
 fn sigquit_retains_default_signal_termination() {
     use std::os::unix::process::ExitStatusExt;
+
     let root = TempDir::new().unwrap();
     let original = tests_integration::command();
     // Only the child shell disables dumps; no unsafe pre_exec or process-global changes.
@@ -167,6 +179,7 @@ fn sigquit_retains_default_signal_termination() {
     assert_eq!(exit.signal(), Some(3));
     assert!(!root.path().join("core").exists());
 }
+
 #[test]
 fn temporary_fixture_roots_are_isolated_and_removed() {
     let first = TempDir::new().unwrap();
@@ -179,6 +192,7 @@ fn temporary_fixture_roots_are_isolated_and_removed() {
     assert!(!path.exists());
     assert!(second.path().exists());
 }
+
 #[test]
 fn child_binary_is_located_without_runtime_cargo_binary_variables() {
     let command = tests_integration::command();

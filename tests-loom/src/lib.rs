@@ -1,9 +1,13 @@
 //! Run with RUSTFLAGS="--cfg rivium_scope_model" cargo test --manifest-path tests-loom/Cargo.toml.
+
 #![allow(dead_code)]
+
 #[cfg(not(rivium_scope_model))]
 compile_error!("run with RUSTFLAGS=\"--cfg rivium_scope_model\"");
+
 #[cfg(rivium_scope_model)]
 mod model_support;
+
 // Compile the production admission and RAII code, rather than copying its algorithm.
 #[cfg(rivium_scope_model)]
 #[path = "../../crates/rivium/src/scope.rs"]
@@ -72,12 +76,15 @@ mod tests {
     }
 
     struct Resource(Arc<AtomicBool>);
+
     impl Future for Resource {
         type Output = ();
+
         fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
             Poll::Ready(())
         }
     }
+
     impl Drop for Resource {
         fn drop(&mut self) {
             self.0.store(true, Ordering::Relaxed);
@@ -120,6 +127,7 @@ mod tests {
     fn unpolled_future_drop_releases_resources_before_count() {
         release_resources(false);
     }
+
     #[test]
     fn completed_future_releases_resources_before_count() {
         release_resources(true);

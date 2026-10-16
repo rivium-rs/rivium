@@ -200,6 +200,7 @@ fn guarded_publication_releases_gate_before_waking_or_dropping_old_values() {
         number: u64,
         on_drop: Option<Box<dyn Fn() + Send + Sync>>,
     }
+
     impl Drop for Value {
         fn drop(&mut self) {
             if let Some(on_drop) = &self.on_drop {
@@ -207,11 +208,13 @@ fn guarded_publication_releases_gate_before_waking_or_dropping_old_values() {
             }
         }
     }
+
     struct Observer {
         gate: Arc<Mutex<()>>,
         config: rivium_util::config::Handle<Value>,
         observed: AtomicBool,
     }
+
     impl Wake for Observer {
         fn wake(self: Arc<Self>) {
             assert!(
@@ -387,6 +390,7 @@ fn compound_types_and_enums_keep_environment_provenance() {
         Active,
         Passive,
     }
+
     #[derive(Default, Serialize, Deserialize)]
     struct Compound {
         maybe: Option<u16>,

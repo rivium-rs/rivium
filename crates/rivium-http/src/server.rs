@@ -34,6 +34,7 @@ use tracing::{Instrument, instrument::WithSubscriber};
 pub struct ServerLimits {
     pub connections: NonZeroUsize,
 }
+
 impl Default for ServerLimits {
     fn default() -> Self {
         Self {
@@ -41,10 +42,12 @@ impl Default for ServerLimits {
         }
     }
 }
+
 enum Binding {
     Address(SocketAddr),
     Listener(TcpListener),
 }
+
 /// A frontline HTTP/1 service with safe contracts and explicit connection ownership.
 pub struct HttpServer {
     name: String,
@@ -55,6 +58,7 @@ pub struct HttpServer {
     observers: Vec<Observer>,
     outer: Vec<Box<dyn FnOnce(Router) -> Router + Send>>,
 }
+
 impl HttpServer {
     /// Bind during supervised initialization.
     pub fn new(name: impl Into<String>, address: SocketAddr, router: Router) -> Self {
@@ -68,6 +72,7 @@ impl HttpServer {
             outer: Vec::new(),
         }
     }
+
     /// Take ownership of an already bound listener, without beginning acceptance.
     pub fn from_listener(
         name: impl Into<String>,
@@ -79,40 +84,48 @@ impl HttpServer {
         server.binding = Binding::Listener(listener);
         Ok(server)
     }
+
     /// Configure shared request admission and header/body budgets.
     pub fn settings(mut self, settings: ContractSettings) -> Self {
         self.settings = settings;
         self
     }
+
     /// Configure accepted-connection budget.
     pub fn limits(mut self, limits: ServerLimits) -> Self {
         self.limits = limits;
         self
     }
+
     /// Add a short synchronous access observer.
     pub fn observe(mut self, observer: Observer) -> Self {
         self.observers.push(observer);
         self
     }
+
     /// Apply application layers after the contract, on its outside.
     pub fn outer(mut self, layer: impl FnOnce(Router) -> Router + Send + 'static) -> Self {
         self.outer.push(Box::new(layer));
         self
     }
 }
+
 impl Service for HttpServer {
     fn name(&self) -> &str {
         &self.name
     }
+
     fn kind(&self) -> Kind {
         Kind::Frontline
     }
+
     fn run(self: Box<Self>, context: Context) -> BoxFuture<Result<()>> {
         Box::pin(async move {
             let listener = match self.binding {
                 Binding::Address(address) => TcpListener::bind(address).await?,
                 Binding::Listener(listener) => listener,
             };
+
             let live = context.readiness();
             let ready = live.clone();
             let router = self
@@ -143,6 +156,7 @@ impl Service for HttpServer {
                         }
                     }),
                 );
+
             let mut router = contract(router, &self.settings, self.observers);
             for layer in self.outer {
                 router = layer(router);
@@ -156,14 +170,17 @@ impl Service for HttpServer {
         })
     }
 }
+
 struct ConnectionLease {
     _capacity: OwnedSemaphorePermit,
     _scope: Reservation,
 }
+
 struct OwnedIo<I> {
     inner: I,
     lease: Arc<ConnectionLease>,
 }
+
 impl<I: AsyncRead + Unpin> AsyncRead for OwnedIo<I> {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -173,6 +190,7 @@ impl<I: AsyncRead + Unpin> AsyncRead for OwnedIo<I> {
         Pin::new(&mut self.get_mut().inner).poll_read(cx, buffer)
     }
 }
+
 impl<I: AsyncWrite + Unpin> AsyncWrite for OwnedIo<I> {
     fn poll_write(
         self: Pin<&mut Self>,
@@ -181,15 +199,19 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for OwnedIo<I> {
     ) -> Poll<io::Result<usize>> {
         Pin::new(&mut self.get_mut().inner).poll_write(cx, buffer)
     }
+
     fn poll_flush(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.get_mut().inner).poll_flush(cx)
     }
+
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
     }
+
     fn is_write_vectored(&self) -> bool {
         self.inner.is_write_vectored()
     }
+
     fn poll_write_vectored(
         self: Pin<&mut Self>,
         cx: &mut TaskContext<'_>,
@@ -198,15 +220,18 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for OwnedIo<I> {
         Pin::new(&mut self.get_mut().inner).poll_write_vectored(cx, buffers)
     }
 }
+
 struct Bounded<L> {
     inner: L,
     capacity: Arc<Semaphore>,
     scope: TaskScope,
     stop: Stop,
 }
+
 impl<L: Listener> Listener for Bounded<L> {
     type Io = OwnedIo<L::Io>;
     type Addr = L::Addr;
+
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
             let permit = tokio::select! {
@@ -215,11 +240,13 @@ impl<L: Listener> Listener for Bounded<L> {
                 permit = self.capacity.clone().acquire_owned() =>
                     permit.expect("connection capacity is never closed")
             };
+
             let (io, address) = tokio::select! {
                 biased;
                 _ = self.stop.stopped() => std::future::pending().await,
                 accepted = self.inner.accept() => accepted
             };
+
             if let Some(mut reservations) = self.scope.reserve(1) {
                 let lease = Arc::new(ConnectionLease {
                     _capacity: permit,
@@ -227,15 +254,18 @@ impl<L: Listener> Listener for Bounded<L> {
                 });
                 return (OwnedIo { inner: io, lease }, address);
             }
+
             // Closure races must release the accepted IO before its capacity permit.
             drop(io);
             drop(permit);
         }
     }
+
     fn local_addr(&self) -> io::Result<Self::Addr> {
         self.inner.local_addr()
     }
 }
+
 #[derive(Clone)]
 struct ConnectionService<A> {
     router: Router,
@@ -244,13 +274,16 @@ struct ConnectionService<A> {
     dispatch: tracing::Dispatch,
     span: tracing::Span,
 }
+
 impl<A: Clone + Send + Sync + 'static> TowerService<Request> for ConnectionService<A> {
     type Response = Response;
     type Error = Infallible;
     type Future = BoxFuture<std::result::Result<Response, Infallible>>;
+
     fn poll_ready(&mut self, _: &mut TaskContext<'_>) -> Poll<std::result::Result<(), Infallible>> {
         Poll::Ready(Ok(()))
     }
+
     fn call(&mut self, mut request: Request) -> Self::Future {
         request
             .extensions_mut()
@@ -274,6 +307,7 @@ impl<A: Clone + Send + Sync + 'static> TowerService<Request> for ConnectionServi
         )
     }
 }
+
 /// Serve a cancellation-safe Axum listener, including a TLS adapter, with owned connections.
 /// The router is used as supplied; call `contract` for request budgets and envelopes.
 /// `limits` is explicit. The listener must not hide unbounded prefetch/handshake workers.
@@ -299,6 +333,7 @@ where
             }
         }
     }
+
     let scope = context.task_scope();
     let listener = Bounded {
         inner: listener,
@@ -320,6 +355,7 @@ where
             span: span.clone(),
         }))
     });
+
     axum::serve(listener, make)
         .with_graceful_shutdown(async move { stop.stopped().await })
         .await?;

@@ -1,4 +1,5 @@
 //! Bounded persistent-task reconciliation. A desired key owns one incarnation at a time.
+
 use rivium::{Error, Result, error::kinds, scope::TaskScope};
 use std::{
     collections::BTreeMap,
@@ -26,6 +27,7 @@ pub struct Policy {
     pub max_backoff: Duration,
     pub stop_timeout: Duration,
 }
+
 impl Default for Policy {
     fn default() -> Self {
         Self {
@@ -37,12 +39,14 @@ impl Default for Policy {
         }
     }
 }
+
 impl Policy {
     pub fn delay(&self, failures: u32) -> Duration {
         self.backoff
             .saturating_mul(1u32.checked_shl(failures).unwrap_or(u32::MAX))
             .min(self.max_backoff)
     }
+
     fn validate(&self) -> Result<()> {
         let now = Instant::now();
         if self.capacity == 0
@@ -68,12 +72,14 @@ pub struct View<S> {
     pub failures: u32,
     pub retry_at: Instant,
 }
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Plan<K> {
     pub stop: Vec<K>,
     pub start: Vec<K>,
     pub limited: Vec<K>,
 }
+
 struct Observation<'a, S> {
     spec: &'a S,
     alive: bool,
@@ -81,6 +87,7 @@ struct Observation<'a, S> {
     failures: u32,
     retry_at: Instant,
 }
+
 fn decide<'a, K: Ord + Clone + 'a, S: Eq + 'a>(
     desired: &BTreeMap<K, S>,
     keys: impl Iterator<Item = &'a K>,
@@ -128,6 +135,7 @@ fn decide<'a, K: Ord + Clone + 'a, S: Eq + 'a>(
     }
     result
 }
+
 /// Pure planning; the caller supplies an explicit monotonic observation time.
 pub fn plan<K: Ord + Clone, S: Eq>(
     desired: &BTreeMap<K, S>,
@@ -157,16 +165,20 @@ pub struct Context {
     pub cancel: CancellationToken,
     progress: Arc<Progress>,
 }
+
 struct Progress {
     alive: AtomicBool,
     observed: AtomicBool,
 }
+
 struct RunningProgress(Arc<Progress>);
+
 impl Drop for RunningProgress {
     fn drop(&mut self) {
         self.0.alive.store(false, Ordering::Release);
     }
 }
+
 impl Context {
     pub fn mark_progress(&self) {
         if self.progress.alive.load(Ordering::Acquire) {
@@ -174,6 +186,7 @@ impl Context {
         }
     }
 }
+
 #[derive(Clone, Debug)]
 pub enum Exit {
     Completed,
@@ -181,11 +194,13 @@ pub enum Exit {
     Panicked(Arc<JoinError>),
     Cancelled,
 }
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Lifecycle {
     Open,
     Closed,
 }
+
 #[derive(Clone, Debug)]
 pub struct Report<K> {
     pub lifecycle: Lifecycle,
@@ -197,6 +212,7 @@ pub struct Report<K> {
     pub unconfirmed: Vec<K>,
     pub exits: Vec<(K, Exit)>,
 }
+
 impl<K> Default for Report<K> {
     fn default() -> Self {
         Self {
@@ -211,11 +227,13 @@ impl<K> Default for Report<K> {
         }
     }
 }
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DesiredError {
     DuplicateKey,
     TooMany { requested: usize, capacity: usize },
 }
+
 impl fmt::Display for DesiredError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -227,12 +245,15 @@ impl fmt::Display for DesiredError {
         }
     }
 }
+
 impl std::error::Error for DesiredError {}
+
 #[derive(Debug)]
 pub enum ReconcileError {
     InvalidDesired(DesiredError),
     Failed(Error),
 }
+
 impl fmt::Display for ReconcileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -241,6 +262,7 @@ impl fmt::Display for ReconcileError {
         }
     }
 }
+
 impl std::error::Error for ReconcileError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(match self {
@@ -249,6 +271,7 @@ impl std::error::Error for ReconcileError {
         })
     }
 }
+
 impl From<ReconcileError> for Error {
     fn from(value: ReconcileError) -> Self {
         match value {
@@ -267,6 +290,7 @@ struct Entry<S> {
     progress: Arc<Progress>,
     exhaustion_reported: bool,
 }
+
 /// Owns handles and all tracked keys, including backoff and exhausted records.
 pub struct Manager<K: Ord, S> {
     entries: BTreeMap<K, Entry<S>>,
@@ -276,12 +300,14 @@ pub struct Manager<K: Ord, S> {
     owns_scope: bool,
     closed: bool,
 }
+
 impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
     pub fn new(policy: Policy) -> Result<Self> {
         let mut manager = Self::with_scope(policy, TaskScope::new())?;
         manager.owns_scope = true;
         Ok(manager)
     }
+
     pub fn with_scope(policy: Policy, scope: TaskScope) -> Result<Self> {
         policy.validate()?;
         Ok(Self {
@@ -293,9 +319,11 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             closed: false,
         })
     }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -348,10 +376,12 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 return Err(ReconcileError::InvalidDesired(DesiredError::DuplicateKey));
             }
         }
+
         let mut report = Report::default();
         self.reap_finished().await;
         let now = Instant::now();
         let transition = self.plan_current(&wanted, now);
+
         // Reserve candidates before any stop, then plan against confirmed releases.
         // Healthy unchanged keys need no new reservation.
         let candidates: Vec<_> = wanted
@@ -372,6 +402,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             return Ok(report);
         };
         let mut reservations: BTreeMap<_, _> = candidates.into_iter().zip(reservations).collect();
+
         self.stop_keys(&transition.stop, &mut report).await;
         // No suspension follows: until here, cancellation must retain every exit.
         report.exits = std::mem::take(&mut self.pending_exits);
@@ -382,6 +413,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 report.removed.push(key.clone());
             }
         }
+
         let remaining = self.plan_current(&wanted, Instant::now());
         report.limited = remaining.limited;
         for key in remaining.start {
@@ -452,6 +484,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 report.started.push(key);
             }
         }
+
         for (key, entry) in &mut self.entries {
             if entry.task.is_none()
                 && entry.state.failures >= self.policy.max_failures
@@ -486,6 +519,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             Self::record_exit(&self.policy, entry, &key, result, &mut self.pending_exits);
         }
     }
+
     fn record_exit(
         policy: &Policy,
         entry: &mut Entry<S>,
@@ -512,6 +546,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
         entry.state.alive = false;
         exits.push((key.clone(), exit));
     }
+
     async fn stop_keys(&mut self, keys: &[K], report: &mut Report<K>) {
         for key in keys {
             if let Some(entry) = self.entries.get_mut(key) {
@@ -534,6 +569,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 .cloned(),
         );
     }
+
     async fn wait_batch(&mut self, keys: &[K], deadline: Instant) {
         for key in keys {
             let Some(entry) = self.entries.get_mut(key) else {
@@ -548,6 +584,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             }
         }
     }
+
     /// Closing this manager never closes a borrowed service scope shared with siblings.
     pub async fn shutdown(&mut self) -> Result<()> {
         self.closed = true;
@@ -566,6 +603,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
         }
     }
 }
+
 impl<K: Ord, S> Drop for Manager<K, S> {
     fn drop(&mut self) {
         if self.owns_scope {
@@ -579,6 +617,7 @@ impl<K: Ord, S> Drop for Manager<K, S> {
         }
     }
 }
+
 fn unconfirmed<K: Debug>(keys: &[K]) -> Error {
     Error::new(
         kinds::TIMEOUT,
@@ -590,6 +629,7 @@ fn unconfirmed<K: Debug>(keys: &[K]) -> Error {
 pub struct DriveOptions {
     pub list_timeout: Duration,
 }
+
 impl Default for DriveOptions {
     fn default() -> Self {
         Self {
@@ -597,6 +637,7 @@ impl Default for DriveOptions {
         }
     }
 }
+
 #[derive(Debug)]
 pub enum DriveRound<K> {
     Reconciled(Report<K>),
@@ -604,11 +645,14 @@ pub enum DriveRound<K> {
     SourceTimedOut { timeout: Duration },
     DesiredRejected(DesiredError),
 }
+
 pub trait DesiredSource {
     type Key: Ord + Clone + Debug;
     type Spec: Eq + Clone;
+
     fn list_desired(&mut self)
     -> impl Future<Output = Result<Vec<(Self::Key, Self::Spec)>>> + Send;
+
     fn tick_interval(&mut self) -> Duration;
 }
 

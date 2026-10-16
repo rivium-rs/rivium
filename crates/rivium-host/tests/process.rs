@@ -1,4 +1,5 @@
 #![cfg(feature = "process")]
+
 use rivium::{Kind, Result, Service};
 use rivium_host::{App, Context};
 use rivium_test::TempDir;
@@ -7,16 +8,20 @@ use std::{
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
+
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
     mode: String,
 }
+
 struct Fixture;
+
 impl App for Fixture {
     const NAME: &'static str = "process-fixture";
     const VERSION: &'static str = "test";
     type Config = Config;
+
     fn services(config: &Config, context: &Context<Config>) -> Result<Vec<Box<dyn Service>>> {
         if config.mode == "restart-backoff" {
             use std::io::Write;
@@ -33,6 +38,7 @@ impl App for Fixture {
         if config.mode == "build-panic" {
             panic!("private constructor failure");
         }
+
         let mode = config.mode.clone();
         Ok(vec![rivium::service(
             "worker",
@@ -83,9 +89,11 @@ fn process_child() {
     if mode == "restart-backoff" {
         args.extend(["--set".into(), "lifecycle.restart=in-process".into()]);
     }
+
     let code = rivium_host::process::run_args::<Fixture>(args);
     std::process::exit(i32::from(code.exit()));
 }
+
 fn command(root: &TempDir, mode: &str) -> Command {
     let mut command = rivium_test::command(std::env::current_exe().unwrap());
     command
@@ -95,6 +103,7 @@ fn command(root: &TempDir, mode: &str) -> Command {
         .env_remove("RUST_LOG");
     command
 }
+
 #[test]
 fn process_preserves_exit_codes_and_emits_parseable_defaults() {
     let root = TempDir::new().unwrap();
@@ -113,6 +122,7 @@ fn process_preserves_exit_codes_and_emits_parseable_defaults() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+
     let fresh = TempDir::new().unwrap();
     let output = command(&fresh, "default-config").output().unwrap();
     assert!(output.status.success());
@@ -122,6 +132,7 @@ fn process_preserves_exit_codes_and_emits_parseable_defaults() {
     assert!(document.get("lifecycle").is_some());
     assert_eq!(std::fs::read_dir(fresh.path()).unwrap().count(), 0);
 }
+
 #[cfg(unix)]
 #[test]
 #[cfg_attr(qemu, ignore = "native Unix signal delivery is verified separately")]
@@ -143,6 +154,7 @@ fn process_handles_first_second_signals_and_shared_deadline() {
             send_signal(&child, signal);
             std::thread::sleep(Duration::from_millis(20));
         }
+
         let status = wait_for(&mut child, Duration::from_secs(4), |child| {
             child.try_wait().unwrap()
         });
@@ -185,6 +197,7 @@ fn send_signal(child: &std::process::Child, signal: &str) {
             .success()
     );
 }
+
 #[cfg(unix)]
 fn wait_for<T>(
     child: &mut std::process::Child,
@@ -204,6 +217,7 @@ fn wait_for<T>(
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
 #[cfg(unix)]
 fn wait_log(child: &mut std::process::Child, root: &TempDir, condition: impl Fn(&str) -> bool) {
     wait_for(child, Duration::from_secs(5), |child| {

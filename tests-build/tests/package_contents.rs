@@ -25,6 +25,7 @@ fn packages_contain_only_their_declared_public_files() {
             .lines()
             .map(|path| path.replace('\\', "/"))
             .collect();
+
         for required in [
             "Cargo.toml",
             "src/lib.rs",
@@ -37,6 +38,7 @@ fn packages_contain_only_their_declared_public_files() {
                 "{name}: missing {required}"
             );
         }
+
         for path in &files {
             let public = matches!(
                 path.as_str(),

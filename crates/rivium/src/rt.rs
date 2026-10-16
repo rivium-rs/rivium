@@ -1,4 +1,5 @@
 //! Bounded service supervision with separate outcome and drain reports.
+
 use crate::{
     Error, Result,
     error::kinds,
@@ -30,10 +31,13 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// Maximum accepted service roots and children per supervisor.
 pub const TASK_CAPACITY: usize = 4096;
+
 /// Maximum queued task registrations.
 pub const COMMAND_CAPACITY: usize = 4096;
+
 /// Whole-batch confirmation after forced abort.
 pub const ABORT_CONFIRMATION: Duration = Duration::from_millis(100);
+
 /// Boxed asynchronous service result.
 pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>;
 
@@ -45,6 +49,7 @@ pub enum Kind {
     /// Stay available until frontline execution resources have drained.
     Background,
 }
+
 /// Public lifecycle phase; stopped does not imply resource release.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Phase {
@@ -57,6 +62,7 @@ pub enum Phase {
     /// Supervision has returned.
     Stopped,
 }
+
 /// A fixed health check's current state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Health {
@@ -67,6 +73,7 @@ pub enum Health {
     /// Private diagnostic explanation for an unhealthy dependency.
     Unhealthy(String),
 }
+
 /// Request that initiated shutdown.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StopReason {
@@ -77,6 +84,7 @@ pub enum StopReason {
     /// Stop using at most this remaining service grace.
     Deadline(Duration),
 }
+
 /// Why the supervised run ended, independent of resource release.
 #[derive(Clone, Debug)]
 pub enum Outcome {
@@ -98,6 +106,7 @@ pub enum Outcome {
         blocking: Vec<String>,
     },
 }
+
 /// Return-time lifecycle evidence.
 #[derive(Clone, Debug)]
 pub struct RunReport {
@@ -106,6 +115,7 @@ pub struct RunReport {
     /// Whether all registered execution bodies have released captures.
     pub drain: Drain,
 }
+
 /// Synchronous child-admission failure. Conversion to business errors is explicit.
 ///
 /// ```compile_fail
@@ -125,27 +135,33 @@ pub enum SubmitError {
     /// This service already owns an unfinished child with this name.
     DuplicateName,
 }
+
 impl std::fmt::Display for SubmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
 }
+
 impl std::error::Error for SubmitError {}
 
 /// A service root owned by a supervisor.
 pub trait Service: Send + 'static {
     /// Nonempty, run-unique root name.
     fn name(&self) -> &str;
+
     /// Dependency shutdown tier.
     fn kind(&self) -> Kind;
+
     /// Construct and run the service inside the supervisor's panic boundary.
     fn run(self: Box<Self>, context: Context) -> ServiceFuture;
 }
+
 struct ClosureService<F> {
     name: String,
     kind: Kind,
     factory: F,
 }
+
 impl<F, Fut> Service for ClosureService<F>
 where
     F: FnOnce(Context) -> Fut + Send + 'static,
@@ -154,13 +170,16 @@ where
     fn name(&self) -> &str {
         &self.name
     }
+
     fn kind(&self) -> Kind {
         self.kind
     }
+
     fn run(self: Box<Self>, context: Context) -> ServiceFuture {
         Box::pin((self.factory)(context))
     }
 }
+
 /// Turn a one-shot service factory into a supervised root.
 pub fn service<F, Fut>(name: impl Into<String>, kind: Kind, factory: F) -> Box<dyn Service>
 where
@@ -182,6 +201,7 @@ struct Status {
     restart: Option<String>,
     deadline: Option<Instant>,
 }
+
 struct Shared {
     status: Mutex<Status>,
     changed: watch::Sender<u64>,
@@ -190,14 +210,17 @@ struct Shared {
     scopes: Mutex<Vec<TaskScope>>,
     grace: Duration,
 }
+
 impl Shared {
     fn signal(&self) {
         self.changed.send_modify(|v| *v = v.wrapping_add(1));
         self.wake.notify_waiters();
     }
+
     fn phase(&self) -> Phase {
         lock(&self.status).phase
     }
+
     fn set_phase(&self, phase: Phase) {
         let changed = {
             let mut state = lock(&self.status);
@@ -210,6 +233,7 @@ impl Shared {
             self.signal();
         }
     }
+
     fn close_scopes(&self, cancel: bool) {
         let scopes = lock(&self.scopes).clone();
         for scope in scopes {
@@ -220,6 +244,7 @@ impl Shared {
             }
         }
     }
+
     fn active(&self) -> usize {
         self.roots.active_tasks()
             + lock(&self.scopes)
@@ -227,6 +252,7 @@ impl Shared {
                 .map(TaskScope::active_tasks)
                 .sum::<usize>()
     }
+
     fn drain_state(&self) -> Drain {
         // Observe permanent closure before counts: otherwise an intervening final admission
         // could make a previously observed zero look drained after the scope closes.
@@ -241,17 +267,20 @@ impl Shared {
         }
     }
 }
+
 /// Cloneable observation handle bound to one run.
 #[derive(Clone)]
 pub struct Readiness {
     shared: Arc<Shared>,
     changes: watch::Receiver<u64>,
 }
+
 impl Readiness {
     /// Current public phase.
     pub fn phase(&self) -> Phase {
         self.shared.phase()
     }
+
     /// Ready only while running, healthy, and without a queued stop/restart.
     pub fn is_ready(&self) -> bool {
         let state = lock(&self.shared.status);
@@ -260,6 +289,7 @@ impl Readiness {
             && state.restart.is_none()
             && state.health.values().all(|v| matches!(v, Health::Healthy))
     }
+
     /// Wait for a phase or health change. None means supervision is finished.
     pub async fn changed(&mut self) -> Option<Phase> {
         if self.phase() == Phase::Stopped {
@@ -267,16 +297,19 @@ impl Readiness {
         }
         self.changes.changed().await.ok().map(|()| self.phase())
     }
+
     /// Register fixed health names during startup.
     pub fn health(&self) -> HealthRegistry {
         HealthRegistry {
             shared: self.shared.clone(),
         }
     }
+
     /// Accepted roots, children, and independently reserved scope executions.
     pub fn active_tasks(&self) -> usize {
         self.shared.active()
     }
+
     /// Await actual execution-resource release without sending stop.
     pub async fn drain(&self, within: Duration) -> Drain {
         let wait = async {
@@ -296,11 +329,13 @@ impl Readiness {
         self.shared.drain_state()
     }
 }
+
 /// Run-owned health registry bounded to 4096 fixed names.
 #[derive(Clone)]
 pub struct HealthRegistry {
     shared: Arc<Shared>,
 }
+
 impl HealthRegistry {
     /// Add a unique 1..=128 byte name while the run is starting.
     pub fn register(&self, name: impl Into<String>) -> Result<HealthHandle> {
@@ -330,17 +365,20 @@ impl HealthRegistry {
             name,
         })
     }
+
     /// Snapshot the fixed checks in deterministic name order.
     pub fn snapshot(&self) -> BTreeMap<String, Health> {
         lock(&self.shared.status).health.clone()
     }
 }
+
 /// Update handle for one registered health check.
 #[derive(Clone)]
 pub struct HealthHandle {
     shared: Arc<Shared>,
     name: String,
 }
+
 impl HealthHandle {
     /// Replace the check's state and wake readiness observers.
     pub fn set(&self, health: Health) {
@@ -349,16 +387,19 @@ impl HealthHandle {
             .insert(self.name.clone(), health);
         self.shared.signal();
     }
+
     /// Read the check's last state.
     pub fn get(&self) -> Health {
         lock(&self.shared.status).health[&self.name].clone()
     }
 }
+
 /// Bounded stop/restart mailbox for one run.
 #[derive(Clone)]
 pub struct Control {
     shared: Arc<Shared>,
 }
+
 impl Control {
     /// First request starts shutdown; a second forces abort. Later requests coalesce.
     pub fn stop(&self, reason: StopReason) {
@@ -372,6 +413,7 @@ impl Control {
             } else if state.second_stop.is_none() {
                 state.second_stop = Some(reason);
             }
+
             let within = match reason {
                 StopReason::Deadline(within) => within.min(self.shared.grace),
                 _ => self.shared.grace,
@@ -386,6 +428,7 @@ impl Control {
         }
         self.shared.signal();
     }
+
     /// Request one generation replacement, unless stop takes precedence.
     pub fn restart(&self, reason: impl Into<String>) {
         let mut reason = reason.into();
@@ -412,25 +455,30 @@ impl Control {
         self.shared.signal();
     }
 }
+
 /// Service-local cooperative stop and global shutdown deadline.
 #[derive(Clone)]
 pub struct Stop {
     token: CancellationToken,
     shared: Arc<Shared>,
 }
+
 impl Stop {
     /// Await cancellation of this service's shutdown tier.
     pub async fn stopped(&self) {
         self.token.cancelled().await;
     }
+
     /// Whether this service has been asked to stop.
     pub fn is_stopping(&self) -> bool {
         self.token.is_cancelled()
     }
+
     /// The one shared shutdown deadline, absent before a stop request/failure.
     pub fn deadline(&self) -> Option<Instant> {
         lock(&self.shared.status).deadline
     }
+
     /// Clone the cooperative cancellation token.
     pub fn cancellation_token(&self) -> CancellationToken {
         self.token.clone()
@@ -442,13 +490,16 @@ struct Admissions {
     active: usize,
     children: BTreeSet<(usize, String)>,
 }
+
 struct Admission {
     state: Mutex<Admissions>,
 }
+
 struct Permit {
     owner: Arc<Admission>,
     key: Option<(usize, String)>,
 }
+
 impl Drop for Permit {
     fn drop(&mut self) {
         let mut state = lock(&self.owner.state);
@@ -458,10 +509,12 @@ impl Drop for Permit {
         }
     }
 }
+
 enum Body {
     Async(ServiceFuture),
     Blocking(Box<dyn FnOnce() -> Result<()> + Send>),
 }
+
 struct Command {
     body: Body,
     permit: Permit,
@@ -482,26 +535,31 @@ pub struct Context {
     admission: Arc<Admission>,
     commands: mpsc::Sender<Command>,
 }
+
 impl Context {
     /// Root name.
     pub fn name(&self) -> &str {
         &self.name
     }
+
     /// Root shutdown tier.
     pub fn kind(&self) -> Kind {
         self.kind
     }
+
     /// Declare successful initialization; repeated declarations are harmless.
     pub fn ready(&self) {
         self.ready.store(true, Ordering::Release);
         self.shared.signal();
     }
+
     /// Run control mailbox.
     pub fn control(&self) -> Control {
         Control {
             shared: self.shared.clone(),
         }
     }
+
     /// Run readiness observer.
     pub fn readiness(&self) -> Readiness {
         Readiness {
@@ -509,6 +567,7 @@ impl Context {
             changes: self.shared.changed.subscribe(),
         }
     }
+
     /// Cancellation handle for this service tier.
     pub fn stop(&self) -> Stop {
         Stop {
@@ -516,22 +575,27 @@ impl Context {
             shared: self.shared.clone(),
         }
     }
+
     /// Wait until this service tier is stopping.
     pub async fn stopped(&self) {
         self.scope.cancellation_token().cancelled().await;
     }
+
     /// Whether this service tier is stopping.
     pub fn is_stopping(&self) -> bool {
         self.scope.cancellation_token().is_cancelled()
     }
+
     /// The shared absolute shutdown deadline.
     pub fn deadline(&self) -> Option<Instant> {
         self.stop().deadline()
     }
+
     /// Scope for independently owned work; it excludes this service root.
     pub fn task_scope(&self) -> TaskScope {
         self.scope.clone()
     }
+
     /// Accept an asynchronous child, or synchronously release it on rejection.
     pub fn spawn(
         &self,
@@ -540,6 +604,7 @@ impl Context {
     ) -> std::result::Result<(), SubmitError> {
         self.submit(name.into(), Body::Async(Box::pin(future)))
     }
+
     /// Accept a blocking child. A started closure cannot be forcibly killed.
     pub fn spawn_blocking(
         &self,
@@ -548,6 +613,7 @@ impl Context {
     ) -> std::result::Result<(), SubmitError> {
         self.submit(name.into(), Body::Blocking(Box::new(work)))
     }
+
     fn submit(&self, name: String, body: Body) -> std::result::Result<(), SubmitError> {
         if name.is_empty() {
             return Err(SubmitError::InvalidName);
@@ -555,6 +621,7 @@ impl Context {
         if self.scope.is_closed() {
             return Err(SubmitError::Closed);
         }
+
         let queue = self.commands.try_reserve().map_err(|error| match error {
             mpsc::error::TrySendError::Full(_) => SubmitError::Overloaded,
             mpsc::error::TrySendError::Closed(_) => SubmitError::Closed,
@@ -567,6 +634,7 @@ impl Context {
             if state.active >= TASK_CAPACITY {
                 return Err(SubmitError::Overloaded);
             }
+
             let reservation = self
                 .scope
                 .reserve(1)
@@ -592,11 +660,13 @@ impl Context {
         Ok(())
     }
 }
+
 struct PreparedService {
     service: Box<dyn Service>,
     name: String,
     kind: Kind,
 }
+
 struct Running {
     name: String,
     kind: Kind,
@@ -604,6 +674,7 @@ struct Running {
     scope: TaskScope,
     root_live: bool,
 }
+
 struct TaskInfo {
     service: usize,
     name: String,
@@ -623,11 +694,13 @@ pub struct Supervisor {
     names: HashMap<Id, TaskInfo>,
     running: Vec<Running>,
 }
+
 impl Default for Supervisor {
     fn default() -> Self {
         Self::new(Duration::from_secs(30), Duration::from_secs(3))
     }
 }
+
 impl Supervisor {
     /// Construct a run with positive startup and service grace budgets.
     pub fn new(startup: Duration, grace: Duration) -> Self {
@@ -663,11 +736,13 @@ impl Supervisor {
             running: Vec::new(),
         }
     }
+
     /// Add a root; the complete set is validated before any factory is called.
     pub fn with(mut self, service: Box<dyn Service>) -> Self {
         self.services.push(service);
         self
     }
+
     /// Observe this run before starting it.
     pub fn readiness(&self) -> Readiness {
         Readiness {
@@ -675,12 +750,14 @@ impl Supervisor {
             changes: self.shared.changed.subscribe(),
         }
     }
+
     /// Control this run before or during execution.
     pub fn control(&self) -> Control {
         Control {
             shared: self.shared.clone(),
         }
     }
+
     fn prepare(&mut self) -> Result<Vec<PreparedService>> {
         let now = Instant::now();
         if self.startup.is_zero()
@@ -695,6 +772,7 @@ impl Supervisor {
         if self.services.is_empty() || self.services.len() > TASK_CAPACITY {
             return Err(Error::invalid("supervisor requires 1..=4096 services"));
         }
+
         let mut names = BTreeSet::new();
         let mut prepared = Vec::with_capacity(self.services.len());
         for service in std::mem::take(&mut self.services) {
@@ -713,6 +791,7 @@ impl Supervisor {
         }
         Ok(prepared)
     }
+
     fn launch(&mut self, services: Vec<PreparedService>) {
         lock(&self.admission.state).active = services.len();
         for (
@@ -771,6 +850,7 @@ impl Supervisor {
             });
         }
     }
+
     fn accept(&mut self, command: Command) {
         if self.running[command.service]
             .scope
@@ -779,6 +859,7 @@ impl Supervisor {
         {
             return;
         }
+
         let Command {
             body,
             permit,
@@ -826,6 +907,7 @@ impl Supervisor {
             },
         );
     }
+
     fn begin_stop(&self, kind: Option<Kind>) {
         {
             let mut state = lock(&self.shared.status);
@@ -843,12 +925,14 @@ impl Supervisor {
         }
         self.shared.signal();
     }
+
     fn front_drained(&self) -> bool {
         self.running
             .iter()
             .filter(|r| r.kind == Kind::Frontline)
             .all(|r| !r.root_live && r.scope.active_tasks() == 0)
     }
+
     fn timeout_outcome(&self) -> Outcome {
         let mut tasks: BTreeSet<_> = self.names.values().map(|task| task.name.clone()).collect();
         let blocking: BTreeSet<_> = self
@@ -872,6 +956,7 @@ impl Supervisor {
             blocking: blocking.into_iter().collect(),
         }
     }
+
     fn finish(&mut self, outcome: Outcome) -> RunReport {
         self.receiver.close();
         while self.receiver.try_recv().is_ok() {}
@@ -890,6 +975,7 @@ impl Supervisor {
         );
         report
     }
+
     /// Drive one generation through startup, execution, and bounded shutdown.
     pub async fn run(mut self) -> RunReport {
         let services = match self.prepare() {
@@ -917,6 +1003,7 @@ impl Supervisor {
             {
                 self.shared.set_phase(Phase::Running);
             }
+
             let (first, second, restart, deadline) = {
                 let state = lock(&self.shared.status);
                 (
@@ -983,6 +1070,7 @@ impl Supervisor {
                 abort_deadline = Some(Instant::now() + ABORT_CONFIRMATION);
                 continue;
             }
+
             let timer = abort_deadline.or_else(|| {
                 if outcome.is_some() {
                     lock(&self.shared.status).deadline
@@ -1080,6 +1168,7 @@ impl Supervisor {
         }
     }
 }
+
 impl Drop for Supervisor {
     fn drop(&mut self) {
         self.shared.roots.close();
@@ -1094,6 +1183,7 @@ impl Drop for Supervisor {
         }
     }
 }
+
 /// Construct a background service that ticks immediately, then skips missed intervals.
 /// A running tick must cooperate with cancellation itself; stop is checked between ticks.
 pub fn periodic<F, Fut>(name: impl Into<String>, every: Duration, mut tick: F) -> Box<dyn Service>
@@ -1107,6 +1197,7 @@ where
                 "periodic interval must be positive and representable",
             ));
         }
+
         let mut timer = tokio::time::interval(every);
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         context.ready();

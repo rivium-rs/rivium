@@ -1,4 +1,5 @@
 //! Public-API log throughput baseline; setup, shutdown and directory deletion are untimed.
+
 use flate2::{Compression, write::GzEncoder};
 use rivium_test::TempDir;
 use rivium_util::log::{Logger, Settings};
@@ -25,6 +26,7 @@ fn batch(archives: usize, rotate: bool, events: usize) -> f64 {
         )
         .unwrap();
     }
+
     let mut settings = Settings::for_app("bench");
     settings.console.filter = "off".into();
     settings.file.max_file_size = if rotate { 1024 } else { 1024 * 1024 };
@@ -34,6 +36,7 @@ fn batch(archives: usize, rotate: bool, events: usize) -> f64 {
     let logger = Logger::new("bench", temp.path(), settings, false, vec![]).unwrap();
     let dispatch = logger.dispatch();
     let payload = "lifecycle workload with a representative log message ".repeat(5);
+
     let start = Instant::now();
     tracing::dispatcher::with_default(&dispatch, || {
         for seq in 0..events {
@@ -43,6 +46,7 @@ fn batch(archives: usize, rotate: bool, events: usize) -> f64 {
     // Include the barrier: enqueue speed alone does not measure the writer's work.
     logger.flush(Duration::from_secs(30)).unwrap();
     let elapsed = start.elapsed();
+
     assert_eq!(logger.dropped(), 0);
     assert!(
         fs::read_dir(&dir)
@@ -51,6 +55,7 @@ fn batch(archives: usize, rotate: bool, events: usize) -> f64 {
             .sum::<u64>()
             <= budget
     );
+
     logger.close(Duration::from_secs(30)).unwrap();
     elapsed.as_nanos() as f64 / events as f64
 }

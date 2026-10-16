@@ -1,5 +1,6 @@
 // Each integration target compiles this shared fixture independently.
 #![allow(dead_code)]
+
 use rivium_test::TempDir;
 use rivium_util::log::{Category, Logger, Settings};
 #[cfg(feature = "log-export")]

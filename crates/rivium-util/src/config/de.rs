@@ -113,6 +113,7 @@ struct Fields<'a> {
 
 impl<'de> MapAccess<'de> for Fields<'_> {
     type Error = toml::de::Error;
+
     fn next_key_seed<K: DeserializeSeed<'de>>(
         &mut self,
         seed: K,
@@ -124,6 +125,7 @@ impl<'de> MapAccess<'de> for Fields<'_> {
         seed.deserialize(de::value::StringDeserializer::<Self::Error>::new(key))
             .map(Some)
     }
+
     fn next_value_seed<V: DeserializeSeed<'de>>(
         &mut self,
         seed: V,
@@ -137,6 +139,7 @@ impl<'de> MapAccess<'de> for Fields<'_> {
             text: self.text,
         })
     }
+
     fn size_hint(&self) -> Option<usize> {
         Some(self.values.len())
     }
@@ -150,6 +153,7 @@ struct Items<'a> {
 
 impl<'de> SeqAccess<'de> for Items<'_> {
     type Error = toml::de::Error;
+
     fn next_element_seed<T: DeserializeSeed<'de>>(
         &mut self,
         seed: T,
@@ -165,6 +169,7 @@ impl<'de> SeqAccess<'de> for Items<'_> {
             None => Ok(None),
         }
     }
+
     fn size_hint(&self) -> Option<usize> {
         Some(self.values.len())
     }

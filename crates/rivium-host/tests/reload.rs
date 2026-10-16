@@ -110,20 +110,24 @@ fn validate(config: &Config) -> Result<()> {
 macro_rules! reload_app {
     ($name:ident {$($hook:item)*}) => {
         struct $name;
+
         impl App for $name {
             const NAME: &'static str = "reload-tests";
             const VERSION: &'static str = "1";
             type Config = Config;
+
             fn services(
                 config: &Config,
                 context: &Context<Config>
             ) -> Result<Vec<Box<dyn Service>>> {
                 services(config, context)
             }
+
             $($hook)*
         }
     };
 }
+
 reload_app! {
     Hot {
         fn validate(config: &Config) -> Result<()> {
@@ -286,6 +290,7 @@ async fn hot_fields_reach_the_same_service_and_cold_fields_keep_running_values()
             "missing cold field {field}: {report:?}"
         );
     }
+
     let snapshot = config.snapshot();
     assert_eq!(snapshot.generation, 1);
     assert_eq!(snapshot.value.interval, 3);
@@ -491,6 +496,7 @@ async fn full_reload_queue_rejects_excess_requests_and_recovers_when_drained() {
         poll_pending(request.as_mut()).await;
         queued.push(request);
     }
+
     let error = tokio::time::timeout(WAIT, fixture.host.reload())
         .await
         .expect("full queue must reject without waiting for preparation")
@@ -674,6 +680,7 @@ async fn drain_is_bound_to_the_generation_captured_before_restart() {
 #[tokio::test]
 async fn reload_worker_panic_is_retained_as_a_cleanup_failure() {
     struct PanicOnWarning;
+
     impl tracing_subscriber::Layer<tracing_subscriber::Registry> for PanicOnWarning {
         fn on_event(
             &self,
@@ -685,6 +692,7 @@ async fn reload_worker_panic_is_retained_as_a_cleanup_failure() {
             }
         }
     }
+
     reload_app! {
         AppWithLayer {
             fn log_layers() -> Vec<rivium_host::log::ExtraLayer> {
@@ -692,6 +700,7 @@ async fn reload_worker_panic_is_retained_as_a_cleanup_failure() {
             }
         }
     }
+
     let fixture = Fixture::start::<AppWithLayer>(&[]);
     std::fs::write(fixture.path(), "invalid = [").unwrap();
     assert!(fixture.host.reload().await.is_err());
@@ -721,6 +730,7 @@ async fn drain_captures_restart_initialization_before_resources_exist() {
             }
         }
     }
+
     for stop in [false, true] {
         let fixture = Fixture::start::<BlockInitialization>(&[]);
         let old = fixture.context();
@@ -752,17 +762,21 @@ async fn drain_captures_restart_initialization_before_resources_exist() {
 }
 
 struct DocumentApp;
+
 impl App for DocumentApp {
     const NAME: &'static str = "document";
     const VERSION: &'static str = "test";
     type Config = BTreeMap<String, toml::Value>;
+
     fn services(_: &Self::Config, _: &Context<Self::Config>) -> Result<Vec<Box<dyn Service>>> {
         Ok(vec![rivium_test::idle("worker", Kind::Frontline)])
     }
+
     fn reload_config(_: &Self::Config, candidate: &Self::Config) -> Result<Option<Self::Config>> {
         Ok(Some(candidate.clone()))
     }
 }
+
 fn document_fixture(text: &str) -> (TempDir, Host) {
     let root = TempDir::new().unwrap();
     std::fs::write(root.path().join("document.toml"), text).unwrap();
@@ -788,10 +802,12 @@ async fn unchanged_nan_values_do_not_create_a_reload() {
 #[tokio::test]
 async fn a_later_generation_retries_transient_construction_errors_and_panics() {
     struct Rebuild<const PANIC: bool>;
+
     impl<const PANIC: bool> App for Rebuild<PANIC> {
         const NAME: &'static str = Hot::NAME;
         const VERSION: &'static str = Hot::VERSION;
         type Config = Config;
+
         fn services(config: &Config, context: &Context<Config>) -> Result<Vec<Box<dyn Service>>> {
             let probe = probes().lock().unwrap()[context.paths().root()].clone();
             if probe.build_attempts.fetch_add(1, Ordering::SeqCst) == 1 {
@@ -803,6 +819,7 @@ async fn a_later_generation_retries_transient_construction_errors_and_panics() {
             services(config, context)
         }
     }
+
     async fn verify<const PANIC: bool>() {
         let fixture = Fixture::start::<Rebuild<PANIC>>(&[]);
         fixture.write(3, 10, "");
@@ -859,22 +876,27 @@ async fn a_cloned_context_checks_writes_and_restarts_its_generation() {
 #[tokio::test]
 async fn retired_failure_source_can_query_host_during_final_report_replacement() {
     struct Cause(Arc<ReentrantWake>);
+
     impl std::fmt::Debug for Cause {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str("reentrant cause")
         }
     }
+
     impl std::fmt::Display for Cause {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             std::fmt::Debug::fmt(self, f)
         }
     }
+
     impl std::error::Error for Cause {}
+
     impl Drop for Cause {
         fn drop(&mut self) {
             self.0.clone().wake();
         }
     }
+
     let fixture = Fixture::start::<Hot>(&[]);
     let host = Arc::downgrade(&fixture.host);
     let (result, observed) = tokio::sync::oneshot::channel();

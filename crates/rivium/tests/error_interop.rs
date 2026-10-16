@@ -6,11 +6,13 @@ use std::{error::Error as StdError, fmt, time::Duration};
 
 #[derive(Debug)]
 struct Foreign(std::io::Error);
+
 impl fmt::Display for Foreign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("foreign adapter failed")
     }
 }
+
 impl StdError for Foreign {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         Some(&self.0)

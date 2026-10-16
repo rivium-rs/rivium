@@ -1,11 +1,14 @@
 //! Scoped tracing, bounded file logging, and optional diagnostic archives.
+
 #[cfg(feature = "log-export")]
 mod export;
 mod files;
 mod format;
 mod settings;
+
 #[cfg(feature = "log-export")]
 pub use export::{Archive, ExportId, ExportRequest, ExportState, Exporter};
+
 #[cfg(feature = "log-export")]
 use settings::duration;
 use settings::size;
@@ -45,6 +48,7 @@ pub struct Settings {
     #[cfg(feature = "log-export")]
     pub export: ExportSettings,
 }
+
 /// Console output settings.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -56,6 +60,7 @@ pub struct Console {
     /// ANSI color policy for text.
     pub color: Color,
 }
+
 /// Console output representation.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -64,6 +69,7 @@ pub enum Format {
     Text,
     Json,
 }
+
 /// ANSI color policy.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -73,6 +79,7 @@ pub enum Color {
     Always,
     Never,
 }
+
 /// File names and budgets, shared by all categories.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -88,6 +95,7 @@ pub struct FileSettings {
     #[serde(with = "size")]
     pub max_total_size: u64,
 }
+
 /// One named, independently filtered file.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -97,6 +105,7 @@ pub struct Category {
     /// Empty inherits the common filter.
     pub filter: String,
 }
+
 /// Filtering for a platform-specific output.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -104,6 +113,7 @@ pub struct CategoryFilter {
     /// Platform output filter; logcat defaults to `warn`.
     pub filter: String,
 }
+
 /// Diagnostic ZIP limits.
 #[cfg(feature = "log-export")]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -116,6 +126,7 @@ pub struct ExportSettings {
     #[serde(with = "duration")]
     pub expire_after: Duration,
 }
+
 impl Default for CategoryFilter {
     fn default() -> Self {
         Self {
@@ -123,6 +134,7 @@ impl Default for CategoryFilter {
         }
     }
 }
+
 fn ansi(color: Color, terminal: bool, no_color: bool, dumb: bool) -> bool {
     match color {
         Color::Always => true,
@@ -130,6 +142,7 @@ fn ansi(color: Color, terminal: bool, no_color: bool, dumb: bool) -> bool {
         Color::Auto => terminal && !no_color && !dumb,
     }
 }
+
 impl Default for Console {
     fn default() -> Self {
         Self {
@@ -139,6 +152,7 @@ impl Default for Console {
         }
     }
 }
+
 impl Default for FileSettings {
     fn default() -> Self {
         Self {
@@ -149,6 +163,7 @@ impl Default for FileSettings {
         }
     }
 }
+
 #[cfg(feature = "log-export")]
 impl Default for ExportSettings {
     fn default() -> Self {
@@ -158,6 +173,7 @@ impl Default for ExportSettings {
         }
     }
 }
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -171,6 +187,7 @@ impl Default for Settings {
         }
     }
 }
+
 impl Settings {
     /// Default settings with `logs/<name>` as directory.
     pub fn for_app(name: &str) -> Self {
@@ -178,6 +195,7 @@ impl Settings {
         settings.file.dir.push(name);
         settings
     }
+
     /// Validate all names, filters, and worst-case storage reservations.
     pub fn validate(&self, name: &str) -> Result<()> {
         if !valid_name(name) || self.files.len() > 16 {
@@ -221,6 +239,7 @@ impl Settings {
         }
         Ok(())
     }
+
     fn filter_strings(&self) -> Vec<&str> {
         std::iter::once(self.filter.as_str())
             .chain([
@@ -231,6 +250,7 @@ impl Settings {
             .chain(self.files.iter().map(|c| c.filter.as_str()))
             .collect()
     }
+
     fn reserve(&self) -> u64 {
         #[cfg(feature = "log-export")]
         {
@@ -242,18 +262,22 @@ impl Settings {
         }
     }
 }
+
 pub(super) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
+
 fn parse_filter(value: &str, fallback: &str) -> Result<EnvFilter> {
     EnvFilter::try_new(if value.is_empty() { fallback } else { value })
         .map_err(|e| Error::invalid(format!("invalid log filter: {e}")))
 }
+
 /// Application-provided tracing layer; no global subscriber is installed.
 pub type ExtraLayer = Box<dyn Layer<Registry> + Send + Sync>;
+
 /// Approximate counters belonging to this logger, never process-wide totals.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LogStats {
@@ -268,6 +292,7 @@ pub struct LogStats {
     /// Observed file, compression, or reconciliation failures.
     pub write_failures: u64,
 }
+
 // Subscriber hooks are user code and may unwind before Logger exists.
 struct ConstructionGuard {
     writer: files::Worker,
@@ -275,6 +300,7 @@ struct ConstructionGuard {
     exporter: Option<Exporter>,
     armed: bool,
 }
+
 impl Drop for ConstructionGuard {
     fn drop(&mut self) {
         if self.armed {
@@ -299,6 +325,7 @@ impl Drop for ConstructionGuard {
         }
     }
 }
+
 /// Owns a scoped subscriber and all directory users until confirmed shutdown.
 pub struct Logger {
     dispatch: Dispatch,
@@ -312,6 +339,7 @@ pub struct Logger {
     #[cfg(feature = "log-export")]
     exporter: Exporter,
 }
+
 impl Logger {
     /// Start independent file logging; `console` enables console output.
     /// This synchronous constructor confirms worker release before returning an
@@ -324,6 +352,7 @@ impl Logger {
         extra: Vec<ExtraLayer>,
     ) -> Result<Self> {
         use std::io::IsTerminal;
+
         settings.validate(name)?;
         // A second live dispatcher prevents tracing's single-dispatch cache from
         // recording Never when another thread reaches a scoped callsite first.
@@ -336,6 +365,7 @@ impl Logger {
         let names: Vec<String> = std::iter::once(name.to_owned())
             .chain(settings.files.iter().map(|c| c.name.clone()))
             .collect();
+
         let directory = files::Directory::open(&dir)?;
         let writer = files::Worker::new(
             Arc::clone(&directory),
@@ -366,6 +396,7 @@ impl Logger {
         {
             construction.exporter = Some(exporter.clone());
         }
+
         let terminal = console && std::io::stdout().is_terminal();
         let mut layers = extra;
         let mut filters = Vec::new();
@@ -410,6 +441,7 @@ impl Logger {
                 "warn",
             )?;
         }
+
         let admission = writer.clone();
         let dispatch = Dispatch::new(Registry::default().with(layers).with(
             tracing_subscriber::filter::dynamic_filter_fn(move |_, _| !admission.closed()),
@@ -429,14 +461,17 @@ impl Logger {
         construction.armed = false;
         Ok(logger)
     }
+
     /// Clone the scoped tracing dispatcher.
     pub fn dispatch(&self) -> Dispatch {
         self.dispatch.clone()
     }
+
     /// Flush all events accepted before this call within a shared waiting budget.
     pub fn flush(&self, within: Duration) -> Result<()> {
         self.writer.flush(within)
     }
+
     /// Close admission and wait for every directory worker within one budget.
     /// Permanent failures take precedence over waiting deadlines. After any
     /// error, inspect `pending_workers` before reusing the directory; retrying
@@ -453,6 +488,7 @@ impl Logger {
         let written = close_result(written, self.exporter.wait_closed(until));
         written
     }
+
     /// Number of actual directory workers still retaining resources.
     pub fn pending_workers(&self) -> usize {
         self.writer.pending() + {
@@ -466,19 +502,23 @@ impl Logger {
             }
         }
     }
+
     /// Logger-local queue and error counters.
     pub fn stats(&self) -> LogStats {
         self.writer.stats()
     }
+
     /// Sum of queue-full and oversized drops for this logger.
     pub fn dropped(&self) -> u64 {
         let stats = self.stats();
         stats.dropped_full.saturating_add(stats.oversized)
     }
+
     /// Effective settings, including unchanged cold fields after reload.
     pub fn settings(&self) -> &Settings {
         &self.settings
     }
+
     /// Reload filters and return structural fields that need a new logger.
     pub fn reload(&mut self, new: &Settings) -> Result<Vec<String>> {
         new.validate(&self.name)?;
@@ -543,12 +583,14 @@ impl Logger {
         }
         Ok(cold)
     }
+
     /// Return the bounded diagnostic export controller.
     #[cfg(feature = "log-export")]
     pub fn exporter(&self) -> Exporter {
         self.exporter.clone()
     }
 }
+
 #[cfg(feature = "log-export")]
 fn close_result(writer: Result<()>, export: Result<()>) -> Result<()> {
     match (writer, export) {
@@ -557,6 +599,7 @@ fn close_result(writer: Result<()>, export: Result<()>) -> Result<()> {
         (result, Ok(())) => result,
     }
 }
+
 impl Drop for Logger {
     fn drop(&mut self) {
         let _ = self.close(Duration::ZERO);
@@ -572,6 +615,7 @@ pub fn counters() -> [u64; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn auto_color_respects_terminal_no_color_and_dumb_terminal() {
         for (terminal, no_color, dumb, expected) in [
@@ -586,6 +630,7 @@ mod tests {
         }
         assert_eq!(Settings::default().logcat.filter, "warn");
     }
+
     #[cfg(feature = "log-export")]
     #[test]
     fn permanent_writer_failure_survives_an_unfinished_export() {
@@ -623,6 +668,7 @@ mod tests {
             "export failed"
         );
     }
+
     #[cfg(feature = "log-export")]
     #[test]
     fn stored_failures_remain_visible_before_worker_release() {

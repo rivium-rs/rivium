@@ -2,6 +2,7 @@
 //!
 //! Each native library exports one application. Java declarations are checked by
 //! the JVM when the library loads; integer and string calls contain Rust unwinds.
+
 #[cfg(panic = "abort")]
 compile_error!("rivium-jni requires panic=unwind for FFI panic containment");
 
@@ -23,7 +24,9 @@ struct ApplicationBridge {
     lifecycle: Host,
     version: String,
 }
+
 static APPLICATION: OnceLock<ApplicationBridge> = OnceLock::new();
+
 fn application() -> &'static ApplicationBridge {
     APPLICATION
         .get()
@@ -50,6 +53,7 @@ macro_rules! export {
             unsafe { $crate::__private::register::<$application>(vm, $java_class) }
         }
     };
+
     ($($invalid:tt)*) => {
         compile_error!("expected export!(class = \"package/Class\", app = ApplicationType)");
     };
@@ -59,6 +63,7 @@ macro_rules! export {
 #[doc(hidden)]
 pub mod __private {
     pub use jni::sys::{JavaVM, jint};
+
     /// # Safety
     /// The non-null pointer must identify the live JVM invoking JNI_OnLoad.
     #[allow(unsafe_code)]
@@ -66,6 +71,7 @@ pub mod __private {
         if vm.is_null() {
             return jni::sys::JNI_ERR;
         }
+
         // SAFETY: the caller preserves the JNI_OnLoad pointer provenance.
         unsafe { super::register_application::<A>(vm, class) }
     }
@@ -78,6 +84,7 @@ unsafe fn register_application<A: App>(raw: *mut jni::sys::JavaVM, java_class: &
             lifecycle: Host::new::<A>(),
             version: format!("{} {}", A::NAME, A::VERSION),
         });
+
         // SAFETY: register_application is reached only through the JVM loader entry.
         let machine = unsafe { JavaVM::from_raw(raw) };
         machine.attach_current_thread_with_config(
@@ -91,6 +98,7 @@ unsafe fn register_application<A: App>(raw: *mut jni::sys::JavaVM, java_class: &
                     native_method! { static fn last_error() -> JString, name = "nativeLastError" },
                     native_method! { static fn version() -> JString, name = "nativeVersion" },
                 ];
+
                 // SAFETY: native_method! builds static JNI wrappers with checked Rust ABIs.
                 let registration = unsafe {
                     env.register_native_methods(JNIString::new(java_class), &bindings)
@@ -105,6 +113,7 @@ unsafe fn register_application<A: App>(raw: *mut jni::sys::JavaVM, java_class: &
             },
         )
     }));
+
     match installed {
         Ok(Ok(())) => JNI_VERSION_1_6,
         _ => JNI_ERR,
@@ -121,6 +130,7 @@ fn integer_call(method: &str, call: impl FnOnce() -> jni::errors::Result<jint>) 
         Err(_) => Code::Panicked.ffi(),
     }
 }
+
 fn text_call(method: &str, call: impl FnOnce() -> String) -> String {
     catch_unwind(AssertUnwindSafe(|| {
         inject(method);
@@ -149,6 +159,7 @@ fn start<'local>(
         Ok(application().lifecycle.start(&arguments).ffi())
     }))
 }
+
 fn stop<'local>(
     _: &mut Env<'local>,
     _: JClass<'local>,
@@ -161,11 +172,13 @@ fn stop<'local>(
             .ffi())
     }))
 }
+
 fn status<'local>(_: &mut Env<'local>, _: JClass<'local>) -> jni::errors::Result<jint> {
     Ok(integer_call("nativeStatus", || {
         Ok(application().lifecycle.status() as jint)
     }))
 }
+
 fn last_error<'local>(
     env: &mut Env<'local>,
     _: JClass<'local>,
@@ -192,6 +205,7 @@ fn last_error<'local>(
     });
     env.new_string(message)
 }
+
 fn version<'local>(
     env: &mut Env<'local>,
     _: JClass<'local>,
@@ -209,5 +223,6 @@ fn inject(method: &str) {
         panic!("injected native panic: {method}");
     }
 }
+
 #[cfg(not(rivium_jni_fault))]
 fn inject(_: &str) {}

@@ -1,4 +1,5 @@
 #![cfg(feature = "rt")]
+
 use rivium::{Kind, Outcome, StopReason, Supervisor, error::Class};
 use std::time::Duration;
 

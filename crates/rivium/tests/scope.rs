@@ -1,4 +1,5 @@
 #![cfg(feature = "task")]
+
 use rivium::scope::TaskScope;
 use std::{
     future::Future,

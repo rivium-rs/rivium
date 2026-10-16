@@ -1,9 +1,12 @@
 #![cfg(feature = "server")]
+
 mod common;
+
 use axum::{Router, routing::get};
 use rivium::{Error, StopReason, Supervisor, error::kinds};
 use rivium_http::{ApiError, HttpServer};
 use tracing::instrument::WithSubscriber;
+
 #[tokio::test]
 async fn detached_requests_inherit_the_scoped_service_dispatch_and_request_span() {
     let logs = rivium_test::Logs::default();

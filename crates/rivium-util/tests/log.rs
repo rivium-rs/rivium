@@ -1,5 +1,7 @@
 #![cfg(feature = "log")]
+
 mod log_support;
+
 use log_support::*;
 
 use rivium_test::TempDir;
@@ -147,7 +149,12 @@ fn console_json_preserves_structured_values_and_escapes_unicode() {
 
 #[test]
 fn human_sizes_and_expiry_round_trip_and_overflow_is_rejected() {
-    let input = serde_json::json!({"file": {"max_file_size":"1 KiB", "max_total_size":"256 MiB"}});
+    let input = serde_json::json!({
+        "file": {
+            "max_file_size": "1 KiB",
+            "max_total_size": "256 MiB"
+        }
+    });
     let settings: Settings = serde_json::from_value(input).unwrap();
     assert_eq!(settings.file.max_file_size, 1024);
     assert_eq!(settings.file.max_total_size, 268_435_456);
@@ -156,15 +163,18 @@ fn human_sizes_and_expiry_round_trip_and_overflow_is_rejected() {
         settings
     );
     assert!(
-        serde_json::from_value::<Settings>(
-            serde_json::json!({"file":{"max_file_size":"18446744073709551615 GiB"}})
-        )
+        serde_json::from_value::<Settings>(serde_json::json!({
+            "file": {
+                "max_file_size": "18446744073709551615 GiB"
+            }
+        }))
         .is_err()
     );
     #[cfg(feature = "log-export")]
     {
         let settings: Settings =
-            serde_json::from_value(serde_json::json!({"export":{"expire_after":"30m"}})).unwrap();
+            serde_json::from_value(serde_json::json!({ "export": { "expire_after": "30m" } }))
+                .unwrap();
         assert_eq!(settings.export.expire_after, Duration::from_secs(1800));
     }
 }
@@ -176,7 +186,9 @@ fn close_disables_retained_dispatchers_and_extra_layers() {
         atomic::{AtomicUsize, Ordering},
     };
     use tracing_subscriber::{Layer, Registry};
+
     struct Count(Arc<AtomicUsize>);
+
     impl Layer<Registry> for Count {
         fn on_event(
             &self,
@@ -186,6 +198,7 @@ fn close_disables_retained_dispatchers_and_extra_layers() {
             self.0.fetch_add(1, Ordering::Relaxed);
         }
     }
+
     fn emit() {
         tracing::info!("retained dispatch");
     }
@@ -247,7 +260,9 @@ fn concurrent_producers_respect_queue_and_byte_bounds() {
 #[test]
 fn panicking_extra_layer_construction_releases_all_directory_workers() {
     use tracing_subscriber::{Layer, Registry};
+
     struct Panics;
+
     impl Layer<Registry> for Panics {
         fn on_layer(&mut self, _: &mut Registry) {
             panic!("custom layer initialization");

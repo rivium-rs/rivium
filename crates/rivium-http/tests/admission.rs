@@ -1,5 +1,7 @@
 #![cfg(feature = "contract")]
+
 mod common;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -18,13 +20,16 @@ use std::{
     },
     time::Duration,
 };
+
 fn one() -> ContractSettings {
     ContractSettings {
         in_flight: NonZeroUsize::new(1).unwrap(),
         ..Default::default()
     }
 }
+
 type RetainedBody = Arc<Mutex<Option<Body>>>;
+
 async fn retain_request_body(hang: bool) -> (Router, RetainedBody, axum::response::Response) {
     let held = Arc::new(Mutex::new(None));
     let incoming = held.clone();
@@ -214,18 +219,22 @@ async fn terminal_body_poll_drops_inner_resources_before_releasing_capacity() {
         pin::Pin,
         task::{Context, Poll},
     };
+
     struct Ending {
         dropped: Arc<AtomicBool>,
         error: bool,
     }
+
     impl Drop for Ending {
         fn drop(&mut self) {
             self.dropped.store(true, Ordering::Release);
         }
     }
+
     impl HttpBody for Ending {
         type Data = axum::body::Bytes;
         type Error = std::io::Error;
+
         fn poll_frame(
             self: Pin<&mut Self>,
             _: &mut Context<'_>,

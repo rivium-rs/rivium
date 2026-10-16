@@ -1,5 +1,6 @@
 use rivium_host::{Action, Options};
 use std::ffi::OsString;
+
 #[test]
 fn cli_commands_relative_paths_and_embedded_inputs_are_explicit() {
     let current = std::env::current_dir().unwrap();
@@ -45,6 +46,7 @@ fn cli_commands_relative_paths_and_embedded_inputs_are_explicit() {
     }
     assert!(Options::parse("options-test", [], false).is_err());
 }
+
 #[cfg(unix)]
 #[test]
 fn paths_need_not_be_utf8() {
@@ -58,6 +60,7 @@ fn paths_need_not_be_utf8() {
     .unwrap();
     assert_eq!(options.paths.root().as_os_str(), root);
 }
+
 #[cfg(unix)]
 #[test]
 fn configuration_environment_rejects_non_utf8_values() {
@@ -67,6 +70,7 @@ fn configuration_environment_rejects_non_utf8_values() {
         assert!(error.to_string().contains("UTF-8"));
         return;
     }
+
     let output = rivium_test::command(std::env::current_exe().unwrap())
         .args([
             "--exact",

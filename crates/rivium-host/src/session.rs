@@ -23,12 +23,14 @@ use tracing::instrument::WithSubscriber;
 pub(crate) static RESTARTS: AtomicU64 = AtomicU64::new(0);
 pub(crate) static FAULTS: AtomicU64 = AtomicU64::new(0);
 static NEXT_RUN: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Restart {
     Exit,
     InProcess,
 }
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Lifecycle {
@@ -39,6 +41,7 @@ pub struct Lifecycle {
     pub restart: Restart,
     pub instance: String,
 }
+
 impl Default for Lifecycle {
     fn default() -> Self {
         Self {
@@ -49,6 +52,7 @@ impl Default for Lifecycle {
         }
     }
 }
+
 impl Lifecycle {
     fn validate(&self) -> Result<()> {
         if self.startup_timeout.is_zero()
@@ -63,15 +67,18 @@ impl Lifecycle {
         Ok(())
     }
 }
+
 mod duration {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
     use std::time::Duration;
+
     pub(super) fn serialize<S: Serializer>(
         value: &Duration,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&format!("{}ms", value.as_millis()))
     }
+
     pub(super) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Duration, D::Error> {
@@ -101,12 +108,15 @@ pub(crate) struct Loaded<C> {
     pub lifecycle: Lifecycle,
     pub all: toml::Value,
 }
+
 fn diagnostic(error: config::Report) -> Error {
     Error::new(error.kind(), error.to_string()).with_source(error)
 }
+
 fn serialize(value: &impl Serialize) -> Result<toml::Value> {
     toml::Value::try_from(value).map_err(|e| Error::invalid(e.to_string()).with_source(e))
 }
+
 fn application(config: &impl Serialize) -> Result<toml::Table> {
     let toml::Value::Table(table) = serialize(config)? else {
         return Err(Error::invalid("application configuration must be a table"));
@@ -116,12 +126,14 @@ fn application(config: &impl Serialize) -> Result<toml::Table> {
     }
     Ok(table)
 }
+
 pub(crate) fn defaults<A: App>() -> Result<toml::Value> {
     let mut table = application(&A::Config::default())?;
     table.insert("log".into(), serialize(&log::Settings::for_app(A::NAME))?);
     table.insert("lifecycle".into(), serialize(&Lifecycle::default())?);
     Ok(toml::Value::Table(table))
 }
+
 pub(crate) fn load<A: App>(
     options: &Options,
     text: Option<&str>,
@@ -133,6 +145,7 @@ pub(crate) fn load<A: App>(
     {
         return Err(Error::invalid("configuration file is missing"));
     }
+
     let loader = config::Loader::new(&defaults::<A>()?)
         .map_err(diagnostic)?
         .file(options.paths.config_file())
@@ -167,6 +180,7 @@ pub(crate) fn load<A: App>(
         all,
     })
 }
+
 pub(crate) fn replace_application(all: &mut toml::Value, config: &impl Serialize) -> Result<()> {
     let app = application(config)?;
     let table = all
@@ -176,6 +190,7 @@ pub(crate) fn replace_application(all: &mut toml::Value, config: &impl Serialize
     table.extend(app);
     Ok(())
 }
+
 pub(crate) fn differences(left: &toml::Value, right: &toml::Value) -> Vec<String> {
     fn equivalent(left: &toml::Value, right: &toml::Value) -> bool {
         match (left, right) {
@@ -198,6 +213,7 @@ pub(crate) fn differences(left: &toml::Value, right: &toml::Value) -> Vec<String
             _ => left == right,
         }
     }
+
     fn walk(
         left: Option<&toml::Value>,
         right: Option<&toml::Value>,
@@ -226,6 +242,7 @@ pub(crate) fn differences(left: &toml::Value, right: &toml::Value) -> Vec<String
             _ => out.push(path.into()),
         }
     }
+
     let mut result = Vec::new();
     walk(Some(left), Some(right), "", &mut result);
     result
@@ -242,6 +259,7 @@ pub enum Status {
     Restarting = 4,
     Failed = 5,
 }
+
 #[derive(Clone, Default)]
 struct Resources {
     readiness: Option<Readiness>,
@@ -250,6 +268,7 @@ struct Resources {
     logger: Option<Arc<log::Logger>>,
     stops: [Option<(StopReason, Instant)>; 2],
 }
+
 pub(crate) struct Generation {
     resources: Mutex<Resources>,
     gate: Arc<Mutex<bool>>,
@@ -257,6 +276,7 @@ pub(crate) struct Generation {
     failures: Mutex<Vec<CleanupFailure>>,
     pub completed: Notify,
 }
+
 impl Generation {
     fn new() -> Self {
         Self {
@@ -267,9 +287,11 @@ impl Generation {
             completed: Notify::new(),
         }
     }
+
     fn resources(&self) -> Resources {
         crate::lock(&self.resources).clone()
     }
+
     fn stop(&self, reason: StopReason) {
         let control = {
             let mut resources = crate::lock(&self.resources);
@@ -284,6 +306,7 @@ impl Generation {
             control.stop(reason);
         }
     }
+
     fn install_control(&self, control: Control) {
         let mut delivered = 0;
         loop {
@@ -307,10 +330,12 @@ impl Generation {
             }
         }
     }
+
     #[cfg(feature = "embedded")]
     pub(crate) fn reload(&self) -> Option<reload::Requester> {
         self.resources().reload
     }
+
     pub(crate) fn cleanup(&self) -> CleanupReport {
         let closed = self.closed.load(Ordering::Acquire);
         let resources = self.resources();
@@ -345,16 +370,19 @@ impl Generation {
             failures: crate::lock(&self.failures).clone(),
         }
     }
+
     fn failure(&self, stage: CleanupStage, error: Error) {
         if error.class() == Class::Timeout {
             return;
         }
+
         let mut failures = crate::lock(&self.failures);
         if !failures.iter().any(|failure| failure.stage == stage) && failures.len() < 4 {
             failures.push(CleanupFailure { stage, error });
         }
     }
 }
+
 pub(crate) struct State {
     pub status: Status,
     pub first: Option<Code>,
@@ -364,11 +392,13 @@ pub(crate) struct State {
     pub report: Option<HostReport>,
     pub generation: Arc<Generation>,
 }
+
 pub(crate) struct Run {
     pub state: Mutex<State>,
     pub changed: Condvar,
     pub notify: Notify,
 }
+
 impl Run {
     pub(crate) fn new() -> Self {
         Self {
@@ -385,13 +415,16 @@ impl Run {
             notify: Notify::new(),
         }
     }
+
     pub(crate) fn wake(&self) {
         self.changed.notify_all();
         self.notify.notify_waiters();
     }
+
     pub(crate) fn generation(&self) -> Arc<Generation> {
         crate::lock(&self.state).generation.clone()
     }
+
     fn replace_generation(&self) -> Option<Arc<Generation>> {
         let generation = Arc::new(Generation::new());
         let old = {
@@ -406,9 +439,11 @@ impl Run {
         self.wake();
         Some(generation)
     }
+
     pub(crate) fn cleanup(&self) -> CleanupReport {
         self.generation().cleanup()
     }
+
     pub(crate) fn report(&self) -> Option<HostReport> {
         let (report, finished) = {
             let state = crate::lock(&self.state);
@@ -421,6 +456,7 @@ impl Run {
             report
         })
     }
+
     pub(crate) fn stop(&self, reason: StopReason, budget: Option<Duration>) {
         let generation = {
             let mut state = crate::lock(&self.state);
@@ -446,6 +482,7 @@ impl Run {
 
         self.wake();
     }
+
     pub(crate) fn finish(
         &self,
         mut code: Code,
@@ -474,6 +511,7 @@ impl Run {
         } else if !cleanup.is_drained() && primary.is_none() && !matches!(code, Code::Aborted(_)) {
             code = Code::StopTimedOut;
         }
+
         let previous = {
             let mut state = crate::lock(&self.state);
             state.finished = true;
@@ -507,6 +545,7 @@ pub(crate) fn inspect<A: App>(options: &Options) -> Option<Code> {
     if options.action == Action::Run {
         return None;
     }
+
     let result = catch_unwind(AssertUnwindSafe(|| -> Result<()> {
         match options.action {
             Action::Version => println!("{} {}", A::NAME, A::VERSION),
@@ -539,6 +578,7 @@ struct RetryState {
     ever_ready: bool,
     failures: u32,
 }
+
 impl RetryState {
     fn observed_running(&mut self, elapsed: Duration) {
         self.ever_ready = true;
@@ -546,6 +586,7 @@ impl RetryState {
             self.failures = 0;
         }
     }
+
     fn failed(&mut self) -> Option<Duration> {
         if !self.ever_ready {
             return None;
@@ -560,6 +601,7 @@ impl RetryState {
         )
     }
 }
+
 fn park_retry(
     runtime: &tokio::runtime::Runtime,
     run: &Run,
@@ -595,12 +637,14 @@ fn park_retry(
     });
     true
 }
+
 fn cleanup_deadline(run: &Run) -> Instant {
     let own = Instant::now() + crate::CLEANUP;
     crate::lock(&run.state)
         .deadline
         .map_or(own, |deadline| deadline.min(own))
 }
+
 fn finish_resources(
     runtime: &tokio::runtime::Runtime,
     generation: &Generation,
@@ -616,6 +660,7 @@ fn finish_resources(
     {
         generation.failure(CleanupStage::Logger, error);
     }
+
     let drain = resources
         .readiness
         .map_or(rivium::scope::Drain::Complete, |readiness| {
@@ -631,12 +676,14 @@ fn finish_resources(
     }
     drain
 }
+
 struct Prepared<C> {
     lifecycle: Lifecycle,
     logger: Arc<log::Logger>,
     reload: reload::Requester,
     config: config::Handle<C>,
 }
+
 fn prepare<A: App>(
     options: &Options,
     generation: &Generation,
@@ -678,6 +725,7 @@ fn prepare<A: App>(
         config,
     })
 }
+
 fn retry_initialization(
     runtime: &tokio::runtime::Runtime,
     run: &Run,
@@ -692,6 +740,7 @@ fn retry_initialization(
     if !enabled || !cleanup.is_success() {
         return Err(failure.0);
     }
+
     let Some(delay) = retry.failed() else {
         return Err(failure.0);
     };
@@ -763,6 +812,7 @@ pub(crate) fn run<A: App>(options: Options, run: Arc<Run>, embedded: bool) {
                 };
                 break;
             }
+
             let generation = if first_generation {
                 first_generation = false;
                 run.generation()
@@ -981,6 +1031,7 @@ pub(crate) fn run<A: App>(options: Options, run: Arc<Run>, embedded: bool) {
                 if let Some(control) = generation.resources().control {
                     control.stop(StopReason::Deadline(Duration::ZERO));
                 }
+
                 let drain = finish_resources(&runtime, &generation, cleanup_end);
                 generation.failure(CleanupStage::Runtime, error.clone());
                 rivium::RunReport {
@@ -1008,6 +1059,7 @@ pub(crate) fn run<A: App>(options: Options, run: Arc<Run>, embedded: bool) {
 #[cfg(test)]
 mod retry_tests {
     use super::*;
+
     #[tokio::test]
     async fn stop_wins_generation_admission_and_is_delivered_once_after_admission() {
         for admitted in [false, true] {
@@ -1028,6 +1080,7 @@ mod retry_tests {
             assert!(matches!(supervisor.run().await.outcome, Outcome::Stopped));
         }
     }
+
     #[test]
     fn first_failure_waits_100ms_and_tenth_failure_stops() {
         let mut state = RetryState::default();
@@ -1038,6 +1091,7 @@ mod retry_tests {
         assert_eq!(state.failed(), None);
         assert_eq!(state.failed(), None);
     }
+
     #[test]
     fn only_600_seconds_of_running_resets_the_failure_budget() {
         let mut state = RetryState::default();
@@ -1048,6 +1102,7 @@ mod retry_tests {
         state.observed_running(Duration::from_secs(600));
         assert_eq!(state.failed(), Some(Duration::from_millis(100)));
     }
+
     #[test]
     fn a_generation_that_never_reached_running_is_not_retried() {
         let mut state = RetryState::default();

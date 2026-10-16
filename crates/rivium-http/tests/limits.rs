@@ -1,5 +1,7 @@
 #![cfg(feature = "server")]
+
 mod common;
+
 use axum::{Router, routing::get, serve::Listener};
 use common::{headers, send};
 use rivium::{Kind, Outcome, Service, StopReason, Supervisor, service};
@@ -22,17 +24,21 @@ struct Counted {
     inner: TcpListener,
     accepts: Arc<AtomicUsize>,
 }
+
 impl Listener for Counted {
     type Io = TcpStream;
     type Addr = SocketAddr;
+
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         self.accepts.fetch_add(1, Ordering::SeqCst);
         Listener::accept(&mut self.inner).await
     }
+
     fn local_addr(&self) -> std::io::Result<Self::Addr> {
         self.inner.local_addr()
     }
 }
+
 fn custom(listener: TcpListener, router: Router, accepts: Arc<AtomicUsize>) -> Box<dyn Service> {
     service("custom", Kind::Frontline, move |context| {
         serve_listener(
@@ -48,6 +54,7 @@ fn custom(listener: TcpListener, router: Router, accepts: Arc<AtomicUsize>) -> B
         )
     })
 }
+
 async fn wait_for(count: &AtomicUsize, expected: usize) {
     tokio::time::timeout(Duration::from_secs(5), async {
         while count.load(Ordering::SeqCst) < expected {
@@ -57,6 +64,7 @@ async fn wait_for(count: &AtomicUsize, expected: usize) {
     .await
     .unwrap();
 }
+
 #[tokio::test]
 async fn binding_and_self_ready_do_not_accept_until_every_dependency_is_ready() {
     let (listener, address) = common::bind().await;

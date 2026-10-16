@@ -1,4 +1,5 @@
 #![cfg(feature = "rt")]
+
 use rivium::{Error, Kind, Outcome, SubmitError, Supervisor, service};
 use std::{
     sync::{
@@ -7,6 +8,7 @@ use std::{
     },
     time::Duration,
 };
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn continuous_admission_cannot_starve_a_completed_child_failure() {
     let accepted = Arc::new(AtomicUsize::new(0));
