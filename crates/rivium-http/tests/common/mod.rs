@@ -1,5 +1,6 @@
 // Independent test binaries share transport and startup setup without hiding assertions.
 #![allow(dead_code)]
+
 use rivium::{Control, Readiness, RunReport, Supervisor};
 use std::{net::SocketAddr, time::Duration};
 use tokio::{
@@ -7,11 +8,13 @@ use tokio::{
     net::{TcpListener, TcpStream},
     task::JoinHandle,
 };
+
 pub(crate) async fn bind() -> (TcpListener, SocketAddr) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     (listener, address)
 }
+
 pub(crate) async fn ready(supervisor: Supervisor) -> (Control, Readiness, JoinHandle<RunReport>) {
     let control = supervisor.control();
     let mut readiness = supervisor.readiness();
@@ -19,6 +22,7 @@ pub(crate) async fn ready(supervisor: Supervisor) -> (Control, Readiness, JoinHa
     rivium_test::until_ready(&mut readiness).await.unwrap();
     (control, readiness, run)
 }
+
 pub(crate) async fn send(stream: &mut TcpStream, path: &str) {
     stream
         .write_all(
@@ -28,6 +32,7 @@ pub(crate) async fn send(stream: &mut TcpStream, path: &str) {
         .await
         .unwrap();
 }
+
 pub(crate) async fn headers(stream: &mut (impl AsyncRead + Unpin)) -> String {
     tokio::time::timeout(Duration::from_secs(5), async {
         let mut bytes = Vec::new();
@@ -39,6 +44,7 @@ pub(crate) async fn headers(stream: &mut (impl AsyncRead + Unpin)) -> String {
     .await
     .unwrap()
 }
+
 pub(crate) async fn call(address: SocketAddr, path: &str, id: Option<&str>) -> String {
     let mut stream = TcpStream::connect(address).await.unwrap();
     let id = id
@@ -55,6 +61,7 @@ pub(crate) async fn call(address: SocketAddr, path: &str, id: Option<&str>) -> S
     stream.read_to_string(&mut reply).await.unwrap();
     reply
 }
+
 pub(crate) async fn response(
     router: &axum::Router,
     request: axum::extract::Request,
@@ -62,11 +69,13 @@ pub(crate) async fn response(
     use tower::ServiceExt;
     router.clone().oneshot(request).await.unwrap()
 }
+
 pub(crate) fn request(path: &str) -> axum::extract::Request {
     axum::http::Request::get(path)
         .body(axum::body::Body::empty())
         .unwrap()
 }
+
 pub(crate) fn request_with_id(path: &str, id: &str) -> axum::extract::Request {
     let mut request = request(path);
     request
@@ -74,6 +83,7 @@ pub(crate) fn request_with_id(path: &str, id: &str) -> axum::extract::Request {
         .insert("x-request-id", id.parse().unwrap());
     request
 }
+
 pub(crate) async fn body_text(response: impl axum::response::IntoResponse, limit: usize) -> String {
     let bytes = axum::body::to_bytes(response.into_response().into_body(), limit)
         .await
