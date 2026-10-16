@@ -1,0 +1,30 @@
+[package]
+name = "rivium-util"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+include = ["/src/**", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+description = "Layered configuration and atomic file replacement"
+[features]
+default = []
+full = ["config"]
+config = ["dep:serde", "dep:toml", "dep:serde_ignored", "dep:serde_path_to_error", "dep:tokio"]
+[dependencies]
+rivium.workspace = true
+serde = { workspace = true, optional = true, features = ["std", "derive"] }
+toml = { workspace = true, optional = true, features = ["std", "serde", "parse", "display"] }
+serde_ignored = { workspace = true, optional = true }
+serde_path_to_error = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["sync"] }
+[dev-dependencies]
+rivium-test.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
