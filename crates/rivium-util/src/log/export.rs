@@ -125,7 +125,7 @@ impl Exporter {
                 }));
                 if outcome.is_err() {
                     let path = {
-                        let mut state = control.state.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut state = super::lock(&control.state);
                         state.closed = true;
                         state
                             .failure
@@ -145,7 +145,7 @@ impl Exporter {
                     let _ = gate.recv();
                 }
                 drop(directory);
-                control.state.lock().unwrap_or_else(|e| e.into_inner()).done = true;
+                super::lock(&control.state).done = true;
                 control.changed.notify_all();
             })
             .map_err(files::io_error)?;
@@ -178,7 +178,7 @@ impl Exporter {
         {
             return Err(Error::invalid("unknown or excessive export sinks"));
         }
-        let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = super::lock(&self.0.state);
         if state.closed {
             return Err(Error::new(
                 rivium::error::kinds::CONFLICT,
@@ -215,10 +215,7 @@ impl Exporter {
     }
     /// Inspect the current job. Old/replaced IDs return not found.
     pub fn progress(&self, id: ExportId) -> Result<ExportState> {
-        self.0
-            .state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        super::lock(&self.0.state)
             .job
             .as_ref()
             .filter(|j| j.id == id)
@@ -238,7 +235,7 @@ impl Exporter {
     /// Cancel a job. A ready archive is removed before this method returns;
     /// running jobs check cancellation between fixed-size read/write chunks.
     pub fn cancel(&self, id: ExportId) {
-        let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = super::lock(&self.0.state);
         let ready = if let Some(job) = state.job.as_mut().filter(|j| j.id == id) {
             job.cancel = true;
             matches!(job.state, ExportState::Ready(_))
@@ -262,7 +259,7 @@ impl Exporter {
     }
     /// Permanently close admission and signal cancellation without waiting.
     pub fn close(&self) {
-        let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = super::lock(&self.0.state);
         state.closed = true;
         if let Some(job) = state.job.as_mut() {
             job.cancel = true;
@@ -271,10 +268,10 @@ impl Exporter {
         self.0.changed.notify_all();
     }
     pub(super) fn pending(&self) -> usize {
-        usize::from(!self.0.state.lock().unwrap_or_else(|e| e.into_inner()).done)
+        usize::from(!super::lock(&self.0.state).done)
     }
     pub(super) fn wait_closed(&self, until: Instant) -> Result<()> {
-        let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = super::lock(&self.0.state);
         while !state.done {
             let left = until.saturating_duration_since(Instant::now());
             if left.is_zero() {
@@ -312,7 +309,7 @@ fn run_export(
 ) {
     loop {
         let work = {
-            let mut state = control.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = super::lock(&control.state);
             loop {
                 let closed = state.closed;
                 if let Some(job) = state.job.as_mut() {
@@ -360,7 +357,7 @@ fn run_export(
             Work::Exit => break,
             Work::Remove(id, path, expired) => {
                 let result = remove_archive(&path);
-                let mut state = control.state.lock().unwrap_or_else(|e| e.into_inner());
+                let mut state = super::lock(&control.state);
                 if let Err(error) = &result {
                     state
                         .failure
@@ -394,7 +391,7 @@ fn run_export(
                 } else {
                     Ok(())
                 };
-                let mut state = control.state.lock().unwrap_or_else(|e| e.into_inner());
+                let mut state = super::lock(&control.state);
                 if let Err(error) = &cleanup {
                     state
                         .failure
@@ -434,7 +431,7 @@ fn remove_archive(path: &std::path::Path) -> io::Result<()> {
     }
 }
 fn cancelled(control: &Control, id: ExportId) -> io::Result<()> {
-    let state = control.state.lock().unwrap_or_else(|e| e.into_inner());
+    let state = super::lock(&control.state);
     if state.closed || state.job.as_ref().is_none_or(|j| j.id != id || j.cancel) {
         Err(io::Error::new(
             io::ErrorKind::Interrupted,
@@ -487,7 +484,7 @@ fn pack(
     cancelled(control, id)?;
     // Keep source files linked and immutable while packing: unlinking a file
     // still held by the exporter would hide its disk usage from the ledger.
-    let _directory_guard = directory.io.lock().unwrap_or_else(|e| e.into_inner());
+    let _directory_guard = super::lock(&directory.io);
     cancelled(control, id)?;
     let inputs = {
         let entries = files::owned_files(&directory.path, &control.sinks)?;

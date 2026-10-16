@@ -133,7 +133,7 @@ impl Worker {
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     loop {
                         let (event, flush, serial, closing) = {
-                            let mut queue = control.queue.lock().unwrap_or_else(|e| e.into_inner());
+                            let mut queue = super::lock(&control.queue);
                             while queue.events.is_empty()
                                 && !queue.closed
                                 && queue.flush_done == queue.flush_serial
@@ -154,10 +154,10 @@ impl Worker {
                         };
                         if let Some(event) = event {
                             let result = {
-                                let _guard = directory.io.lock().unwrap_or_else(|e| e.into_inner());
+                                let _guard = super::lock(&directory.io);
                                 files.write(&directory.path, event)
                             };
-                            let mut queue = control.queue.lock().unwrap_or_else(|e| e.into_inner());
+                            let mut queue = super::lock(&control.queue);
                             queue.completed += 1;
                             if let Err(error) = result {
                                 control.failures.fetch_add(1, Ordering::Relaxed);
@@ -176,10 +176,10 @@ impl Worker {
                                 let _ = gate.recv();
                             }
                             let result = {
-                                let _guard = directory.io.lock().unwrap_or_else(|e| e.into_inner());
+                                let _guard = super::lock(&directory.io);
                                 files.flush(&directory.path)
                             };
-                            let mut queue = control.queue.lock().unwrap_or_else(|e| e.into_inner());
+                            let mut queue = super::lock(&control.queue);
                             if let Err(error) = result {
                                 control.failures.fetch_add(1, Ordering::Relaxed);
                                 FAILURES.fetch_add(1, Ordering::Relaxed);
@@ -200,7 +200,7 @@ impl Worker {
                 if outcome.is_err() {
                     control.failures.fetch_add(1, Ordering::Relaxed);
                     FAILURES.fetch_add(1, Ordering::Relaxed);
-                    let mut queue = control.queue.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut queue = super::lock(&control.queue);
                     queue.closed = true;
                     queue
                         .failure
@@ -211,7 +211,7 @@ impl Worker {
                 drop(outcome);
                 drop(files);
                 drop(directory);
-                let mut queue = control.queue.lock().unwrap_or_else(|e| e.into_inner());
+                let mut queue = super::lock(&control.queue);
                 queue.done = true;
                 drop(queue);
                 control.changed.notify_all();
@@ -227,7 +227,7 @@ impl Worker {
         release
     }
     pub(super) fn push(&self, sink: usize, data: Vec<u8>) {
-        let mut queue = self.0.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let mut queue = super::lock(&self.0.queue);
         if queue.closed {
             return;
         }
@@ -245,7 +245,7 @@ impl Worker {
         self.0.oversized.fetch_add(1, Ordering::Relaxed);
     }
     pub(super) fn stats(&self) -> LogStats {
-        let queue = self.0.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let queue = super::lock(&self.0.queue);
         LogStats {
             queued_events: queue.events.len(),
             queued_bytes: queue.bytes,
@@ -255,21 +255,13 @@ impl Worker {
         }
     }
     pub(super) fn closed(&self) -> bool {
-        self.0
-            .queue
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .closed
+        super::lock(&self.0.queue).closed
     }
     pub(super) fn pending(&self) -> usize {
-        usize::from(!self.0.queue.lock().unwrap_or_else(|e| e.into_inner()).done)
+        usize::from(!super::lock(&self.0.queue).done)
     }
     pub(super) fn request_close(&self) {
-        self.0
-            .queue
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .closed = true;
+        super::lock(&self.0.queue).closed = true;
         self.0.changed.notify_all();
     }
     pub(super) fn wait_closed(&self, until: Instant) -> Result<()> {
@@ -280,7 +272,7 @@ impl Worker {
             .checked_add(within)
             .unwrap_or_else(Instant::now);
         let serial = {
-            let mut queue = self.0.queue.lock().unwrap_or_else(|e| e.into_inner());
+            let mut queue = super::lock(&self.0.queue);
             queue.flush_serial += 1;
             queue.flush_requested = queue.accepted;
             queue.flush_serial
@@ -289,7 +281,7 @@ impl Worker {
         self.wait(until, Some(serial))
     }
     fn wait(&self, until: Instant, serial: Option<u64>) -> Result<()> {
-        let mut queue = self.0.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let mut queue = super::lock(&self.0.queue);
         loop {
             if queue.done || serial.is_some_and(|s| queue.flush_done >= s) {
                 return queue.failure.as_deref().map_or(Ok(()), |e| Err(failure(e)));

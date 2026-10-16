@@ -15,11 +15,17 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 use tracing::Dispatch;
 use tracing_subscriber::{Layer, Registry, filter::EnvFilter, layer::SubscriberExt, reload};
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Output settings. Only filters are live reloadable.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

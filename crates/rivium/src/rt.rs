@@ -9,7 +9,7 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -21,6 +21,12 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument::WithSubscriber};
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Maximum accepted service roots and children per supervisor.
 pub const TASK_CAPACITY: usize = 4096;
@@ -190,11 +196,11 @@ impl Shared {
         self.wake.notify_waiters();
     }
     fn phase(&self) -> Phase {
-        self.status.lock().unwrap_or_else(|p| p.into_inner()).phase
+        lock(&self.status).phase
     }
     fn set_phase(&self, phase: Phase) {
         let changed = {
-            let mut state = self.status.lock().unwrap_or_else(|p| p.into_inner());
+            let mut state = lock(&self.status);
             let changed = state.phase != phase;
             state.phase = phase;
             changed
@@ -205,11 +211,7 @@ impl Shared {
         }
     }
     fn close_scopes(&self, cancel: bool) {
-        let scopes = self
-            .scopes
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone();
+        let scopes = lock(&self.scopes).clone();
         for scope in scopes {
             if cancel {
                 scope.cancel();
@@ -220,10 +222,7 @@ impl Shared {
     }
     fn active(&self) -> usize {
         self.roots.active_tasks()
-            + self
-                .scopes
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
+            + lock(&self.scopes)
                 .iter()
                 .map(TaskScope::active_tasks)
                 .sum::<usize>()
@@ -231,13 +230,7 @@ impl Shared {
     fn drain_state(&self) -> Drain {
         // Observe permanent closure before counts: otherwise an intervening final admission
         // could make a previously observed zero look drained after the scope closes.
-        let closed = self.roots.is_closed()
-            && self
-                .scopes
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .iter()
-                .all(TaskScope::is_closed);
+        let closed = self.roots.is_closed() && lock(&self.scopes).iter().all(TaskScope::is_closed);
         let active = self.active();
         if closed && active == 0 {
             Drain::Complete
@@ -261,7 +254,7 @@ impl Readiness {
     }
     /// Ready only while running, healthy, and without a queued stop/restart.
     pub fn is_ready(&self) -> bool {
-        let state = self.shared.status.lock().unwrap_or_else(|p| p.into_inner());
+        let state = lock(&self.shared.status);
         state.phase == Phase::Running
             && state.first_stop.is_none()
             && state.restart.is_none()
@@ -316,7 +309,7 @@ impl HealthRegistry {
             return Err(Error::invalid("health name must contain 1..=128 bytes"));
         }
         {
-            let mut state = self.shared.status.lock().unwrap_or_else(|p| p.into_inner());
+            let mut state = lock(&self.shared.status);
             if state.phase != Phase::Starting || state.health.contains_key(&name) {
                 return Err(Error::new(
                     kinds::CONFLICT,
@@ -339,12 +332,7 @@ impl HealthRegistry {
     }
     /// Snapshot the fixed checks in deterministic name order.
     pub fn snapshot(&self) -> BTreeMap<String, Health> {
-        self.shared
-            .status
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .health
-            .clone()
+        lock(&self.shared.status).health.clone()
     }
 }
 /// Update handle for one registered health check.
@@ -356,22 +344,14 @@ pub struct HealthHandle {
 impl HealthHandle {
     /// Replace the check's state and wake readiness observers.
     pub fn set(&self, health: Health) {
-        self.shared
-            .status
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        lock(&self.shared.status)
             .health
             .insert(self.name.clone(), health);
         self.shared.signal();
     }
     /// Read the check's last state.
     pub fn get(&self) -> Health {
-        self.shared
-            .status
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .health[&self.name]
-            .clone()
+        lock(&self.shared.status).health[&self.name].clone()
     }
 }
 /// Bounded stop/restart mailbox for one run.
@@ -383,7 +363,7 @@ impl Control {
     /// First request starts shutdown; a second forces abort. Later requests coalesce.
     pub fn stop(&self, reason: StopReason) {
         {
-            let mut state = self.shared.status.lock().unwrap_or_else(|p| p.into_inner());
+            let mut state = lock(&self.shared.status);
             if state.phase == Phase::Stopped {
                 return;
             }
@@ -417,7 +397,7 @@ impl Control {
             reason.truncate(end);
         }
         {
-            let mut state = self.shared.status.lock().unwrap_or_else(|p| p.into_inner());
+            let mut state = lock(&self.shared.status);
             if state.phase == Phase::Stopped
                 || state.restart.is_some()
                 || state.first_stop.is_some()
@@ -449,11 +429,7 @@ impl Stop {
     }
     /// The one shared shutdown deadline, absent before a stop request/failure.
     pub fn deadline(&self) -> Option<Instant> {
-        self.shared
-            .status
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .deadline
+        lock(&self.shared.status).deadline
     }
     /// Clone the cooperative cancellation token.
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -475,7 +451,7 @@ struct Permit {
 }
 impl Drop for Permit {
     fn drop(&mut self) {
-        let mut state = self.owner.state.lock().unwrap_or_else(|p| p.into_inner());
+        let mut state = lock(&self.owner.state);
         state.active -= 1;
         if let Some(key) = &self.key {
             state.children.remove(key);
@@ -584,11 +560,7 @@ impl Context {
             mpsc::error::TrySendError::Closed(_) => SubmitError::Closed,
         })?;
         let (permit, reservation) = {
-            let mut state = self
-                .admission
-                .state
-                .lock()
-                .unwrap_or_else(|p| p.into_inner());
+            let mut state = lock(&self.admission.state);
             if state.children.contains(&(self.index, name.clone())) {
                 return Err(SubmitError::DuplicateName);
             }
@@ -742,11 +714,7 @@ impl Supervisor {
         Ok(prepared)
     }
     fn launch(&mut self, services: Vec<PreparedService>) {
-        self.admission
-            .state
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .active = services.len();
+        lock(&self.admission.state).active = services.len();
         for (
             index,
             PreparedService {
@@ -758,11 +726,7 @@ impl Supervisor {
         {
             let ready = Arc::new(AtomicBool::new(false));
             let scope = TaskScope::with_notify(self.shared.wake.clone());
-            self.shared
-                .scopes
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .push(scope.clone());
+            lock(&self.shared.scopes).push(scope.clone());
             let context = Context {
                 index,
                 name: name.clone().into(),
@@ -864,7 +828,7 @@ impl Supervisor {
     }
     fn begin_stop(&self, kind: Option<Kind>) {
         {
-            let mut state = self.shared.status.lock().unwrap_or_else(|p| p.into_inner());
+            let mut state = lock(&self.shared.status);
             if state.deadline.is_none() {
                 let now = Instant::now();
                 state.deadline = Some(now.checked_add(self.shared.grace).unwrap_or(now));
@@ -954,7 +918,7 @@ impl Supervisor {
                 self.shared.set_phase(Phase::Running);
             }
             let (first, second, restart, deadline) = {
-                let state = self.shared.status.lock().unwrap_or_else(|p| p.into_inner());
+                let state = lock(&self.shared.status);
                 (
                     state.first_stop,
                     state.second_stop,
@@ -1021,11 +985,7 @@ impl Supervisor {
             }
             let timer = abort_deadline.or_else(|| {
                 if outcome.is_some() {
-                    self.shared
-                        .status
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .deadline
+                    lock(&self.shared.status).deadline
                 } else if self.shared.phase() == Phase::Starting {
                     Some(startup_deadline)
                 } else {
@@ -1127,11 +1087,7 @@ impl Drop for Supervisor {
         self.tasks.abort_all();
         if std::thread::panicking() {
             // A failing subscriber must not be invoked again during unwinding.
-            self.shared
-                .status
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .phase = Phase::Stopped;
+            lock(&self.shared.status).phase = Phase::Stopped;
             self.shared.signal();
         } else {
             self.shared.set_phase(Phase::Stopped);
