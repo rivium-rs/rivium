@@ -8,3 +8,6 @@ pub mod fs;
 #[cfg(feature = "log")]
 #[cfg_attr(docsrs, doc(cfg(feature = "log")))]
 pub mod log;
+#[cfg(feature = "task")]
+#[cfg_attr(docsrs, doc(cfg(feature = "task")))]
+pub mod task;
