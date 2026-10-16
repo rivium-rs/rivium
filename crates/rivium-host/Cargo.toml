@@ -1,0 +1,27 @@
+[package]
+name = "rivium-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Process and embedded hosts for supervised Rivium applications"
+include = ["/src/**", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+[features]
+default = []
+process = ["tokio/signal"]
+embedded = []
+log-export = ["rivium-util/log-export"]
+full = ["process", "embedded", "log-export"]
+[dependencies]
+rivium = { workspace = true, features = ["rt"] }
+rivium-util = { workspace = true, features = ["config", "log"] }
+serde = { workspace = true, features = ["std", "derive"] }
+toml = { workspace = true, features = ["std", "serde", "parse", "display"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macros"] }
+tracing = { workspace = true, features = ["std"] }
+[dev-dependencies]
+rivium-test.workspace = true
+tracing-subscriber = { workspace = true, features = ["std", "registry"] }
+[lints]
+workspace = true
