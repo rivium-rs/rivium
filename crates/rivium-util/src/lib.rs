@@ -5,3 +5,6 @@
 #[cfg_attr(docsrs, doc(cfg(feature = "config")))]
 pub mod config;
 pub mod fs;
+#[cfg(feature = "log")]
+#[cfg_attr(docsrs, doc(cfg(feature = "log")))]
+pub mod log;
