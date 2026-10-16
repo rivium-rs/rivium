@@ -1,0 +1,35 @@
+name: loom
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A reusable workflow inherits its caller name. Keep a distinct prefix and isolate previews.
+  group: loom-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  model-check:
+    name: loom/model-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --component rustfmt && rustup default stable
+      - run: cargo fmt --manifest-path tests-loom/Cargo.toml -- --check
+      - name: Model-check scope admission and resource release
+        env:
+          RUSTFLAGS: --cfg rivium_scope_model
+          CARGO_TARGET_DIR: target/loom
+        run: cargo test --manifest-path tests-loom/Cargo.toml --locked

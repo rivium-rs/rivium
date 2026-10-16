@@ -26,10 +26,10 @@ fi
 mkdir -p "$1"
 out=$(cd "$1" && pwd)
 cargo metadata --no-deps --format-version 1 --locked > "$out/metadata.json"
-expected='["rivium","rivium-error","rivium-http","rivium-jni","rivium-test"]'
+expected='["rivium","rivium-host","rivium-http","rivium-jni","rivium-test","rivium-util"]'
 jq -e --argjson expected "$expected" '[.packages[] | select(.publish != [])] |
   (map(.name) | sort) == $expected and (map(.version) | unique | length) == 1' "$out/metadata.json" >/dev/null \
-  || fail 'expected exactly the five public crates at one version'
+  || fail 'expected exactly the six public crates at one version'
 version=$(jq -r '.packages[] | select(.name == "rivium") | .version' "$out/metadata.json")
 valid_version() { [[ "$1" =~ ^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]]; }
 valid_version "$version" || fail 'only stable X.Y.Z versions are supported'

@@ -1,14 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/rivium",
-    "crates/rivium-util",
-    "crates/rivium-host",
-    "crates/rivium-http",
-    "crates/rivium-jni",
-    "crates/rivium-test",
+    "crates/rivium", "crates/rivium-util", "crates/rivium-host",
+    "crates/rivium-http", "crates/rivium-jni", "crates/rivium-test",
+    "tests-build", "tests-integration", "tests-integration/test-app",
+    "tests-integration/jni", "examples", "benches",
 ]
-exclude = ["benches", "crates/rivium-error", "examples", "test-app", "test-app/jni", "tests-build", "tests-integration", "tests-integration/jni", "tests-integration/test-app", "tests-loom"]
+exclude = ["tests-loom"]
 
 [workspace.package]
 version = "0.2.0"

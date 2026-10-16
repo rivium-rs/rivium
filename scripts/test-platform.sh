@@ -13,7 +13,7 @@ esac
 [ -z "${RUSTFLAGS:-}${CARGO_ENCODED_RUSTFLAGS:-}" ] || fail 'RUSTFLAGS must be unset; this script owns the target flags'
 runner_name="CARGO_TARGET_$(tr '[:lower:]-' '[:upper:]_' <<< "$target")_RUNNER"
 [ -n "${!runner_name:-}" ] || fail "$runner_name must select the target runner"
-# Match the whitespace-separated runner convention used by rivium-test::process::command.
+# Match the whitespace-separated runner convention used by tests_integration::command.
 read -r -a runner <<< "${!runner_name}"
 command -v "${runner[0]}" >/dev/null || fail "runner not found: ${runner[0]}"
 command -v timeout >/dev/null || fail 'GNU timeout is required'
@@ -23,7 +23,7 @@ else
   # Wine's fixme messages otherwise interleave with Rust's test result lines.
   export WINEDEBUG=-all
 fi
-export RUST_TEST_THREADS=1 CARGO_TERM_COLOR=never
+export RUST_TEST_THREADS=1 CARGO_TERM_COLOR=never CARGO_BUILD_TARGET="$target"
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 out="$root/target/platform"
@@ -33,14 +33,14 @@ rm -f "$logs/build.log" "$logs/library.log" "$logs/process.log"
 common=(--target "$target" --target-dir "$out" --locked)
 
 # Build before testing, with the same target/profile/flags as the process tests.
-timeout --kill-after=10s 900s cargo build -p test-app --bins -p test-jni --lib "${common[@]}" \
+timeout --kill-after=10s 900s cargo build -p tests-integration --bins -p test-jni --lib "${common[@]}" \
   < /dev/null 2>&1 | tee "$logs/build.log"
-if [ ! -s "$out/$target/debug/host$suffix" ] || [ ! -s "$out/$target/debug/$library" ]; then
+if [ ! -s "$out/$target/debug/test-host$suffix" ] || [ ! -s "$out/$target/debug/$library" ]; then
   fail 'application or JNI library was not built'
 fi
 
 # Avoid selecting JNI Invocation or tests-build: a target emulator is not a JDK/Cargo host.
-timeout --kill-after=10s 900s cargo test -p rivium -p rivium-error -p rivium-http -p rivium-test \
+timeout --kill-after=10s 900s cargo test -p rivium -p rivium-util -p rivium-host -p rivium-http -p rivium-test \
   --lib --tests --all-features "${common[@]}" -- --test-threads=1 --color never \
   < /dev/null 2>&1 | tee "$logs/library.log"
 timeout --kill-after=10s 900s cargo test -p tests-integration --lib --tests "${common[@]}" \
@@ -54,9 +54,17 @@ for group in library process; do
   } END {if (!summaries || !passed) exit 1}' "$logs/$group.log" || fail "$group tests did not complete"
   awk '/^test .* \.\.\. ignored/ {print $2}' "$logs/$group.log" | LC_ALL=C sort > "$logs/$group.ignored"
   : > "$logs/$group.expected"
+  if [ "$group" = library ]; then
+    # Sustained stress is opt-in; the short concurrent smoke test still runs here.
+    printf '%s\n' concurrent_lifecycle_stress surviving_descendants_restart_stress \
+      | LC_ALL=C sort > "$logs/$group.expected"
+  fi
+  if [ "$mode:$group" = qemu:library ]; then
+    printf '%s\n' process_handles_first_second_signals_and_shared_deadline stop_during_restart_backoff_exits_successfully_without_another_generation >> "$logs/$group.expected"
+    LC_ALL=C sort -o "$logs/$group.expected" "$logs/$group.expected"
+  fi
   if [ "$mode:$group" = qemu:process ]; then
-    printf '%s\n' a_second_signal_aborts_with_its_own_number host_deadline_exits_124 \
-      sigint_stops_with_0 sigquit_terminates_by_signal_not_exit_code sigterm_stops_with_0_and_flushes_the_log \
+    printf '%s\n' process_signals_and_deadline normal_sigterm_flushes_the_final_run_record_before_process_exit sigquit_retains_default_signal_termination \
       | LC_ALL=C sort > "$logs/$group.expected"
   fi
   cmp -s "$logs/$group.expected" "$logs/$group.ignored" || fail "unexpected $group ignored tests"
@@ -66,10 +74,7 @@ for group in library process; do
 done
 
 # These contracts launch target child processes, not just the top-level test runner.
-for name in tests::roots_are_isolated_and_removed host_fault_build_exits_69 host_fault_ready_exits_69 \
-  host_fault_run_exits_70 a_log_directory_that_cannot_be_created_exits_73 \
-  version_and_help_exit_0_without_starting_or_writing_files unknown_arguments_exit_64_without_starting \
-  invalid_configuration_exits_78_without_starting configuration_commands_are_read_only; do
+for name in embedded_repeated_start_stop embedded_startup_failures stop_during_start_returns_that_runs_result config_commands_are_read_only process_errors_have_stable_codes; do
   grep -Fxq "test $name ... ok" "$logs/process.log" || fail "required process contract did not pass: $name"
 done
 echo "platform: $target library and child-process contracts passed; $mode exclusions checked"

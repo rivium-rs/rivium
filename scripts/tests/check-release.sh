@@ -16,10 +16,10 @@ cat > "$work/bin/cargo" <<'CARGO'
 set -euo pipefail
 [ "$*" = 'metadata --no-deps --format-version 1 --locked' ] || exit 91
 jq -nc --arg v "${VERSION:-0.1.1}" --arg plant "${PLANT:-}" '{packages:
-  (["rivium","rivium-error","rivium-http","rivium-jni","rivium-test"] | map({name:.,version:$v,publish:null,dependencies:[]}))} |
+  (["rivium","rivium-host","rivium-http","rivium-jni","rivium-test","rivium-util"] | map({name:.,version:$v,publish:null,dependencies:[]}))} |
   if $plant == "private-publish" then .packages += [{name:"test-app",version:$v,publish:null,dependencies:[]}]
   elif $plant == "mixed-versions" then .packages[1].version = "0.2.0"
-  elif $plant == "wrong-dependency" then .packages[0].dependencies = [{name:"rivium-error",kind:null,req:"^9.0.0"}]
+  elif $plant == "wrong-dependency" then .packages[0].dependencies = [{name:"rivium-util",kind:null,req:"^9.0.0"}]
   elif $plant == "private-dependency" then .packages[0].dependencies = [{name:"test-app",kind:null,path:"../test-app",req:"^0.0.0"}]
   else . end'
 CARGO
@@ -100,7 +100,7 @@ for protection in '{}' '{"protection_rules":[]}' '{"protection_rules":[{"type":"
   printf '%s\n' "$protection" > "$work/environment.json"
   reject 'no required reviewer' "$check" environment "$work/environment.json"
 done
-PLANT=private-publish reject 'exactly the five public crates' "$check" preview "$work/bad"
+PLANT=private-publish reject 'exactly the six public crates' "$check" preview "$work/bad"
 PLANT=mixed-versions reject 'one version' "$check" preview "$work/bad"
 PLANT=wrong-dependency reject 'dependency versions' "$check" preview "$work/bad"
 PLANT=private-dependency reject 'outside the public workspace' "$check" preview "$work/bad"
@@ -136,7 +136,7 @@ HTTP_STATUS=500 reject 'HTTP 500' "$repo/scripts/release-registry.sh" absent 0.1
 PLANT=transport reject 'planted transport failure' "$repo/scripts/release-registry.sh" absent 0.1.1
 
 # Real tiny tarballs test package membership, extraction boundaries, privacy and checksums.
-for name in rivium-error rivium rivium-http rivium-jni rivium-test; do
+for name in rivium rivium-util rivium-host rivium-http rivium-jni rivium-test; do
   dir="$work/src/$name-0.1.1"
   mkdir -p "$dir/src"
   printf '[package]\nname="%s"\nversion="0.1.1"\n' "$name" > "$dir/Cargo.toml"
@@ -180,7 +180,7 @@ reject 'duplicate archive path' "$pack" scan "$work/packages" "$work/release" "$
 
 # The privileged path must remain tag-only; all validation is required and file-based.
 workflow="$root/.github/workflows/release.yml"
-grep -Fq 'needs: [check, semver, public, ci, daily]' "$workflow"
+grep -Fq 'needs: [check, semver, public, ci, daily, loom]' "$workflow"
 awk '/^  publish:$/ {inside=1; next} inside && /^  [^ ]/ {exit} inside {print}' "$workflow" > "$work/publish-job"
 grep -Fq 'needs: [check, ready]' "$work/publish-job"
 [ "$(grep -c 'id-token: write' "$workflow")" -eq 1 ]

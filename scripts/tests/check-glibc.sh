@@ -96,13 +96,13 @@ emit() {
       executable:(if $kind == "cdylib" then null else $file end)}'
 }
 if [[ " $* " == *' --package '* ]]; then
-  emit host "$out/host" bin false test-app
+  emit test-host "$out/test-host" bin false tests-integration
 else
   if [ "${BUILD_CASE:-}" != missing-jni ]; then
     emit test_jni "$out/libtest_jni.so" cdylib false test-jni
   fi
-  for name in process signal_term signal_int signal_quit signal_second invocation consumers; do
-    if [ "${BUILD_CASE:-}" = missing-signal ] && [ "$name" = signal_second ]; then continue; fi
+  for name in hosts lifecycle config log log_export export_compat fs task contract server vocabulary files invocation consumers; do
+    if [ "${BUILD_CASE:-}" = missing-signal ] && [ "$name" = task ]; then continue; fi
     package=tests-integration
     [ "$name" != consumers ] || package=tests-build
     emit "$name" "$out/deps/$name-abcd" test true "$package"
@@ -114,7 +114,7 @@ chmod +x "$work/bin/cargo"
 export PATH="$work/bin:$PATH"
 build="$work/repo/scripts/glibc.sh"
 "$build" build > "$work/log" 2>&1 || { cat "$work/log" >&2; exit 1; }
-[ "$(wc -l < "$work/repo/target/glibc/runtime-tests.txt" | tr -d ' ')" -eq 5 ]
+[ "$(wc -l < "$work/repo/target/glibc/runtime-tests.txt" | tr -d ' ')" -eq 12 ]
 for case in failed incomplete empty missing-jni missing-signal; do
   if BUILD_CASE=$case "$build" build > "$work/log" 2>&1; then
     echo "glibc accepted build case: $case" >&2; exit 1

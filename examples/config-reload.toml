@@ -1,0 +1,4 @@
+message = "Hello from Rivium"
+interval_ms = 1000
+# Copied when the service starts; changes require a restart.
+prefix = "[demo]"

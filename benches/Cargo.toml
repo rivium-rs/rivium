@@ -1,0 +1,29 @@
+[package]
+name = "rivium-benches"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+autobenches = false
+
+[dev-dependencies]
+rivium = { workspace = true, features = ["task"] }
+rivium-util = { workspace = true, features = ["task", "log-export"] }
+rivium-test.workspace = true
+flate2 = { workspace = true, features = ["rust_backend"] }
+tracing = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+[[bench]]
+name = "task_lifecycle"
+path = "task_lifecycle.rs"
+harness = false
+
+[[bench]]
+name = "log_directory"
+path = "log_directory.rs"
+harness = false
+
+[lints]
+workspace = true

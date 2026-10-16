@@ -43,10 +43,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo deny --locked check
       - name: Check library code budgets
-        run: cargo test --package tests-build --test loc_budget --locked
+        run: cargo test --package tests-build --locked
       - name: Lint the scripts and run their self-tests (planted violations)
         run: |
-          shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh crates/rivium-jni/tests/jvm/run.sh
+          shellcheck scripts/*.sh scripts/hooks/* scripts/tests/*.sh scripts/test-jvm.sh
           scripts/tests/check-public.sh
           scripts/tests/check-commit-msg.sh
           scripts/tests/check-jvm.sh
@@ -89,11 +89,25 @@ jobs:
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-nextest@0.9.145,tokei@14.0.0
-      - run: cargo build --package test-app --bins --locked
-      - run: cargo test --workspace --locked
-      - name: Run isolated process and JVM tests without retries
+      - run: cargo build --package rivium-examples --examples --locked
+      - run: cargo build --package tests-integration --bin test-host --locked
+      - run: cargo test --workspace --all-features --locked
+      - name: Test individual library capabilities
+        shell: bash
+        run: |
+          cargo test -p rivium --no-default-features --features task --locked
+          cargo test -p rivium --no-default-features --features rt --locked
+          cargo test -p rivium-util --no-default-features --locked
+          for feature in config log log-export task; do
+            cargo test -p rivium-util --no-default-features --features "$feature" --locked
+          done
+          cargo test -p rivium-http --no-default-features --locked
+          for feature in contract server fs; do
+            cargo test -p rivium-http --no-default-features --features "$feature" --locked
+          done
+      - name: Run isolated process tests without retries
         # Each test starts a full host or JVM; avoid competing runtimes on small runners.
-        run: cargo nextest run --package tests-integration --package rivium-jni --profile ci --test-threads=1 --retries 0 --locked
+        run: cargo nextest run --package tests-integration --profile ci --test-threads=1 --retries 0 --locked
 
   msrv:
     name: ci/msrv
@@ -108,7 +122,8 @@ jobs:
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: tokei@14.0.0
-      - run: cargo +1.92 build --package test-app --bins --all-features --locked
+      - run: cargo +1.92 build --package rivium-examples --examples --locked
+      - run: cargo +1.92 build --package tests-integration --bin test-host --all-features --locked
       - run: cargo +1.92 test --workspace --all-features --locked
 
   jvm:
@@ -129,7 +144,7 @@ jobs:
           RUSTFLAGS: --cfg rivium_jni_fault
         run: cargo build --package test-jni --lib --target-dir target/jvm-fault --locked
       - name: Check loading, signature rejection and panic containment
-        run: timeout --kill-after=5s 120s crates/rivium-jni/tests/jvm/run.sh target/jvm-normal/debug test_jni rivium/tests target/jvm-fault/debug
+        run: timeout --kill-after=5s 120s scripts/test-jvm.sh target/jvm-normal/debug target/jvm-fault/debug
 
   zigbuild:
     name: ci/zigbuild

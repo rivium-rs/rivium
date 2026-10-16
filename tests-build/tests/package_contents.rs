@@ -4,12 +4,14 @@
 fn packages_contain_only_their_declared_public_files() {
     for name in [
         "rivium",
-        "rivium-error",
+        "rivium-util",
+        "rivium-host",
         "rivium-http",
         "rivium-jni",
         "rivium-test",
     ] {
-        let output = tests_build::cargo("package")
+        let output = std::process::Command::new(env!("CARGO"))
+            .arg("package")
             .args(["--package", name, "--list", "--allow-dirty"])
             .output()
             .expect("list a library package");

@@ -16,7 +16,7 @@ if [ "$1" = build ]; then
   mkdir -p "$out"
   # Removing only our previous inventories prevents a failed build leaving runnable stale evidence.
   rm -f "$out/artifacts.txt" "$out/runtime-tests.txt"
-  cargo zigbuild --package test-app --bins --all-features --locked \
+  cargo zigbuild --package tests-integration --bins --all-features --locked \
     --target "$triple.2.17" --target-dir "$out" --message-format=json-render-diagnostics > "$out/bins.jsonl"
   # zigbuild wraps cargo build: --tests links test executables without running them (no --no-run).
   cargo zigbuild --workspace --all-features --lib --tests --locked \
@@ -56,11 +56,11 @@ for inventory in artifacts runtime-tests; do
   done < "$out/$inventory.txt"
 done
 # Nonempty inventories alone must not let a trivial, unrelated ELF stand in for Rivium's subjects.
-for subject in host libtest_jni.so; do
+for subject in test-host libtest_jni.so; do
   grep -Fxq "$out/$triple/debug/$subject" "$out/artifacts.txt" \
     || { echo "glibc: missing required subject: $subject" >&2; exit 1; }
 done
-for name in process signal_term signal_int signal_quit signal_second; do
+for name in hosts lifecycle config log log_export export_compat fs task contract server vocabulary files; do
   grep -Eq "/deps/$name-[a-f0-9]+$" "$out/runtime-tests.txt" \
     || { echo "glibc: missing required runtime test: $name" >&2; exit 1; }
 done
