@@ -125,7 +125,8 @@ Rivium targets GNU/Linux, macOS and Windows processes, and Android apps through 
 Verification differs by target and release: native tests, emulator tests and device tests are
 not interchangeable. The current Android lane checks compilation and JNI ELF properties,
 not execution on a device. Historical platform results do not establish support for this rewrite.
-The 0.2 candidate also has measured task-management performance regressions that remain open.
+The 0.2 candidate's scope and task-management regressions have been reduced; remaining
+performance acceptance work is still open.
 
 See [platform support](docs/platforms.md) for the current verification scope, known gaps and
 [version-specific verification records](docs/platforms.md#release-records).

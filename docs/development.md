@@ -53,10 +53,12 @@ require a review of implementation and validation costs. The ceiling is not a ta
 evidence of correctness, performance, or release readiness.
 
 The 2026-10-17 performance repair review adds 150 lines (0.83%) of maintenance
-allowance, bringing the ceiling to 18,150. The planner split and the regression test
-for a retry deadline crossing an awaited stop exceed the previous 17,999-line usage.
-This allowance preserves readable control flow and behavioral assertions; it does not
-change the counting scope or the P-CORE/P-TASK performance thresholds.
+allowance, bringing the ceiling to 18,150. The final implementation uses 18,132 lines,
+including the planner split, owned sorted-Vec lookup and regression coverage for retry
+deadlines crossing awaited stops, unordered input, separated duplicate keys and Send
+specifications that are not Sync. This allowance preserves readable control flow and
+behavioral assertions; it does not change the counting scope or the P-CORE/P-TASK
+performance thresholds.
 
 ## Models and sustained workloads
 
@@ -86,12 +88,16 @@ by an ordinary smoke run. Keep model cfg and build output separate from ordinary
 
 ```sh
 cargo bench -p rivium-benches --bench task_lifecycle --locked
+cargo bench -p rivium-benches --bench task_latency --locked
 cargo bench -p rivium-benches --bench log_directory --locked
 ```
 
 Run at least three samples on an otherwise idle machine after builds/stress complete.
 Record source identity, toolchain, CPU/OS, runtime flavor, workload and dirty state. Existing
-harness outputs are distributions of batch means, not request p95/p99. The directory benchmark
+lifecycle and directory harness outputs are distributions of batch means, not request p95/p99.
+The task latency harness records single-round replacement and mixed recovery-episode
+percentiles separately; see the [benchmark guide](../benches/README.md) for boundaries.
+The directory benchmark
 includes explicit flush cost and filesystem/cache noise; it does not establish device throughput.
 Use the same workload and separate target directories for old/new revision comparisons.
 

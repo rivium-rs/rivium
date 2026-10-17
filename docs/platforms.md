@@ -105,10 +105,55 @@ RSS/FD capacity targets. Publishing still requires the candidate's complete rele
 Three sequential microbenchmark processes per revision also compared this candidate with the
 earlier `aa48a03` implementation. The median batch mean for reserving/releasing 64 scope slots
 rose from 329 ns to 1,473 ns; reconciling 128 unchanged tasks on one worker rose from 4.68 µs to
-10.35 µs. The provisional performance regression target is **not met**. Logging without archives
-fell from 14.87 µs to 11.60 µs per event, and size rotation from 1.93 ms to 0.144 ms, including
+10.35 µs. That comparison did **not meet** the provisional performance regression target.
+Logging without archives fell from 14.87 µs to 11.60 µs per event, and size rotation from 1.93 ms to 0.144 ms, including
 flush. These are synthetic batch means on the same machine/toolchain, with each revision's
 reviewed lockfile; they are neither per-operation percentiles nor deployment acceptance.
+
+The **2026-10-17** performance follow-up verifies implementation `9541e28` (crates tree
+`5f5c8dce3da030d84eab3ad023bb7087dfcf58d8`). Three sequential processes per version
+compared the historical implementation, the unoptimized rewrite and the optimized rewrite.
+Scope reserve/release of 64 slots fell from 1,422.4 ns to 270.8 ns (historical: 320.5 ns),
+and unchanged reconciliation of 128 tasks on one worker fell from 10.04 µs to 2.90 µs
+(historical: 4.57 µs). Immediately-ready tracking remains 10.6% above the historical
+batch mean; single-task replacement on one worker remains 16.8% above it. **Performance
+acceptance remains open**: these are batch means, and task p99 and the deployment workload
+matrix are still unverified. 
+
+The follow-up passed workspace all-feature tests, the added native scope race, eight
+production-code Loom models, strict Clippy, formatting, minimal-task feature tests and
+Rust 1.92 checks. Task lifecycle stress completed 7,045,379 generations in 600 seconds;
+host restart stress completed 154 blocked-and-released generations in 180.61 seconds.
+Neither external watchdog fired. These checks supplement the local correctness evidence;
+they do not renew the platform matrix or complete the performance acceptance work.
+
+The second **2026-10-17** repair verifies implementation `8f976b8` (crates tree
+`cb3d3ec3dd921a51288a789d3db5ebf6063c1f28`). It removes desired-tree construction and
+redundant planning/specification comparisons. Unchanged reconciliation of 128 tasks
+now takes 0.81 µs on both runtimes, against 2.88–2.90 µs in the first repair and
+4.64–4.70 µs historically. All five standalone scope batch cases are within the
+provisional +10% trigger; production scope code is unchanged from the first repair.
+
+The new matrix measures 128/512/1024 tasks with 1 KiB specifications and 0/1/10/100%
+changes on current-thread and two-worker runtimes. Each of three independent processes
+records 10,000 samples per case after 1,000 warmups. All 24 single-reconcile replacement
+cases meet the provisional +20% historical p99 trigger; the largest median-of-process-p99
+regression is +13.9%. The 24 mixed recovery cases measure entire episodes and are
+reported separately. Two-worker single-task replacement still has a +26.5% historical
+batch-mean regression; this observation is not erased by passing the larger-N p99 matrix.
+The detailed benchmark output remains outside the published source tree.
+
+The final source passed 346 workspace tests (two opt-in stress cases excluded), strict
+Clippy, formatting, minimal-task tests, Rust 1.92 checks and eight production scope
+Loom models. The Send regression also covers Send-but-not-Sync specifications.
+The fresh 600-second release task stress passed 6,425,290 generations, 123,504,483
+resource lifecycles and 18,070,116 replacements. Host restart stress passed 154
+blocked-and-released generations in 180.876 seconds. Both commands exited 0 and neither
+external watchdog fired; these iteration counts are not throughput acceptance metrics.
+This local record does not renew native Linux/Windows or Android runtime verification,
+the Supervisor/HTTP/logging workload matrices, or deployment acceptance. The measured
+scope/task subset passes its provisional triggers; complete 0.2.0 release acceptance
+remains open.
 
 ## 0.1.1
 
