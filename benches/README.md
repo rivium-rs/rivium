@@ -179,7 +179,7 @@ response-stream owner counter for five seconds. A missed observation is retained
 `at_5s_active` is sampled when that check returns, not at an exact five-second instant.
 Additional diagnostic waiting uses a 31-second total deadline, matching the default
 30-second handler deadline plus one second of scheduling allowance. This does not
-extend the original five-second acceptance observation. CSV and stderr retain final
+extend the original five-second probe observation. CSV and stderr retain final
 cleanup duration and remaining owners; owners still present when the diagnostic wait
 returns fail the process. Runtime scheduling can delay that observation. That application
 counter is **not** the complete HTTP
@@ -236,6 +236,12 @@ Task capacity remains 1,024 with inline 1 KiB specs. Excess desired sets must re
 the precise capacity error while preserving existing tasks. Configuration loads
 exercise the 1 MiB document boundary and consistent Store revisions. Logging uses
 1/8 producers, fixed queue/disk limits, varying payload sizes and concurrent exports.
+The export limit stays at 4 MiB inside the 64 MiB total disk limit. Each batch records
+either `export_ready` or `export_budget_rejected`. Only the exact reserved-disk-budget
+error is an expected export rejection; any other failure aborts the probe. Rejected
+exports must leave no partial ZIP, and cancellation must remove successful archives.
+The smoke run first exercises the rejection and cleanup path with a 32-byte export
+limit. Export rejections remain visible and do not count as successful exports.
 The factors describe offered input batches, not a constant arrival rate or a claim
 that accepted throughput scales tenfold. `task_batch_ns` includes excess input
 construction and rejection, not just a successful reconcile call. Queue and disk

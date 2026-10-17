@@ -28,6 +28,7 @@ use rivium_util::{
 const CAPACITY: usize = 1024;
 const DOCUMENT: usize = 1024 * 1024;
 const DISK: u64 = 64 * 1024 * 1024;
+const EXPORT: u64 = 4 * 1024 * 1024;
 
 async fn worker(_: usize, _: [u8; 1024], context: Context) -> rivium::Result<()> {
     context.cancel.cancelled().await;
@@ -63,13 +64,13 @@ struct Load {
 }
 
 impl Load {
-    fn new() -> Self {
+    fn new(export_limit: u64) -> Self {
         let directory = TempDir::new().unwrap();
         let mut settings = Settings::for_app("scale");
         settings.console.filter = "off".into();
         settings.file.max_file_size = 1024 * 1024;
         settings.file.max_total_size = DISK;
-        settings.export.max_size = 4 * 1024 * 1024;
+        settings.export.max_size = export_limit;
         let logger = Logger::new("scale", directory.path(), settings, false, vec![]).unwrap();
         let scope = TaskScope::new();
         Self {
@@ -82,7 +83,7 @@ impl Load {
         }
     }
 
-    async fn tick(&mut self, factor: usize, churn: bool, tick: usize) -> [u128; 13] {
+    async fn tick(&mut self, factor: usize, churn: bool, tick: usize) -> [u128; 15] {
         let started = Instant::now();
         let count = if churn && !tick.is_multiple_of(2) {
             CAPACITY / 2
@@ -186,19 +187,50 @@ impl Load {
         let enqueue_ns = enqueue_started.elapsed().as_nanos();
         self.logger.flush(Duration::from_secs(30)).unwrap();
         let export_deadline = Instant::now() + Duration::from_secs(30);
-        loop {
+        let export_rejected = loop {
             match exporter.progress(export).unwrap() {
-                ExportState::Ready(_) => break,
+                ExportState::Ready(_) => break false,
                 ExportState::Running => {
                     assert!(Instant::now() < export_deadline, "export did not finish");
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
+                ExportState::Failed(error)
+                    if error == "i/o error: export exceeds reserved disk budget" =>
+                {
+                    assert_eq!(
+                        std::fs::read_dir(self.directory.path().join("logs/scale/exports"))
+                            .unwrap()
+                            .count(),
+                        0,
+                        "limited export left a partial archive"
+                    );
+                    break true;
+                }
                 other => panic!("export failed: {other:?}"),
             }
-        }
+        };
         let disk = disk_bytes(self.directory.path());
         assert!(disk <= DISK);
         exporter.cancel(export);
+        if export_rejected {
+            assert!(matches!(
+                exporter.progress(export).unwrap(),
+                ExportState::Failed(error)
+                    if error == "i/o error: export exceeds reserved disk budget"
+            ));
+        } else {
+            assert!(matches!(
+                exporter.progress(export).unwrap(),
+                ExportState::Cancelled
+            ));
+        }
+        assert_eq!(
+            std::fs::read_dir(self.directory.path().join("logs/scale/exports"))
+                .unwrap()
+                .count(),
+            0,
+            "export cancellation left an archive"
+        );
         let after = self.logger.stats();
         assert_eq!(after.write_failures, 0);
         assert_eq!(after.queued_events, 0);
@@ -229,6 +261,8 @@ impl Load {
             (producers * events) as u128,
             size as u128,
             text.len() as u128,
+            u128::from(!export_rejected),
+            u128::from(export_rejected),
         ]
     }
 
@@ -271,10 +305,17 @@ fn main() {
     let mut output = io::BufWriter::new(io::stdout().lock());
     writeln!(
         output,
-        "pid,elapsed_ms,round,phase,factor,tick,active,rejected,task_batch_ns,enqueue_batch_ns,queue_observed_peak,queue_bytes_observed_peak,dropped_full,oversized,disk_observed_bytes,revision,offered_events,payload_bytes,rejected_config_bytes"
+        "pid,elapsed_ms,round,phase,factor,tick,active,rejected,task_batch_ns,enqueue_batch_ns,queue_observed_peak,queue_bytes_observed_peak,dropped_full,oversized,disk_observed_bytes,revision,offered_events,payload_bytes,rejected_config_bytes,export_ready,export_budget_rejected"
     )
     .unwrap();
     runtime.block_on(async {
+        if smoke {
+            let mut bounded = Load::new(32);
+            let values = bounded.tick(1, false, 0).await;
+            assert_eq!(values[13..], [0, 1]);
+            bounded.close().await;
+            eprintln!("export_budget_rejection_selfcheck=passed limit_bytes=32");
+        }
         let mut load: Option<Load> = None;
         let mut tick = 0;
         let mut phases = Vec::new();
@@ -307,7 +348,7 @@ fn main() {
                     );
                 }
             } else if load.is_none() {
-                load = Some(Load::new());
+                load = Some(Load::new(EXPORT));
             }
             let phase_started = Instant::now();
             let deadline = phase_started + Duration::from_secs(if smoke { 1 } else { seconds });
@@ -322,7 +363,7 @@ fn main() {
                 let values = if let Some(current) = &mut load {
                     current.tick(factor, phase == "churn", tick).await
                 } else {
-                    [0; 13]
+                    [0; 15]
                 };
                 write!(
                     output,
