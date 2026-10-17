@@ -242,6 +242,11 @@ error is an expected export rejection; any other failure aborts the probe. Rejec
 exports must leave no partial ZIP, and cancellation must remove successful archives.
 The smoke run first exercises the rejection and cleanup path with a 32-byte export
 limit. Export rejections remain visible and do not count as successful exports.
+The same directory walk records `owned_log_files` for this isolated fixture's active,
+raw and gzip logs, asserting at most 8,192. `evicted_archives` is the per-batch change
+in the process eviction counter; each formal process runs only this logger. Inspect
+both fields to confirm retention was exercised. They are sampled file counts and
+archive deletions, not counts of successfully written events.
 The factors describe offered input batches, not a constant arrival rate or a claim
 that accepted throughput scales tenfold. `task_batch_ns` includes excess input
 construction and rejection, not just a successful reconcile call. Queue and disk

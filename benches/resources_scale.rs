@@ -35,23 +35,30 @@ async fn worker(_: usize, _: [u8; 1024], context: Context) -> rivium::Result<()>
     Ok(())
 }
 
-fn disk_bytes(path: &Path) -> u64 {
+fn disk_resources(path: &Path) -> (u64, usize) {
     std::fs::read_dir(path)
         .unwrap()
         .map(|entry| {
             let entry = entry.unwrap();
             let metadata = match entry.metadata() {
                 Ok(metadata) => metadata,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => return 0,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return (0, 0),
                 Err(error) => panic!("cannot inspect log resources: {error}"),
             };
             if metadata.is_dir() {
-                disk_bytes(&entry.path())
+                disk_resources(&entry.path())
             } else {
-                metadata.len()
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                (
+                    metadata.len(),
+                    usize::from(name.ends_with(".log") || name.ends_with(".log.gz")),
+                )
             }
         })
-        .sum()
+        .fold((0, 0), |(bytes, count), (size, files)| {
+            (bytes + size, count + files)
+        })
 }
 
 struct Load {
@@ -83,8 +90,9 @@ impl Load {
         }
     }
 
-    async fn tick(&mut self, factor: usize, churn: bool, tick: usize) -> [u128; 15] {
+    async fn tick(&mut self, factor: usize, churn: bool, tick: usize) -> [u128; 17] {
         let started = Instant::now();
+        let evicted_before = rivium_util::log::counters()[2];
         let count = if churn && !tick.is_multiple_of(2) {
             CAPACITY / 2
         } else {
@@ -209,8 +217,9 @@ impl Load {
                 other => panic!("export failed: {other:?}"),
             }
         };
-        let disk = disk_bytes(self.directory.path());
+        let (disk, owned_log_files) = disk_resources(self.directory.path());
         assert!(disk <= DISK);
+        assert!(owned_log_files <= 8192);
         exporter.cancel(export);
         if export_rejected {
             assert!(matches!(
@@ -263,6 +272,8 @@ impl Load {
             text.len() as u128,
             u128::from(!export_rejected),
             u128::from(export_rejected),
+            owned_log_files as u128,
+            (rivium_util::log::counters()[2] - evicted_before) as u128,
         ]
     }
 
@@ -305,14 +316,20 @@ fn main() {
     let mut output = io::BufWriter::new(io::stdout().lock());
     writeln!(
         output,
-        "pid,elapsed_ms,round,phase,factor,tick,active,rejected,task_batch_ns,enqueue_batch_ns,queue_observed_peak,queue_bytes_observed_peak,dropped_full,oversized,disk_observed_bytes,revision,offered_events,payload_bytes,rejected_config_bytes,export_ready,export_budget_rejected"
+        concat!(
+            "pid,elapsed_ms,round,phase,factor,tick,active,rejected,",
+            "task_batch_ns,enqueue_batch_ns,queue_observed_peak,queue_bytes_observed_peak,",
+            "dropped_full,oversized,disk_observed_bytes,revision,offered_events,",
+            "payload_bytes,rejected_config_bytes,export_ready,export_budget_rejected,",
+            "owned_log_files,evicted_archives"
+        )
     )
     .unwrap();
     runtime.block_on(async {
         if smoke {
             let mut bounded = Load::new(32);
             let values = bounded.tick(1, false, 0).await;
-            assert_eq!(values[13..], [0, 1]);
+            assert_eq!(values[13..15], [0, 1]);
             bounded.close().await;
             eprintln!("export_budget_rejection_selfcheck=passed limit_bytes=32");
         }
@@ -363,7 +380,7 @@ fn main() {
                 let values = if let Some(current) = &mut load {
                     current.tick(factor, phase == "churn", tick).await
                 } else {
-                    [0; 15]
+                    [0; 17]
                 };
                 write!(
                     output,
