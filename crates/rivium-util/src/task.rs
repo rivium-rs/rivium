@@ -98,14 +98,14 @@ fn observe<S>(view: &View<S>, alive: bool) -> Observation<'_, S> {
     }
 }
 
-fn scan_current<'a, K: Ord + 'a, S: Eq + 'a>(
-    desired: &BTreeMap<K, S>,
+fn scan_current<'a, 'b, K: Ord + 'a, S: Eq + 'a + 'b>(
+    desired: impl Fn(&K) -> Option<&'b S>,
     current: impl Iterator<Item = (&'a K, Observation<'a, S>)>,
     mut stop: impl FnMut(&K),
 ) -> usize {
     let mut retained = 0;
     for (key, state) in current {
-        if let Some(spec) = desired.get(key) {
+        if let Some(spec) = desired(key) {
             retained += 1;
             if spec != state.spec || state.stopping {
                 stop(key);
@@ -120,9 +120,10 @@ fn scan_current<'a, K: Ord + 'a, S: Eq + 'a>(
     retained
 }
 
-fn decide_starts<'a, K: Ord + Clone, S: Eq + 'a>(
-    desired: &BTreeMap<K, S>,
+fn decide_starts<'a, 'b, K: Clone + 'b, S: 'a + 'b>(
+    desired: impl Iterator<Item = (&'b K, &'b S)>,
     observe: impl Fn(&K) -> Option<Observation<'a, S>>,
+    requires_restart: impl Fn(&Observation<'a, S>, &S) -> bool,
     mut retained: usize,
     now: Instant,
     policy: &Policy,
@@ -131,7 +132,7 @@ fn decide_starts<'a, K: Ord + Clone, S: Eq + 'a>(
     let mut limited = Vec::new();
     for (key, spec) in desired {
         match observe(key) {
-            Some(state) if state.spec != spec || state.stopping => start.push(key.clone()),
+            Some(state) if requires_restart(&state, spec) => start.push(key.clone()),
             Some(state)
                 if !state.alive
                     && state.failures < policy.max_failures
@@ -159,15 +160,16 @@ pub fn plan<K: Ord + Clone, S: Eq>(
 ) -> Plan<K> {
     let mut stop = Vec::new();
     let retained = scan_current(
-        desired,
+        |key| desired.get(key),
         current
             .iter()
             .map(|(key, view)| (key, observe(view, view.alive))),
         |key| stop.push(key.clone()),
     );
     let (start, limited) = decide_starts(
-        desired,
+        desired.iter(),
         |key| current.get(key).map(|view| observe(view, view.alive)),
+        |state, spec| state.stopping || state.spec != spec,
         retained,
         now,
         policy,
@@ -177,6 +179,13 @@ pub fn plan<K: Ord + Clone, S: Eq>(
         start,
         limited,
     }
+}
+
+fn find_spec<'a, K: Ord, S>(desired: &'a [(K, S)], key: &K) -> Option<&'a S> {
+    desired
+        .binary_search_by(|(candidate, _)| candidate.cmp(key))
+        .ok()
+        .map(|index| &desired[index].1)
 }
 
 #[derive(Clone)]
@@ -347,9 +356,9 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
         self.entries.is_empty()
     }
 
-    fn scan_current(&self, desired: &BTreeMap<K, S>, stop: impl FnMut(&K)) -> usize {
+    fn scan_current(&self, desired: &[(K, S)], stop: impl FnMut(&K)) -> usize {
         scan_current(
-            desired,
+            |key| find_spec(desired, key),
             self.entries
                 .iter()
                 .map(|(key, entry)| (key, observe(&entry.state, entry.task.is_some()))),
@@ -357,15 +366,21 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
         )
     }
 
-    fn plan_starts(&self, desired: &BTreeMap<K, S>, now: Instant) -> (Vec<K>, Vec<K>) {
-        let retained = self.scan_current(desired, |_| {});
+    fn plan_starts(&self, desired: &[(K, S)], now: Instant) -> (Vec<K>, Vec<K>) {
+        let retained = self
+            .entries
+            .iter()
+            .filter(|(key, entry)| find_spec(desired, key).is_some() || entry.task.is_some())
+            .count();
         decide_starts(
-            desired,
+            desired.iter().map(|(key, spec)| (key, spec)),
             |key| {
                 self.entries
                     .get(key)
                     .map(|entry| observe(&entry.state, entry.task.is_some()))
             },
+            // Every spec mismatch was marked stopping before awaiting confirmation.
+            |state, _| state.stopping,
             retained,
             now,
             &self.policy,
@@ -425,24 +440,34 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             report.exits = std::mem::take(&mut self.pending_exits);
             return Ok(report);
         }
-        // Build the lookup tree only when reconciliation needs to change work.
-        let wanted = desired.into_iter().collect();
+        let wanted = desired;
         let mut stop = Vec::new();
         self.scan_current(&wanted, |key| stop.push(key.clone()));
 
         // Reserve candidates before any stop, then plan against confirmed releases.
         // Healthy unchanged keys need no new reservation.
-        let candidates: Vec<_> = wanted
-            .iter()
-            .filter(|(key, spec)| {
-                self.entries.get(*key).is_none_or(|entry| {
-                    entry.state.spec != **spec
-                        || entry.state.stopping
-                        || (entry.task.is_none() && entry.state.failures < self.policy.max_failures)
+        let candidates: Vec<_> = {
+            let mut stopping = stop.iter().peekable();
+            wanted
+                .iter()
+                .map(|(key, _)| key)
+                .filter(|key| {
+                    // Both lists are ordered; reuse the stop decision without comparing specs.
+                    while stopping
+                        .peek()
+                        .is_some_and(|stopped| (*stopped).cmp(*key).is_lt())
+                    {
+                        stopping.next();
+                    }
+                    stopping
+                        .peek()
+                        .is_some_and(|stopped| (*stopped).cmp(*key).is_eq())
+                        || self.entries.get(*key).is_none_or(|entry| {
+                            entry.task.is_none() && entry.state.failures < self.policy.max_failures
+                        })
                 })
-            })
-            .map(|(key, _)| key)
-            .collect();
+                .collect()
+        };
         let reservations = self.scope.reserve(candidates.len());
         let Some(reservations) = reservations else {
             report.lifecycle = Lifecycle::Closed;
@@ -455,7 +480,8 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
         // No suspension follows: until here, cancellation must retain every exit.
         report.exits = std::mem::take(&mut self.pending_exits);
         for key in &stop {
-            if !wanted.contains_key(key) && self.entries.get(key).is_some_and(|e| e.task.is_none())
+            if find_spec(&wanted, key).is_none()
+                && self.entries.get(key).is_some_and(|e| e.task.is_none())
             {
                 self.entries.remove(key);
                 report.removed.push(key.clone());
@@ -485,8 +511,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 report.limited.push(key);
                 continue;
             }
-            let spec = wanted
-                .get(&key)
+            let spec = find_spec(&wanted, &key)
                 .expect("plan only starts desired keys")
                 .clone();
             let failures = previous

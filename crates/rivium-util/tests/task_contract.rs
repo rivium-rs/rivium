@@ -113,3 +113,28 @@ async fn unchanged_work_preserves_tasks_and_checks_scope_admission() {
         assert_eq!(scope.active_tasks(), 0);
     }
 }
+
+#[tokio::test]
+async fn send_only_specs_preserve_send_reconciliation() {
+    tokio::spawn(async {
+        let mut manager = Manager::new(Policy::default()).unwrap();
+        for value in [1_u8, 2] {
+            let report = manager
+                .reconcile(
+                    vec![(0_usize, std::cell::Cell::new(value))],
+                    |_, spec, context| async move {
+                        context.cancel.cancelled().await;
+                        assert!(spec.get() > 0);
+                        Ok(())
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(report.started.len(), usize::from(value == 1));
+            assert_eq!(report.restarted.len(), usize::from(value == 2));
+        }
+        manager.shutdown().await.unwrap();
+    })
+    .await
+    .unwrap();
+}
