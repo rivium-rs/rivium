@@ -78,6 +78,31 @@ records retain their original scope and dates.
 
 ## 0.2.0 candidate
 
+The latest local follow-up on **2026-10-17** records candidate
+`500444ab58c173050930ab40b5a6fe16869c0b92`, with production `crates` subtree
+`cb3d3ec3dd921a51288a789d3db5ebf6063c1f28`. The [acceptance report](acceptance/0.2.0.md)
+identifies each tested source, artifact and method, including reused platform results for
+that unchanged production subtree. The earlier records below retain their own identities.
+
+| Area | Latest evidence and limit |
+| --- | --- |
+| Local native and MSRV | Rust 1.96.0 and 1.92 each reported 346 passed, 0 failed and 2 ignored on `aarch64-apple-darwin`; examples and the process fixture rebuilt. This does not renew other native targets |
+| JVM and cross-targets | OpenJDK 27 normal/fault JNI contracts passed; NDK r28b/API 30 compiled and linked Android artifacts with JNI exports and 16 KB LOAD alignment checked; all six Windows GNU libraries passed cross-`cargo check`. Android and Windows runtime remain unverified |
+| Deployment | A temporary `test-host` LaunchAgent completed three readiness/SIGTERM/exit-0/restart rounds with complete drain and confirmed cleanup. This is fixture hosting, not production HTTP deployment or systemd/WinSW acceptance |
+| Packages | A clean `2e50d50` snapshot completed source checks, six-package scanning, actual `cargo publish --dry-run` and unchanged-byte verification; no upload occurred. This is not a new preview of `500444a`; crate provisioning and Trusted Publishing remain separate prerequisites |
+| HTTP and Supervisor | HTTP retained all 48 cases across three processes per revision; five qualifying normal cases met the provisional p99 trigger, while 19 normal cases were unqualified and the candidate mixed workload had 90,524 client errors and seven late cleanup observations. HTTP acceptance remains open. Supervisor ownership checks passed across 72,000 measured generations; timings include regressions and do not evaluate the steady-state gate |
+| Sustained scale | The first load attempt failed on the probe's incorrect export-budget expectation. Corrected probe `500444a` then exited 101 after 483.336 seconds with a production log-retention capacity defect: byte-only eviction allowed archive count to exceed bounded directory accounting. Resource/logging capacity acceptance failed; load processes 2/3, churn and all withdrawal checks were not performed |
+| Required remote gates | No matching candidate CI, daily or release-preview workflow is recorded; `origin/main` remains at `abc50bc2887d9487799dd99dfb9f967315bc875b` |
+
+Release acceptance remains open. `release/ready` still requires successful `check`, `semver`,
+`public`, `ci`, `daily` and `loom` results for the candidate, and the protected reviewer must
+resolve required manual workload/deployment acceptance. The local package preview does not
+replace those gates. T3 hardware/vendor targets, Android bionic/ART/devices, systemd/WinSW and
+production hosting beyond the LaunchAgent fixture remain explicitly unverified. The heading
+will become exact `## 0.2.0` only after the required acceptance is satisfied.
+
+### Earlier candidate runs
+
 Local verification on **2026-10-16** covers the unreleased six-package source rewrite on
 `codex/rebuild-020-full`, based on `v0.1.1` / `abc50bc2887d9487799dd99dfb9f967315bc875b`.
 The verified `crates` Git subtree is `792d22cecde7b20780299aefa7127db75f28b37e`;
