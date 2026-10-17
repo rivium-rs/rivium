@@ -88,9 +88,19 @@ struct Observation<'a, S> {
     retry_at: Instant,
 }
 
+fn observe<S>(view: &View<S>, alive: bool) -> Observation<'_, S> {
+    Observation {
+        spec: &view.spec,
+        alive,
+        stopping: view.stopping,
+        failures: view.failures,
+        retry_at: view.retry_at,
+    }
+}
+
 fn decide<'a, K: Ord + Clone + 'a, S: Eq + 'a>(
     desired: &BTreeMap<K, S>,
-    keys: impl Iterator<Item = &'a K>,
+    current: impl Iterator<Item = (&'a K, Observation<'a, S>)>,
     observe: impl Fn(&K) -> Option<Observation<'a, S>>,
     now: Instant,
     policy: &Policy,
@@ -101,8 +111,7 @@ fn decide<'a, K: Ord + Clone + 'a, S: Eq + 'a>(
         limited: Vec::new(),
     };
     let mut retained = 0;
-    for key in keys {
-        let state = observe(key).expect("observed key belongs to the current map");
+    for (key, state) in current {
         if let Some(spec) = desired.get(key) {
             retained += 1;
             if spec != state.spec || state.stopping {
@@ -145,16 +154,10 @@ pub fn plan<K: Ord + Clone, S: Eq>(
 ) -> Plan<K> {
     decide(
         desired,
-        current.keys(),
-        |key| {
-            current.get(key).map(|v| Observation {
-                spec: &v.spec,
-                alive: v.alive,
-                stopping: v.stopping,
-                failures: v.failures,
-                retry_at: v.retry_at,
-            })
-        },
+        current
+            .iter()
+            .map(|(key, view)| (key, observe(view, view.alive))),
+        |key| current.get(key).map(|view| observe(view, view.alive)),
         now,
         policy,
     )
@@ -331,15 +334,13 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
     fn plan_current(&self, desired: &BTreeMap<K, S>, now: Instant) -> Plan<K> {
         decide(
             desired,
-            self.entries.keys(),
+            self.entries
+                .iter()
+                .map(|(key, entry)| (key, observe(&entry.state, entry.task.is_some()))),
             |key| {
-                self.entries.get(key).map(|e| Observation {
-                    spec: &e.state.spec,
-                    alive: e.task.is_some(),
-                    stopping: e.state.stopping,
-                    failures: e.state.failures,
-                    retry_at: e.state.retry_at,
-                })
+                self.entries
+                    .get(key)
+                    .map(|entry| observe(&entry.state, entry.task.is_some()))
             },
             now,
             &self.policy,
@@ -379,6 +380,25 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
 
         let mut report = Report::default();
         self.reap_finished().await;
+        if self.entries.len() == wanted.len()
+            && self
+                .entries
+                .iter()
+                .zip(&wanted)
+                .all(|((key, entry), (wanted_key, spec))| {
+                    key == wanted_key
+                        && entry.state.spec == *spec
+                        && entry.task.is_some()
+                        && !entry.state.stopping
+                })
+        {
+            // Unchanged work still needs admission and delivery of retained exits.
+            if self.scope.reserve(0).is_none() {
+                report.lifecycle = Lifecycle::Closed;
+            }
+            report.exits = std::mem::take(&mut self.pending_exits);
+            return Ok(report);
+        }
         let now = Instant::now();
         let transition = self.plan_current(&wanted, now);
 
@@ -393,7 +413,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                         || (entry.task.is_none() && entry.state.failures < self.policy.max_failures)
                 })
             })
-            .map(|(key, _)| key.clone())
+            .map(|(key, _)| key)
             .collect();
         let reservations = self.scope.reserve(candidates.len());
         let Some(reservations) = reservations else {
@@ -401,7 +421,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             report.exits = std::mem::take(&mut self.pending_exits);
             return Ok(report);
         };
-        let mut reservations: BTreeMap<_, _> = candidates.into_iter().zip(reservations).collect();
+        let mut reservations = candidates.into_iter().zip(reservations);
 
         self.stop_keys(&transition.stop, &mut report).await;
         // No suspension follows: until here, cancellation must retain every exit.
@@ -416,17 +436,21 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
 
         let remaining = self.plan_current(&wanted, Instant::now());
         report.limited = remaining.limited;
+        let scope_cancel = self.scope.cancellation_token();
         for key in remaining.start {
+            // Both sequences follow desired-key order; skipped candidates need no start.
             let reservation = reservations
-                .remove(&key)
+                .by_ref()
+                .find_map(|(candidate, reservation)| (candidate == &key).then_some(reservation))
                 .expect("admitted candidate must precede mutation");
-            if self.scope.cancellation_token().is_cancelled() || self.closed {
+            if scope_cancel.is_cancelled() || self.closed {
                 continue;
             }
-            if self.entries.get(&key).is_some_and(|e| e.task.is_some()) {
+            let previous = self.entries.get(&key);
+            if previous.is_some_and(|entry| entry.task.is_some()) {
                 continue;
             }
-            let replacement = self.entries.contains_key(&key);
+            let replacement = previous.is_some();
             if !replacement && self.entries.len() >= self.policy.capacity {
                 report.limited.push(key);
                 continue;
@@ -435,16 +459,14 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 .get(&key)
                 .expect("plan only starts desired keys")
                 .clone();
-            let failures = self
-                .entries
-                .get(&key)
+            let failures = previous
                 .filter(|e| e.state.spec == spec && !e.state.stopping)
                 .map_or(0, |e| e.state.failures);
             let progress = Arc::new(Progress {
                 alive: AtomicBool::new(true),
                 observed: AtomicBool::new(false),
             });
-            let cancel = self.scope.cancellation_token().child_token();
+            let cancel = scope_cancel.child_token();
             let context = Context {
                 cancel: cancel.clone(),
                 progress: progress.clone(),

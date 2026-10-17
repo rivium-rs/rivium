@@ -311,3 +311,35 @@ async fn requested_stops_preserve_error_and_panic_without_exhaustion() {
     assert!(manager.is_empty());
     manager.shutdown().await.unwrap();
 }
+
+#[tokio::test(start_paused = true)]
+async fn waiting_candidate_does_not_consume_a_later_starts_reservation() {
+    let scope = rivium::scope::TaskScope::new();
+    let mut manager = Manager::with_scope(policy(2), scope.clone()).unwrap();
+    let (_, worker) = start(&mut manager, 1).await;
+    worker.finish(Err(Error::internal("retry later"))).await;
+
+    let report = manager
+        .reconcile(vec![("worker", 1), ("z", 1)], idle)
+        .await
+        .unwrap();
+    assert_eq!(report.started, ["z"]);
+    assert!(report.restarted.is_empty());
+    assert!(report.limited.is_empty());
+    assert!(matches!(
+        report.exits.as_slice(),
+        [("worker", Exit::Failed(_))]
+    ));
+    assert_eq!(scope.active_tasks(), 1);
+
+    tokio::time::advance(Duration::from_secs(2)).await;
+    let report = manager
+        .reconcile(vec![("worker", 1), ("z", 1)], idle)
+        .await
+        .unwrap();
+    assert_eq!(report.restarted, ["worker"]);
+    assert!(report.started.is_empty());
+    assert_eq!(scope.active_tasks(), 2);
+    manager.shutdown().await.unwrap();
+    assert_eq!(scope.active_tasks(), 0);
+}
