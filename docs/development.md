@@ -40,7 +40,7 @@ keep related associated types and constants together. Use blank lines to mark me
 steps in longer functions. Run rustfmt and also inspect macro bodies and item spacing:
 passing the formatter alone does not establish readable layout.
 
-The aggregate ceiling is **18,150 Rust code lines**, measured with tokei 14.0.0 across all
+The aggregate ceiling is **18,400 Rust code lines**, measured with tokei 14.0.0 across all
 six library directories, including their tests and fixtures. Keep the counter version,
 file scope and measurement checks unchanged; do not compress code, remove error handling
 or assertions, or move tests outside that scope to satisfy the ceiling.
@@ -59,6 +59,13 @@ deadlines crossing awaited stops, unordered input, separated duplicate keys and 
 specifications that are not Sync. This allowance preserves readable control flow and
 behavioral assertions; it does not change the counting scope or the P-CORE/P-TASK
 performance thresholds.
+
+The 2026-10-18 retention repair review adds 250 lines (1.38%) of maintenance allowance,
+bringing the ceiling to 18,400. The measured implementation and tests use 18,248 lines,
+leaving 152 lines. The 116-line increase covers the shared file-count retention fix and
+its boundary regression: cross-sink sequence ordering, repeated rotation, export and
+close below the byte budget. These checks remain in the library counting scope. This
+allowance does not change the 8192-file limit, disk/export budgets or performance gates.
 
 ## Models and sustained workloads
 

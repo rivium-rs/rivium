@@ -98,6 +98,11 @@ At most 16 named categories are allowed, subject to the tighter disk-budget form
 unique categories, valid filters and checked budget arithmetic are validated before use.
 An incremental archive ledger avoids per-event directory scans. Raw/gzip archives and ZIP output
 retain their accounting; owned temporary files are cleaned without deleting unrelated files.
+Retention also bounds active/raw/gzip files to 8192 across all sinks. Rotation evicts the
+oldest archive sequences before reserving two file slots: one for the new archive and one
+for the raw/gzip overlap during compression. Byte limits and file-count limits share the
+same eviction policy; deletion failures remain errors. Startup still rejects an already
+over-limit directory through its bounded scan rather than deleting history to recover it.
 
 Close rejects new work, cancels export and waits within one shared budget. Workers hold the directory
 lease until actual release. A timeout can be retried, and late IO failures remain observable even

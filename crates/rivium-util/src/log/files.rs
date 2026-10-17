@@ -12,6 +12,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+const MAX_OWNED_FILES: usize = 8192;
+
 static WRITTEN: AtomicU64 = AtomicU64::new(0);
 static FAILURES: AtomicU64 = AtomicU64::new(0);
 static DELETED: AtomicU64 = AtomicU64::new(0);
@@ -400,7 +402,7 @@ impl Files {
                 "existing log file exceeds the configured per-file budget",
             ));
         }
-        files.make_room(&directory.path, 0)?;
+        files.make_room(&directory.path, 0, 0)?;
         Ok(files)
     }
 
@@ -417,7 +419,7 @@ impl Files {
         if active.size != 0 && (active.size + len > self.file_limit || active.day != today) {
             self.rotate(path, event.sink)?;
         }
-        self.make_room(path, len)?;
+        self.make_room(path, len, 0)?;
         let active = &mut self.active[event.sink];
         active.file.write_all(&event.data)?;
         WRITTEN.fetch_add(len, Ordering::Relaxed);
@@ -430,15 +432,19 @@ impl Files {
     fn rotate(&mut self, path: &Path, sink: usize) -> io::Result<()> {
         let active = &mut self.active[sink];
         active.file.flush()?;
-        self.next = self
+        let next = self
             .next
             .checked_add(1)
             .ok_or_else(|| io::Error::other("archive sequence exhausted"))?;
-        let raw_name = format!("{}.{}.{:020}.log", active.name, active.day, self.next);
+        let raw_name = format!("{}.{}.{next:020}.log", active.name, active.day);
         let raw = path.join(&raw_name);
         if raw.try_exists()? {
             return Err(io::Error::other("archive name collision"));
         }
+        // Reserve the new archive and the raw/gzip overlap before deleting raw.
+        self.make_room(path, 0, 2)?;
+        self.next = next;
+        let active = &mut self.active[sink];
         fs::rename(path.join(format!("{}.log", active.name)), &raw)?;
         active.file = OpenOptions::new()
             .create_new(true)
@@ -488,11 +494,12 @@ impl Files {
         Ok(())
     }
 
-    fn make_room(&mut self, path: &Path, incoming: u64) -> io::Result<()> {
+    fn make_room(&mut self, path: &Path, incoming: u64, incoming_files: usize) -> io::Result<()> {
         while self
             .size
             .checked_add(incoming)
             .is_none_or(|n| n > self.limit)
+            || self.active.len() + self.archives.len() + incoming_files > MAX_OWNED_FILES
         {
             let Some((name, size)) = self
                 .archives
@@ -516,7 +523,7 @@ impl Files {
             active.file.sync_data()?;
         }
         self.reconcile(path)?;
-        self.make_room(path, 0)
+        self.make_room(path, 0, 0)
     }
 
     fn reconcile(&mut self, path: &Path) -> io::Result<()> {
@@ -586,7 +593,7 @@ pub(super) fn owned_files(path: &Path, names: &[String]) -> io::Result<Vec<(Stri
             if !entry.file_type()?.is_file() {
                 return Err(io::Error::other("owned log path is not a regular file"));
             }
-            if entries.len() == 8192 {
+            if entries.len() == MAX_OWNED_FILES {
                 return Err(io::Error::other(
                     "too many owned log files for bounded directory accounting",
                 ));

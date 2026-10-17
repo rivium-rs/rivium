@@ -54,6 +54,124 @@ fn rolling_and_export_keep_a_disk_budget() {
 }
 
 #[test]
+fn rotation_at_the_owned_file_limit_prunes_oldest_archives_and_keeps_export_usable() {
+    use rivium_util::log::ExportState;
+    use std::{collections::BTreeSet, fs, io::Read};
+
+    let (temp, dir) = log_directory("count");
+    let archive_name = |sequence: u64| {
+        let sink = if sequence.is_multiple_of(2) {
+            "audit"
+        } else {
+            "count"
+        };
+        // Retention order follows the shared sequence, not sink or date ordering.
+        let day = if sequence == 1 {
+            "2026-12-31"
+        } else {
+            "2026-01-01"
+        };
+        format!("{sink}.{day}.{sequence:020}.log")
+    };
+    for sequence in 1..=8190 {
+        fs::write(dir.join(archive_name(sequence)), b"fixture\n").unwrap();
+    }
+    fs::write(dir.join("count.log"), [b'x'; 1024]).unwrap();
+    let unrelated = "outside.2026-01-01.00000000000000000000.log";
+    fs::write(dir.join(unrelated), "user data").unwrap();
+
+    let mut settings = Settings::for_app("count");
+    settings.console.filter = "off".into();
+    settings.file.filter = "main=info".into();
+    settings.file.max_file_size = 1024;
+    settings.file.max_total_size = 64 * 1024 * 1024;
+    settings.export.max_size = 4 * 1024 * 1024;
+    settings.files.push(category("audit", "audit=info"));
+    let logger = Logger::new("count", temp.path(), settings, false, vec![]).unwrap();
+    let owned_names = || {
+        fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.starts_with("count.") || name.starts_with("audit."))
+            .collect::<BTreeSet<_>>()
+    };
+    assert_eq!(owned_names().len(), 8192);
+
+    for round in 0..2 {
+        tracing::dispatcher::with_default(&logger.dispatch(), || {
+            tracing::info!(target: "main", round, "{}", "p".repeat(600));
+        });
+        logger
+            .flush(Duration::from_secs(5))
+            .expect("count retention must keep rotation and flush usable below the byte budget");
+
+        let names = owned_names();
+        assert_eq!(
+            names.len(),
+            8191,
+            "rotation must retain its compression slot"
+        );
+        assert!(names.len() <= 8192);
+        for sequence in 1..=2 + round {
+            assert!(
+                !dir.join(archive_name(sequence)).exists(),
+                "oldest sequence {sequence} was not pruned"
+            );
+        }
+        assert!(dir.join(archive_name(3 + round)).exists());
+        let latest = format!(".{:020}.log", 8191 + round);
+        assert!(
+            names
+                .iter()
+                .any(|name| { name.ends_with(&latest) || name.ends_with(&format!("{latest}.gz")) })
+        );
+        let bytes: u64 = names
+            .iter()
+            .map(|name| fs::metadata(dir.join(name)).unwrap().len())
+            .sum();
+        assert!(
+            bytes < 1024 * 1024,
+            "byte retention must not drive this test"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join(unrelated)).unwrap(),
+            "user data"
+        );
+    }
+
+    let exporter = logger.exporter();
+    let id = exporter
+        .start(request("1970-01-01", "9999-12-31", &[]))
+        .unwrap();
+    let archive = ready_archive(&exporter, id);
+    let mut zip = zip::ZipArchive::new(fs::File::open(&archive.path).unwrap()).unwrap();
+    assert_eq!(zip.len(), 8191);
+    assert!(zip.by_name(unrelated).is_err());
+    assert!(zip.by_name(&archive_name(1)).is_err());
+    assert!(zip.by_name(&archive_name(4)).is_ok());
+    let mut active = String::new();
+    zip.by_name("count.log")
+        .unwrap()
+        .read_to_string(&mut active)
+        .unwrap();
+    assert!(active.contains("round=1"));
+    drop(zip);
+    exporter.cancel(id);
+    assert!(matches!(
+        exporter.progress(id).unwrap(),
+        ExportState::Cancelled
+    ));
+    assert!(!archive.path.exists());
+    logger.close(Duration::from_secs(5)).unwrap();
+    assert_eq!(logger.pending_workers(), 0);
+    assert_eq!(logger.stats().write_failures, 0);
+    assert_eq!(
+        fs::read_to_string(dir.join(unrelated)).unwrap(),
+        "user data"
+    );
+}
+
+#[test]
 fn exports_expire_without_a_progress_poll() {
     let temp = TempDir::new().unwrap();
     let mut settings = Settings::for_app("expiry");
