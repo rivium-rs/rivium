@@ -6,9 +6,9 @@ use std::{
     pin::Pin,
     sync::{
         Arc, Barrier,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    task::{Context, Poll, Waker},
+    task::{Context, Poll, Wake, Waker},
 };
 
 struct Probe {
@@ -150,4 +150,92 @@ fn impossible_reservation_does_not_poison_accounting() {
     assert!(matches!(result, Ok(None)));
     assert_eq!(scope.active_tasks(), 0);
     assert!(scope.reserve(1).is_some());
+}
+
+#[derive(Default)]
+struct WakeCount(AtomicUsize);
+
+impl Wake for WakeCount {
+    fn wake(self: Arc<Self>) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+fn poll_scope_wait(
+    wait: Pin<&mut impl Future<Output = ()>>,
+    observer: &Arc<WakeCount>,
+) -> Poll<()> {
+    let waker = Waker::from(observer.clone());
+    wait.poll(&mut Context::from_waker(&waker))
+}
+
+#[test]
+fn final_release_notifies_all_waiters_even_before_admission_closes() {
+    for closed in [false, true] {
+        let scope = TaskScope::new();
+        let mut reservations = scope.reserve(2).unwrap();
+        if closed {
+            scope.close();
+        }
+        let observers = [
+            Arc::new(WakeCount::default()),
+            Arc::new(WakeCount::default()),
+        ];
+        let mut waits = [Box::pin(scope.wait()), Box::pin(scope.wait())];
+        for (wait, observer) in waits.iter_mut().zip(&observers) {
+            assert!(poll_scope_wait(wait.as_mut(), observer).is_pending());
+        }
+
+        drop(reservations.pop());
+        assert!(
+            observers
+                .iter()
+                .all(|observer| observer.0.load(Ordering::SeqCst) == 0)
+        );
+        drop(reservations);
+        for (wait, observer) in waits.iter_mut().zip(&observers) {
+            assert_eq!(observer.0.load(Ordering::SeqCst), 1);
+            assert_eq!(poll_scope_wait(wait.as_mut(), observer).is_ready(), closed);
+        }
+
+        if !closed {
+            scope.close();
+            for (wait, observer) in waits.iter_mut().zip(&observers) {
+                assert_eq!(observer.0.load(Ordering::SeqCst), 2);
+                assert!(poll_scope_wait(wait.as_mut(), observer).is_ready());
+            }
+        }
+    }
+}
+
+#[test]
+fn waiter_enrollment_racing_final_release_completes_or_is_woken() {
+    // Use real threads: Loom does not model Tokio Notify's internal synchronization.
+    for round in 0..128 {
+        let scope = TaskScope::new();
+        let reserved = scope.reserve(1).unwrap();
+        scope.close();
+        let barrier = Arc::new(Barrier::new(2));
+        let worker_barrier = barrier.clone();
+        let worker = std::thread::spawn(move || {
+            worker_barrier.wait();
+            for _ in 0..round % 4 {
+                std::thread::yield_now();
+            }
+            drop(reserved);
+        });
+        let observer = Arc::new(WakeCount::default());
+        let mut wait = Box::pin(scope.wait());
+        barrier.wait();
+        for _ in 0..round / 4 % 4 {
+            std::thread::yield_now();
+        }
+        let first_poll = poll_scope_wait(wait.as_mut(), &observer);
+        worker.join().unwrap();
+        if first_poll.is_pending() {
+            assert!(observer.0.load(Ordering::SeqCst) > 0);
+            assert!(poll_scope_wait(wait.as_mut(), &observer).is_ready());
+        }
+        assert!(scope.state().is_complete());
+    }
 }

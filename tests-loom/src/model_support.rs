@@ -1,6 +1,7 @@
 //! Models only the upstream cancellation flag, not Tokio's wakeup machinery.
 
-use loom::sync::atomic::{AtomicBool, Ordering};
+use loom::sync::atomic::AtomicBool;
+pub use loom::sync::atomic::{AtomicUsize, Ordering};
 pub use loom::sync::{Arc, Mutex};
 
 #[derive(Clone)]

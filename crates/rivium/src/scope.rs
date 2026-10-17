@@ -1,9 +1,12 @@
 //! Task admission and proof of execution-resource release.
 
 #[cfg(rivium_scope_model)]
-use crate::model_support::{Arc, CancellationToken, Mutex};
+use crate::model_support::{Arc, AtomicUsize, CancellationToken, Mutex, Ordering};
 #[cfg(not(rivium_scope_model))]
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::{
     future::Future,
     pin::Pin,
@@ -33,14 +36,10 @@ impl Drain {
     }
 }
 
-#[derive(Default)]
-struct Counts {
-    closed: bool,
-    active: usize,
-}
-
 struct Inner {
-    counts: Mutex<Counts>,
+    closed: Mutex<bool>,
+    // High bits count reservations; the low bit permanently enables release notifications.
+    state: AtomicUsize,
     changed: Arc<Notify>,
     cancel: CancellationToken,
 }
@@ -69,13 +68,18 @@ impl Default for TaskScope {
 impl TaskScope {
     /// Create an open, empty scope.
     pub fn new() -> Self {
-        Self::with_notify(Arc::new(Notify::new()))
+        Self::create(Arc::new(Notify::new()), false)
     }
 
     pub(crate) fn with_notify(changed: Arc<Notify>) -> Self {
+        Self::create(changed, true)
+    }
+
+    fn create(changed: Arc<Notify>, observed: bool) -> Self {
         Self {
             inner: Arc::new(Inner {
-                counts: Mutex::new(Counts::default()),
+                closed: Mutex::new(false),
+                state: AtomicUsize::new(usize::from(observed)),
                 changed,
                 cancel: CancellationToken::new(),
             }),
@@ -84,15 +88,22 @@ impl TaskScope {
 
     /// Reserve all `count` entries atomically, or reject after closure/cancellation.
     /// A zero-sized reservation is still rejected by a closed scope.
+    #[inline]
     pub fn reserve(&self, count: usize) -> Option<Vec<Reservation>> {
-        let mut reservations = Vec::new();
-        reservations.try_reserve_exact(count).ok()?;
-        let mut counts = self.inner.counts.lock().unwrap_or_else(|p| p.into_inner());
-        if counts.closed || self.inner.cancel.is_cancelled() {
+        let closed = self.inner.closed.lock().unwrap_or_else(|p| p.into_inner());
+        if *closed || self.inner.cancel.is_cancelled() {
             return None;
         }
-        counts.active = counts.active.checked_add(count)?;
-        drop(counts);
+        let mut reservations = Vec::new();
+        reservations.try_reserve_exact(count).ok()?;
+        if count > 0 {
+            let increment = count.checked_mul(2)?;
+            let active = self.inner.state.load(Ordering::Relaxed) >> 1;
+            active.checked_add(count)?.checked_mul(2)?;
+            // Admission holds the only increment lock; concurrent releases only lower this bound.
+            self.inner.state.fetch_add(increment, Ordering::Relaxed);
+        }
+        drop(closed);
         reservations.extend((0..count).map(|_| Reservation {
             scope: self.clone(),
         }));
@@ -101,11 +112,7 @@ impl TaskScope {
 
     /// Permanently close admission without cancelling accepted work.
     pub fn close(&self) {
-        self.inner
-            .counts
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .closed = true;
+        *self.inner.closed.lock().unwrap_or_else(|p| p.into_inner()) = true;
         self.inner.changed.notify_waiters();
     }
 
@@ -122,37 +129,33 @@ impl TaskScope {
 
     /// Whether new reservations are permanently rejected.
     pub fn is_closed(&self) -> bool {
-        self.inner
-            .counts
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .closed
+        *self.inner.closed.lock().unwrap_or_else(|p| p.into_inner())
             || self.inner.cancel.is_cancelled()
     }
 
     /// Number of accepted execution bodies plus unused reservations.
     pub fn active_tasks(&self) -> usize {
-        self.inner
-            .counts
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .active
+        self.inner.state.load(Ordering::Acquire) >> 1
     }
 
     /// Current resource-release state, without waiting.
     pub fn state(&self) -> Drain {
-        let counts = self.inner.counts.lock().unwrap_or_else(|p| p.into_inner());
-        if (counts.closed || self.inner.cancel.is_cancelled()) && counts.active == 0 {
+        let closed = self.inner.closed.lock().unwrap_or_else(|p| p.into_inner());
+        let stopped = *closed || self.inner.cancel.is_cancelled();
+        let active = self.active_tasks();
+        if stopped && active == 0 {
             Drain::Complete
         } else {
             Drain::Incomplete {
-                active_tasks: counts.active,
+                active_tasks: active,
             }
         }
     }
 
     /// Wait for both admission closure and execution-resource release.
     pub async fn wait(&self) {
+        // Share the counter's modification order so enrollment cannot miss the final release.
+        self.inner.state.fetch_or(1, Ordering::AcqRel);
         loop {
             let notified = self.inner.changed.notified();
             tokio::pin!(notified);
@@ -204,17 +207,15 @@ impl Reservation {
 }
 
 impl Drop for Reservation {
+    #[inline]
     fn drop(&mut self) {
-        {
-            let mut counts = self
-                .scope
-                .inner
-                .counts
-                .lock()
-                .unwrap_or_else(|p| p.into_inner());
-            counts.active -= 1;
+        // Publish capture release before an observer can confirm zero active tasks.
+        if self.scope.inner.state.fetch_sub(2, Ordering::Release) == 3 {
+            // Acquire the release sequence from all bodies before invoking their waiters.
+            let _ = self.scope.inner.state.load(Ordering::Acquire);
+            // The shared supervisor notification also observes open scopes becoming empty.
+            self.scope.inner.changed.notify_waiters();
         }
-        self.scope.inner.changed.notify_waiters();
     }
 }
 

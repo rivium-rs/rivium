@@ -75,6 +75,23 @@ mod tests {
         });
     }
 
+    #[test]
+    fn reserving_a_batch_while_another_releases_preserves_the_surviving_count() {
+        loom::model(|| {
+            let scope = TaskScope::new();
+            let first = scope.reserve(2).unwrap();
+            let worker_scope = scope.clone();
+            let worker = thread::spawn(move || worker_scope.reserve(3).unwrap());
+            drop(first);
+            let remaining = worker.join().unwrap();
+            scope.close();
+            assert_eq!(scope.active_tasks(), 3);
+            assert_eq!(scope.state(), Drain::Incomplete { active_tasks: 3 });
+            drop(remaining);
+            assert!(scope.state().is_complete());
+        });
+    }
+
     struct Resource(Arc<AtomicBool>);
 
     impl Future for Resource {
@@ -131,6 +148,46 @@ mod tests {
     #[test]
     fn completed_future_releases_resources_before_count() {
         release_resources(true);
+    }
+
+    #[test]
+    fn final_release_publishes_resources_from_both_workers() {
+        loom::model(|| {
+            let scope = TaskScope::new();
+            let mut reservations = scope.reserve(2).unwrap();
+            let released = [
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicBool::new(false)),
+            ];
+            let workers: Vec<_> = released
+                .iter()
+                .map(|released| {
+                    let tracked = reservations
+                        .pop()
+                        .unwrap()
+                        .track(Resource(released.clone()));
+                    thread::spawn(move || drop(tracked))
+                })
+                .collect();
+            scope.close();
+            // Observe before joining: thread joins would hide a missing acquire/release edge.
+            if scope.state().is_complete() {
+                assert!(
+                    released
+                        .iter()
+                        .all(|released| released.load(Ordering::Relaxed))
+                );
+            }
+            for worker in workers {
+                worker.join().unwrap();
+            }
+            assert!(scope.state().is_complete());
+            assert!(
+                released
+                    .iter()
+                    .all(|released| released.load(Ordering::Relaxed))
+            );
+        });
     }
 
     #[test]
