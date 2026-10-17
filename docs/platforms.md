@@ -78,28 +78,29 @@ records retain their original scope and dates.
 
 ## 0.2.0 candidate
 
-The latest local follow-up on **2026-10-17** records candidate
-`500444ab58c173050930ab40b5a6fe16869c0b92`, with production `crates` subtree
-`cb3d3ec3dd921a51288a789d3db5ebf6063c1f28`. The [acceptance report](acceptance/0.2.0.md)
-identifies each tested source, artifact and method, including reused platform results for
-that unchanged production subtree. The earlier records below retain their own identities.
+The latest local retention follow-up on **2026-10-18** uses frozen source
+`99abbc88623d6387ee73b1f020a4fe25b26c23d3`, with production `crates` subtree
+`b781250ef5aa86803f103e0c2cf89531540acde0`. The candidate record covers the latest native validation and package preview; earlier platform/LaunchAgent results remain tied to
+`b204cef` and HTTP/Supervisor measurements to `2e50d50`, with their older `cb3d3ec3` subtree;
+they have not been rerun for this changed production source.
 
 | Area | Latest evidence and limit |
 | --- | --- |
-| Local native and MSRV | Rust 1.96.0 and 1.92 each reported 346 passed, 0 failed and 2 ignored on `aarch64-apple-darwin`; examples and the process fixture rebuilt. This does not renew other native targets |
-| JVM and cross-targets | OpenJDK 27 normal/fault JNI contracts passed; NDK r28b/API 30 compiled and linked Android artifacts with JNI exports and 16 KB LOAD alignment checked; all six Windows GNU libraries passed cross-`cargo check`. Android and Windows runtime remain unverified |
-| Deployment | A temporary `test-host` LaunchAgent completed three readiness/SIGTERM/exit-0/restart rounds with complete drain and confirmed cleanup. This is fixture hosting, not production HTTP deployment or systemd/WinSW acceptance |
-| Packages | A clean `2e50d50` snapshot completed source checks, six-package scanning, actual `cargo publish --dry-run` and unchanged-byte verification; no upload occurred. This is not a new preview of `500444a`; crate provisioning and Trusted Publishing remain separate prerequisites |
-| HTTP and Supervisor | HTTP retained all 48 cases across three processes per revision; five qualifying normal cases met the provisional p99 trigger, while 19 normal cases were unqualified and the candidate mixed workload had 90,524 client errors and seven late cleanup observations. HTTP acceptance remains open. Supervisor ownership checks passed across 72,000 measured generations; timings include regressions and do not evaluate the steady-state gate |
-| Sustained scale | The first load attempt failed on the probe's incorrect export-budget expectation. Corrected probe `500444a` then exited 101 after 483.336 seconds with a production log-retention capacity defect: byte-only eviction allowed archive count to exceed bounded directory accounting. Resource/logging capacity acceptance failed; load processes 2/3, churn and all withdrawal checks were not performed |
-| Required remote gates | No matching candidate CI, daily or release-preview workflow is recorded; `origin/main` remains at `abc50bc2887d9487799dd99dfb9f967315bc875b` |
+| Local native and MSRV | Rust 1.96.0 workspace: 347 passed, 0 failed, 2 ignored. Rust 1.92 workspace/all-target/all-feature **check** and util **tests** passed (127 passed, 1 ignored). This is not a new full MSRV workspace-test run; other native targets are not renewed |
+| JVM and cross-targets (retained earlier source) | At `b204cef`, OpenJDK 27 normal/fault JNI contracts passed; NDK r28b/API 30 compiled/linked Android artifacts with JNI exports and 16 KB LOAD alignment checked; all six Windows GNU libraries passed cross-check. These were not repeated for `99abbc8`; Android and Windows runtime remain unverified |
+| Deployment (retained earlier source) | The `b204cef` temporary `test-host` LaunchAgent completed three readiness/SIGTERM/exit-0/restart rounds and cleanup. The newer test-host build is not a deployment rerun. Production HTTP hosting and systemd/WinSW remain unverified |
+| Packages | A clean `99abbc8` snapshot completed source checks, six-package scanning, actual `cargo publish --dry-run` and unchanged-byte verification; no upload occurred. Earlier previews retain their own artifact hashes. Crate provisioning and Trusted Publishing remain separate prerequisites |
+| HTTP and Supervisor (retained earlier source) | The `2e50d50` HTTP matrix retained 48 cases across three processes per revision: five qualifying normal cases met the provisional p99 trigger, 19 were unqualified, and the candidate mixed workload had 90,524 client errors and seven late cleanup observations. HTTP acceptance remains open. Supervisor ownership checks passed across 72,000 measured generations; timing regressions and the unevaluated steady-state gate remain |
+| Sustained scale | File-count/byte retention repaired with boundary RED/GREEN evidence. Three load processes plus churn completed 17 phases and cleanup checks: 8,569 application rows, 1,700 OS samples without sampling errors, and file-count maximum 8,191 in each process. One original successful process was revalidated; three were fresh recovery runs. Withdrawal zeros are fixed post-cleanup placeholders, with separate OS observations. No universal RSS bound or full P-LOG/P-SCALE pass is claimed; old failed attempts remain retained |
+| Required remote gates | No successful matching-source CI, daily or release workflow is included in this record. Earlier remote snapshots retain their own checked commit/time; local repair evidence does not renew them |
 
 Release acceptance remains open. `release/ready` still requires successful `check`, `semver`,
 `public`, `ci`, `daily` and `loom` results for the candidate, and the protected reviewer must
-resolve required manual workload/deployment acceptance. The local package preview does not
-replace those gates. T3 hardware/vendor targets, Android bionic/ART/devices, systemd/WinSW and
-production hosting beyond the LaunchAgent fixture remain explicitly unverified. The heading
-will become exact `## 0.2.0` only after the required acceptance is satisfied.
+resolve required manual workload/deployment acceptance. The local package preview and finite
+resource protocol do not replace those gates. T3 hardware/vendor targets, Android
+bionic/ART/devices, systemd/WinSW and production hosting beyond the earlier LaunchAgent fixture
+remain explicitly unverified. The heading will become exact `## 0.2.0` only after the required
+acceptance is satisfied.
 
 ### Earlier candidate runs
 
@@ -168,7 +169,7 @@ reported separately. Two-worker single-task replacement still has a +26.5% histo
 batch-mean regression; this observation is not erased by passing the larger-N p99 matrix.
 The detailed benchmark output remains outside the published source tree.
 
-The final source passed 346 workspace tests (two opt-in stress cases excluded), strict
+That `8f976b8` source passed 346 workspace tests (two opt-in stress cases excluded), strict
 Clippy, formatting, minimal-task tests, Rust 1.92 checks and eight production scope
 Loom models. The Send regression also covers Send-but-not-Sync specifications.
 The fresh 600-second release task stress passed 6,425,290 generations, 123,504,483
