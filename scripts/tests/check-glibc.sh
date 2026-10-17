@@ -141,6 +141,21 @@ if [ "${RUNTIME_CASE:-}" = drain-input ]; then cat > /dev/null; fi
 case "${RUNTIME_CASE:-}" in
   zero) echo 'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;' ;;
   skipped) echo 'test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out;' ;;
+  allowed)
+    echo 'test concurrent_lifecycle_stress ... ignored, opt-in sustained stress'
+    echo 'test surviving_descendants_restart_stress ... ignored, opt-in host stress'
+    echo 'test result: ok. 1 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out;' ;;
+  unknown)
+    echo 'test silently_disabled_contract ... ignored'
+    echo 'test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out;' ;;
+  wrong-count)
+    echo 'test concurrent_lifecycle_stress ... ignored'
+    echo 'test result: ok. 1 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out;' ;;
+  duplicate)
+    echo 'test concurrent_lifecycle_stress ... ignored'
+    echo 'test concurrent_lifecycle_stress ... ignored'
+    echo 'test result: ok. 1 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out;' ;;
+  filtered) echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out;' ;;
   *) echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;' ;;
 esac
 TEST
@@ -150,7 +165,11 @@ bash "$work/runtime.sh" "$work/tests.txt" > "$work/log" 2>&1
 printf '%s\n%s\n' "$work/test" "$work/test" > "$work/two-tests.txt"
 RUNTIME_CASE=drain-input bash "$work/runtime.sh" "$work/two-tests.txt" > "$work/log" 2>&1
 grep -Fq '2 tests passed' "$work/log"
-for case in failed no-summary zero skipped; do
+RUNTIME_CASE=allowed bash "$work/runtime.sh" "$work/tests.txt" > "$work/log" 2>&1
+if RUNTIME_CASE=allowed bash "$work/runtime.sh" "$work/two-tests.txt" > "$work/log" 2>&1; then
+  echo 'glibc accepted duplicate stress exclusions across executables' >&2; exit 1
+fi
+for case in failed no-summary zero skipped unknown wrong-count duplicate filtered; do
   if RUNTIME_CASE=$case bash "$work/runtime.sh" "$work/tests.txt" > "$work/log" 2>&1; then
     echo "glibc accepted runtime case: $case" >&2; exit 1
   fi

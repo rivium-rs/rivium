@@ -81,17 +81,34 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 passed=0
+: > "$work/ignored-all"
 while IFS= read -r executable; do
   echo "glibc 2.17 runtime: $executable"
   status=0
   timeout --kill-after=5s 120s "$executable" --test-threads=1 --color never < /dev/null > "$work/log" 2>&1 || status=$?
   cat "$work/log"
   [ "$status" -eq 0 ] || exit "$status"
-  summary=$(grep -E '^test result: ok\. [0-9]+ passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;' "$work/log")
+  summary=$(grep -E '^test result: ok\. [0-9]+ passed; 0 failed; [0-9]+ ignored; 0 measured; 0 filtered out;' "$work/log")
   count=$(sed -nE 's/^test result: ok\. ([0-9]+) passed;.*/\1/p' <<< "$summary")
-  [[ "$count" =~ ^[0-9]+$ ]] || { echo 'glibc: missing unskipped test summary' >&2; exit 1; }
+  ignored=$(sed -nE 's/^test result: ok\. [0-9]+ passed; 0 failed; ([0-9]+) ignored;.*/\1/p' <<< "$summary")
+  [[ "$count" =~ ^[0-9]+$ && "$ignored" =~ ^[0-9]+$ ]] \
+    || { echo 'glibc: missing complete test summary' >&2; exit 1; }
+  awk '/^test .* \.\.\. ignored/ {print $2}' "$work/log" > "$work/ignored"
+  [ "$(wc -l < "$work/ignored" | tr -d ' ')" -eq "$ignored" ] \
+    || { echo 'glibc: ignored count does not match named tests' >&2; exit 1; }
+  # Only these sustained tests are opt-in; their short smoke coverage still runs.
+  while IFS= read -r name; do
+    case "$name" in
+      concurrent_lifecycle_stress | surviving_descendants_restart_stress) ;;
+      *) echo "glibc: unexpected ignored test: $name" >&2; exit 1 ;;
+    esac
+    if grep -Fxq "$name" "$work/ignored-all"; then
+      echo "glibc: duplicate ignored test: $name" >&2; exit 1
+    fi
+    printf '%s\n' "$name" >> "$work/ignored-all"
+  done < "$work/ignored"
   passed=$((passed + count))
 done < "$1"
 [ "$passed" -gt 0 ] || { echo 'glibc: no tests ran' >&2; exit 1; }
-echo "glibc 2.17 runtime: $passed tests passed without skips or retries"
+echo "glibc 2.17 runtime: $passed tests passed; only named opt-in stress exclusions permitted, no retries"
 RUNTIME
