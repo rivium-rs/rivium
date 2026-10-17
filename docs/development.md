@@ -40,7 +40,7 @@ keep related associated types and constants together. Use blank lines to mark me
 steps in longer functions. Run rustfmt and also inspect macro bodies and item spacing:
 passing the formatter alone does not establish readable layout.
 
-The aggregate ceiling is **18,000 Rust code lines**, measured with tokei 14.0.0 across all
+The aggregate ceiling is **18,150 Rust code lines**, measured with tokei 14.0.0 across all
 six library directories, including their tests and fixtures. Keep the counter version,
 file scope and measurement checks unchanged; do not compress code, remove error handling
 or assertions, or move tests outside that scope to satisfy the ceiling.
@@ -51,6 +51,12 @@ lines, leaving 172 lines (about 1%) for small maintenance changes. This is an ex
 maintenance allowance, not an estimate of capacity for new features. Further increases
 require a review of implementation and validation costs. The ceiling is not a target or
 evidence of correctness, performance, or release readiness.
+
+The 2026-10-17 performance repair review adds 150 lines (0.83%) of maintenance
+allowance, bringing the ceiling to 18,150. The planner split and the regression test
+for a retry deadline crossing an awaited stop exceed the previous 17,999-line usage.
+This allowance preserves readable control flow and behavioral assertions; it does not
+change the counting scope or the P-CORE/P-TASK performance thresholds.
 
 ## Models and sustained workloads
 

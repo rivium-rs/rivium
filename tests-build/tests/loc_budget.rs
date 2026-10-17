@@ -14,7 +14,7 @@ const LIBRARIES: [&str; 6] = [
     "rivium-test",
 ];
 // Reviewed maintenance allowance; scope and rationale are in docs/development.md.
-const TOTAL_BUDGET: u64 = 18_000;
+const TOTAL_BUDGET: u64 = 18_150;
 
 fn rust_code(output: &[u8]) -> Result<u64, String> {
     let value: serde_json::Value =
