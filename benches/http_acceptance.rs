@@ -4,6 +4,8 @@ use axum::{
     Router,
     body::{Body, Bytes, to_bytes},
     extract::Request,
+    http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use rivium::{Outcome, Supervisor, rt::StopReason};
@@ -27,6 +29,7 @@ use tokio::{
 struct Counts {
     active: AtomicUsize,
     high: AtomicUsize,
+    read_errors: AtomicUsize,
 }
 
 struct Owner(Arc<Counts>);
@@ -45,11 +48,17 @@ impl Drop for Owner {
     }
 }
 
-async fn handler(request: Request, counts: Arc<Counts>) -> Body {
+async fn handler(request: Request, counts: Arc<Counts>) -> Response {
     let owner = Owner::new(counts);
     let slow = request.uri().path() == "/slow";
     if request.method() == "POST" {
-        let body = to_bytes(request.into_body(), 65536).await.unwrap();
+        let body = match to_bytes(request.into_body(), 65536).await {
+            Ok(body) => body,
+            Err(_) => {
+                owner.0.read_errors.fetch_add(1, Ordering::SeqCst);
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+        };
         assert_eq!(body.len(), 65536);
         assert!(body.iter().all(|byte| *byte == b'p'));
     }
@@ -61,10 +70,37 @@ async fn handler(request: Request, counts: Arc<Counts>) -> Body {
         let _owner = owner;
         Ok::<_, std::io::Error>(Bytes::from(vec![b'x'; 1024]))
     }))
+    .into_response()
 }
 
-async fn request(address: SocketAddr, post: bool, mode: usize) -> std::io::Result<u16> {
-    let mut stream = TcpStream::connect(address).await?;
+async fn read_error_self_check() {
+    let counts = Arc::new(Counts::default());
+    let incoming = Body::from_stream(futures_util::stream::once(async {
+        Err::<Bytes, _>(std::io::Error::from(std::io::ErrorKind::ConnectionReset))
+    }));
+    let request = Request::builder().method("POST").body(incoming).unwrap();
+    let response = handler(request, counts.clone()).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(counts.read_errors.load(Ordering::SeqCst), 1);
+    assert_eq!(counts.active.load(Ordering::SeqCst), 0);
+}
+
+#[derive(Debug)]
+struct RequestError {
+    phase: &'static str,
+    error: std::io::Error,
+}
+
+impl RequestError {
+    fn at(phase: &'static str) -> impl FnOnce(std::io::Error) -> Self {
+        move |error| Self { phase, error }
+    }
+}
+
+async fn request(address: SocketAddr, post: bool, mode: usize) -> Result<u16, RequestError> {
+    let mut stream = TcpStream::connect(address)
+        .await
+        .map_err(RequestError::at("connect"))?;
     if mode == 2 {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
@@ -76,16 +112,26 @@ async fn request(address: SocketAddr, post: bool, mode: usize) -> std::io::Resul
             format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {length}\r\n\r\n")
                 .as_bytes(),
         )
-        .await?;
+        .await
+        .map_err(RequestError::at("write_headers"))?;
     if post {
-        stream.write_all(&vec![b'p'; 65536]).await?;
+        stream
+            .write_all(&vec![b'p'; 65536])
+            .await
+            .map_err(RequestError::at("write_body"))?;
     }
     let mut bytes = Vec::new();
-    stream.read_to_end(&mut bytes).await?;
+    stream
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(RequestError::at("read_response"))?;
     let status = std::str::from_utf8(bytes.get(9..12).unwrap_or_default())
         .ok()
         .and_then(|status| status.parse().ok())
-        .unwrap_or(0);
+        .ok_or_else(|| RequestError {
+            phase: "parse_status",
+            error: std::io::Error::from(std::io::ErrorKind::InvalidData),
+        })?;
     if status == 200 {
         assert!(
             complete_payload(&bytes),
@@ -93,6 +139,59 @@ async fn request(address: SocketAddr, post: bool, mode: usize) -> std::io::Resul
         );
     }
     Ok(status)
+}
+
+struct Attempt {
+    index: usize,
+    planned: u128,
+    sent: u128,
+    status: u16,
+    elapsed: u128,
+    outcome: &'static str,
+    error_phase: &'static str,
+    io_error_kind: String,
+    raw_os_error: Option<i32>,
+    timed_out: bool,
+}
+
+struct Cleanup {
+    within_5s: bool,
+    at_5s_active: usize,
+    elapsed_us: u128,
+    remaining: usize,
+}
+
+async fn wait_for_owners(counts: &Counts) {
+    while counts.active.load(Ordering::SeqCst) != 0 {
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn cleanup(counts: &Counts, case: &str) -> Cleanup {
+    let start = Instant::now();
+    let within_5s = tokio::time::timeout(Duration::from_secs(5), wait_for_owners(counts))
+        .await
+        .is_ok()
+        && start.elapsed() <= Duration::from_secs(5);
+    let at_5s_active = counts.active.load(Ordering::SeqCst);
+    if !within_5s {
+        eprintln!(
+            "phase=cleanup_missed_5s case={case} at_5s_active={at_5s_active} elapsed_us={}",
+            start.elapsed().as_micros()
+        );
+        // This diagnoses the default 30s handler deadline, without changing the 5s result.
+        let _ = tokio::time::timeout_at(
+            (start + Duration::from_secs(31)).into(),
+            wait_for_owners(counts),
+        )
+        .await;
+    }
+    Cleanup {
+        within_5s,
+        at_5s_active,
+        elapsed_us: start.elapsed().as_micros(),
+        remaining: counts.active.load(Ordering::SeqCst),
+    }
 }
 
 // Parse only the fixture's HTTP/1 framing; trailers and chunk extensions are not emitted.
@@ -185,14 +284,18 @@ async fn load(
         let Ok(permit) = slots.clone().try_acquire_owned() else {
             // Count generator-capacity omissions separately; never hide them as successes.
             suppressed += 1;
-            raw.push((
+            raw.push(Attempt {
                 index,
-                (planned - start).as_micros(),
-                start.elapsed().as_micros(),
-                0,
-                0,
-                "client_suppressed",
-            ));
+                planned: (planned - start).as_micros(),
+                sent: start.elapsed().as_micros(),
+                status: 0,
+                elapsed: 0,
+                outcome: "client_suppressed",
+                error_phase: "",
+                io_error_kind: String::new(),
+                raw_os_error: None,
+                timed_out: false,
+            });
             continue;
         };
         let mode = if mixed && index % 10 < 2 {
@@ -205,17 +308,30 @@ async fn load(
             let sent = start.elapsed().as_micros();
             let result =
                 tokio::time::timeout(Duration::from_secs(5), request(address, post, mode)).await;
-            let status = match result {
-                Ok(Ok(status)) => status,
-                _ => 0,
+            let elapsed = planned.elapsed().as_micros();
+            let (status, error_phase, io_error_kind, raw_os_error, timed_out) = match result {
+                Ok(Ok(status)) => (status, "", String::new(), None, false),
+                Ok(Err(error)) => (
+                    0,
+                    error.phase,
+                    format!("{:?}", error.error.kind()),
+                    error.error.raw_os_error(),
+                    false,
+                ),
+                Err(_) => (0, "request_timeout", String::new(), None, true),
             };
-            (
+            Attempt {
                 index,
-                (planned - start).as_micros(),
+                planned: (planned - start).as_micros(),
                 sent,
                 status,
-                planned.elapsed().as_micros(),
-            )
+                elapsed,
+                outcome: "attempt",
+                error_phase,
+                io_error_kind,
+                raw_os_error,
+                timed_out,
+            }
         });
     }
     let mut success = Vec::new();
@@ -223,14 +339,14 @@ async fn load(
     let mut rejected = 0;
     let mut errors = 0;
     while let Some(result) = tasks.join_next().await {
-        let (index, planned, sent, status, elapsed) = result.unwrap();
-        raw.push((index, planned, sent, status, elapsed, "attempt"));
-        all.push(elapsed);
-        match status {
-            200 => success.push(elapsed),
+        let attempt = result.unwrap();
+        all.push(attempt.elapsed);
+        match attempt.status {
+            200 => success.push(attempt.elapsed),
             503 => rejected += 1,
             _ => errors += 1,
         }
+        raw.push(attempt);
     }
     let elapsed = start.elapsed().as_secs_f64();
     assert_eq!(success.len() + rejected + errors + suppressed, offered);
@@ -245,14 +361,27 @@ async fn load(
         );
         writeln!(
             file,
-            "index,planned_us,attempt_started_us,status,planned_to_complete_us,outcome"
+            "index,planned_us,attempt_started_us,status,planned_to_complete_us,outcome,error_phase,io_error_kind,raw_os_error,timed_out"
         )
         .unwrap();
-        raw.sort_unstable_by_key(|row| row.0);
-        for (index, planned, sent, status, elapsed, outcome) in raw {
+        raw.sort_unstable_by_key(|row| row.index);
+        for attempt in raw {
             writeln!(
                 file,
-                "{index},{planned},{sent},{status},{elapsed},{outcome}"
+                "{},{},{},{},{},{},{},{},{},{}",
+                attempt.index,
+                attempt.planned,
+                attempt.sent,
+                attempt.status,
+                attempt.elapsed,
+                attempt.outcome,
+                attempt.error_phase,
+                attempt.io_error_kind,
+                attempt
+                    .raw_os_error
+                    .map(|code| code.to_string())
+                    .unwrap_or_default(),
+                attempt.timed_out
             )
             .unwrap();
         }
@@ -269,8 +398,8 @@ async fn load(
             .unwrap(),
         200
     );
-    println!(
-        "{capacity},{},{},{rate},{offered},{},{rejected},{errors},{suppressed},{:.3},{:.3},{},{},{},{},{},{},{},{}",
+    print!(
+        "{capacity},{},{},{rate},{offered},{},{rejected},{errors},{suppressed},{:.3},{:.3},{},{},{},{},{},{},{},{},",
         if post { "post_64k" } else { "get_1k" },
         if mixed {
             "slow_body_idle_20pct"
@@ -296,7 +425,7 @@ fn main() {
     let smoke = std::env::args().any(|arg| arg == "--test");
     let seconds = if smoke { 0.05 } else { 3.0 };
     println!(
-        "workers,capacity,payload,mode,offered_per_s,offered,success,http_503,errors,client_suppressed,elapsed_s,goodput_per_s,success_p50_us,success_p95_us,success_p99_us,all_attempt_p50_us,all_attempt_p95_us,all_attempt_p99_us,schedule_lag_p99_us,recovery_us"
+        "workers,capacity,payload,mode,offered_per_s,offered,success,http_503,errors,client_suppressed,elapsed_s,goodput_per_s,success_p50_us,success_p95_us,success_p99_us,all_attempt_p50_us,all_attempt_p95_us,all_attempt_p99_us,schedule_lag_p99_us,recovery_us,body_read_errors,cleanup_within_5s,at_5s_active,cleanup_elapsed_us,application_body_after"
     );
     for workers in [1, 4] {
         let server = tokio::runtime::Builder::new_multi_thread()
@@ -306,6 +435,7 @@ fn main() {
             .unwrap();
         let counts = Arc::new(Counts::default());
         let (address, control, run) = server.block_on(async {
+            read_error_self_check().await;
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
             let normal = counts.clone();
@@ -350,6 +480,7 @@ fn main() {
                             assert_eq!(request(address, post, 0).await.unwrap(), 200);
                         }
                         counts.high.store(0, Ordering::SeqCst);
+                        counts.read_errors.store(0, Ordering::SeqCst);
                         let case = format!("{workers}-{capacity}-{post}-{mixed}");
                         eprintln!(
                             "phase=case_start case={case} unix_ms={} pid={}",
@@ -358,19 +489,26 @@ fn main() {
                         );
                         print!("{workers},");
                         load(address, workers, capacity, post, mixed, seconds).await;
-                        tokio::time::timeout(Duration::from_secs(5), async {
-                            while counts.active.load(Ordering::SeqCst) != 0 {
-                                tokio::task::yield_now().await;
-                            }
-                        })
-                        .await
-                        .unwrap();
+                        let cleanup = cleanup(&counts, &case).await;
+                        let read_errors = counts.read_errors.load(Ordering::SeqCst);
+                        println!(
+                            "{read_errors},{},{},{},{}",
+                            cleanup.within_5s,
+                            cleanup.at_5s_active,
+                            cleanup.elapsed_us,
+                            cleanup.remaining
+                        );
                         eprintln!(
-                            "phase=case_end case={case} unix_ms={} pid={} workers={workers} capacity={capacity} post={post} mixed={mixed} application_body_high={} application_body_after=0",
+                            "phase=case_end case={case} unix_ms={} pid={} workers={workers} capacity={capacity} post={post} mixed={mixed} application_body_high={} application_body_after={} body_read_errors={read_errors} cleanup_within_5s={} at_5s_active={} cleanup_elapsed_us={}",
                             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
                             std::process::id(),
-                            counts.high.load(Ordering::SeqCst)
+                            counts.high.load(Ordering::SeqCst),
+                            cleanup.remaining,
+                            cleanup.within_5s,
+                            cleanup.at_5s_active,
+                            cleanup.elapsed_us
                         );
+                        assert_eq!(cleanup.remaining, 0, "application owners survived 31s cleanup");
                     }
                 }
             }

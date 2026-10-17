@@ -143,7 +143,8 @@ three independent processes per revision, rotate their order, and retain all CSV
 output, stderr, raw samples, source/lock/binary hashes and host metadata. `--test`
 runs the same 48 cases with 50 ms arrival windows; it is a functional smoke check,
 not a performance result. The benchmark starts with framing self-checks, including
-truncated-response negative cases.
+truncated-response negative cases. A request-body read-error self-check also requires
+HTTP 400 and zero remaining application owners before the response is dropped.
 
 The server uses separate one- and four-worker runtimes; a two-worker client runtime
 shares the process. Each case has 32 sequential warmup requests followed by three
@@ -166,9 +167,22 @@ and terminal framing, and is not a general HTTP client or parser.
 CSV reports nearest-rank p50/p95/p99 separately for successes and all network attempts,
 plus schedule-lag p99. Suppressed arrivals are recorded but have no network latency
 sample. Raw files preserve each arrival's planned time, attempt start, status and
-completion latency. The five-second client timeout is an error. Every case ends with
-a separate successful recovery GET and requires the application response-stream owner
-counter to return to zero. That application counter is **not** the complete HTTP
+completion latency. Transport errors additionally retain the request phase, I/O error
+kind and OS error code when available; timeouts have a separate flag. The five-second
+client timeout is an error. An interrupted POST body returns HTTP 400 and increments
+`body_read_errors`; a successfully read but corrupt fixture payload still fails an
+assertion. These errors never count as successful requests.
+
+Every case ends with a separate successful recovery GET and observes the application
+response-stream owner counter for five seconds. A missed observation is retained as
+`cleanup_within_5s=false` with `at_5s_active`, even if owners subsequently disappear.
+`at_5s_active` is sampled when that check returns, not at an exact five-second instant.
+Additional diagnostic waiting uses a 31-second total deadline, matching the default
+30-second handler deadline plus one second of scheduling allowance. This does not
+extend the original five-second acceptance observation. CSV and stderr retain final
+cleanup duration and remaining owners; owners still present when the diagnostic wait
+returns fail the process. Runtime scheduling can delay that observation. That application
+counter is **not** the complete HTTP
 request-owner or accepted-connection permit count; admission and lifetime integration
 tests verify those contracts separately.
 
@@ -177,10 +191,12 @@ sampling. Such samples cover the whole process, including both client and server
 They are sampled observations, not instantaneous peaks or server-only connection
 counts. Keep sampling interval and overhead identical between revisions. A normal
 case qualifies for the provisional historical p99 comparison only when all offered
-requests succeed, with no rejection, error or client suppression in either version's
-three runs. This qualification does not establish CPU headroom; retain schedule lag
-and every process p99, and compare the median of those three p99 values without
-pooling them. Mixed slow-body/idle results remain separate.
+requests succeed, with no rejection, error, body-read error or client suppression,
+and cleanup reaches zero within five seconds in either version's three runs. A late
+cleanup remains a failed observation and is excluded from that comparison even when
+the process completes successfully. This qualification does not establish CPU headroom;
+retain schedule lag and every process p99, and compare the median of those three p99
+values without pooling them. Mixed slow-body/idle results remain separate.
 
 Historical `aa48a03` needs only an untimed shutdown-assertion adaptation: its Supervisor
 returns `Outcome`, while the current API returns `RunReport.outcome`. Preserve that
@@ -226,6 +242,9 @@ construction and rejection, not just a successful reconcile call. Queue and disk
 figures are observed samples; they are not continuously measured maxima or actual
 written-event counts. Closing requires task/worker counts to reach zero and the
 scratch directory to disappear before withdrawal rows are emitted.
+
+stderr records each resource phase's start/end with monotonic elapsed time and wall
+time. Use those boundaries to check actual phase durations and align OS samples.
 
 Keep the process and runtime alive throughout each load/withdrawal sequence. Sample
 its PID's RSS, numeric file descriptors and threads externally (for example `ps` and

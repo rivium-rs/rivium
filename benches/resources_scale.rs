@@ -14,7 +14,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use rivium::{error::kinds, scope::TaskScope};
@@ -309,7 +309,14 @@ fn main() {
             } else if load.is_none() {
                 load = Some(Load::new());
             }
-            let deadline = Instant::now() + Duration::from_secs(if smoke { 1 } else { seconds });
+            let phase_started = Instant::now();
+            let deadline = phase_started + Duration::from_secs(if smoke { 1 } else { seconds });
+            eprintln!(
+                "phase_start round={round} phase={phase} factor={factor} elapsed_ms={} unix_ms={} pid={}",
+                phase_started.duration_since(started).as_millis(),
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
+                std::process::id()
+            );
             loop {
                 let sample_start = Instant::now();
                 let values = if let Some(current) = &mut load {
@@ -336,6 +343,13 @@ fn main() {
                 tokio::time::sleep(Duration::from_secs(1).saturating_sub(sample_start.elapsed()))
                     .await;
             }
+            let phase_ended = Instant::now();
+            eprintln!(
+                "phase_end round={round} phase={phase} factor={factor} elapsed_ms={} unix_ms={} pid={}",
+                phase_ended.duration_since(started).as_millis(),
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
+                std::process::id()
+            );
         }
     });
 }
