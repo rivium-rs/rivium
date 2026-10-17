@@ -1,6 +1,6 @@
 #![cfg(feature = "task")]
 
-use rivium_util::task::{Manager, Policy, View, plan};
+use rivium_util::task::{DesiredError, Manager, Policy, ReconcileError, View, plan};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -80,13 +80,33 @@ async fn replace_never_overlaps_and_drop_aborts() {
 }
 
 #[tokio::test]
-async fn duplicate_keys_leave_running_tasks_unchanged() {
+async fn separated_duplicate_keys_leave_running_tasks_unchanged() {
     let mut manager = Manager::new(Policy::default()).unwrap();
-    assert!(
-        manager
-            .reconcile(vec![("x", 1), ("x", 2)], |_, _, _| async { Ok(()) })
-            .await
-            .is_err()
-    );
-    assert!(manager.is_empty());
+    let mut cancellation = None;
+    manager
+        .reconcile(vec![("old", 1)], |_, _, context| {
+            cancellation = Some(context.cancel.clone());
+            async move {
+                context.cancel.cancelled().await;
+                Ok(())
+            }
+        })
+        .await
+        .unwrap();
+
+    let mut factory_calls = 0;
+    let result = manager
+        .reconcile(vec![("x", 1), ("other", 1), ("x", 2)], |_, _, _| {
+            factory_calls += 1;
+            std::future::ready(Ok(()))
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(ReconcileError::InvalidDesired(DesiredError::DuplicateKey))
+    ));
+    assert_eq!(factory_calls, 0);
+    assert_eq!(manager.len(), 1);
+    assert!(!cancellation.unwrap().is_cancelled());
+    manager.shutdown().await.unwrap();
 }

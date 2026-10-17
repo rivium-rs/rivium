@@ -375,7 +375,7 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
     /// Rejected input leaves existing work intact; accepted rounds may finish after close.
     pub async fn reconcile<F, Fut>(
         &mut self,
-        desired: Vec<(K, S)>,
+        mut desired: Vec<(K, S)>,
         mut factory: F,
     ) -> std::result::Result<Report<K>, ReconcileError>
     where
@@ -396,20 +396,21 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
                 "task manager has shut down",
             )));
         }
-        let mut wanted = BTreeMap::new();
-        for (key, spec) in desired {
-            if wanted.insert(key, spec).is_some() {
-                return Err(ReconcileError::InvalidDesired(DesiredError::DuplicateKey));
-            }
+        desired.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        if desired
+            .windows(2)
+            .any(|pair| pair[0].0.cmp(&pair[1].0).is_eq())
+        {
+            return Err(ReconcileError::InvalidDesired(DesiredError::DuplicateKey));
         }
 
         let mut report = Report::default();
         self.reap_finished().await;
-        if self.entries.len() == wanted.len()
+        if self.entries.len() == desired.len()
             && self
                 .entries
                 .iter()
-                .zip(&wanted)
+                .zip(&desired)
                 .all(|((key, entry), (wanted_key, spec))| {
                     key == wanted_key
                         && entry.state.spec == *spec
@@ -424,6 +425,8 @@ impl<K: Ord + Clone + Debug, S: Eq + Clone> Manager<K, S> {
             report.exits = std::mem::take(&mut self.pending_exits);
             return Ok(report);
         }
+        // Build the lookup tree only when reconciliation needs to change work.
+        let wanted = desired.into_iter().collect();
         let mut stop = Vec::new();
         self.scan_current(&wanted, |key| stop.push(key.clone()));
 

@@ -67,7 +67,7 @@ async fn unchanged_work_preserves_tasks_and_checks_scope_admission() {
     for size in [0, 2] {
         let scope = rivium::scope::TaskScope::new();
         let mut manager = Manager::with_scope(Policy::default(), scope.clone()).unwrap();
-        let desired: Vec<_> = (0..size).map(|key| (key, 1)).collect();
+        let mut desired: Vec<_> = (0..size).map(|key| (key, 1)).collect();
         manager
             .reconcile(desired.clone(), |_, _, context| async move {
                 context.cancel.cancelled().await;
@@ -75,6 +75,8 @@ async fn unchanged_work_preserves_tasks_and_checks_scope_admission() {
             })
             .await
             .unwrap();
+        // Input order must not turn an unchanged set into replacement work.
+        desired.reverse();
 
         for closed in [false, true] {
             if closed {
