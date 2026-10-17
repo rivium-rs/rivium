@@ -343,3 +343,47 @@ async fn waiting_candidate_does_not_consume_a_later_starts_reservation() {
     manager.shutdown().await.unwrap();
     assert_eq!(scope.active_tasks(), 0);
 }
+
+#[tokio::test(start_paused = true)]
+async fn retry_becoming_due_during_another_stop_starts_in_the_same_round() {
+    let scope = rivium::scope::TaskScope::new();
+    let mut manager = Manager::with_scope(
+        Policy {
+            stop_timeout: Duration::from_secs(10),
+            ..policy(2)
+        },
+        scope.clone(),
+    )
+    .unwrap();
+    let (_, worker) = start(&mut manager, 1).await;
+    worker.finish(Err(Error::internal("retry later"))).await;
+
+    let report = manager
+        .reconcile(vec![("worker", 1), ("z", 1)], |_, _, context| async move {
+            context.cancel.cancelled().await;
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(report.started, ["z"]);
+    assert!(report.restarted.is_empty());
+    assert!(matches!(
+        report.exits.as_slice(),
+        [("worker", Exit::Failed(_))]
+    ));
+
+    // The retry is two seconds away when admission occurs; z takes three to stop.
+    let before_stop = tokio::time::Instant::now();
+    let report = manager.reconcile(vec![("worker", 1)], idle).await.unwrap();
+    assert!(before_stop.elapsed() >= Duration::from_secs(3));
+    assert_eq!(report.removed, ["z"]);
+    assert_eq!(report.restarted, ["worker"]);
+    assert!(report.started.is_empty());
+    assert!(report.limited.is_empty());
+    assert!(report.unconfirmed.is_empty());
+    assert!(matches!(report.exits.as_slice(), [("z", Exit::Completed)]));
+    assert_eq!(scope.active_tasks(), 1);
+    manager.shutdown().await.unwrap();
+    assert_eq!(scope.active_tasks(), 0);
+}
