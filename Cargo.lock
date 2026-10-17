@@ -588,8 +588,11 @@ dependencies = [
 name = "rivium-benches"
 version = "0.0.0"
 dependencies = [
+ "axum",
  "flate2",
+ "futures-util",
  "rivium",
+ "rivium-http",
  "rivium-test",
  "rivium-util",
  "tokio",
