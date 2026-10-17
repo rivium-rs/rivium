@@ -8,17 +8,27 @@ publish = false
 autobenches = false
 
 [dev-dependencies]
-rivium = { workspace = true, features = ["task"] }
+rivium = { workspace = true, features = ["rt", "task"] }
 rivium-util = { workspace = true, features = ["task", "log-export"] }
 rivium-test.workspace = true
 
 flate2 = { workspace = true, features = ["rust_backend"] }
 tracing = { workspace = true, features = ["std"] }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 
 [[bench]]
 name = "task_lifecycle"
 path = "task_lifecycle.rs"
+harness = false
+
+[[bench]]
+name = "task_latency"
+path = "task_latency.rs"
+harness = false
+
+[[bench]]
+name = "scope_diagnostics"
+path = "scope_diagnostics.rs"
 harness = false
 
 [[bench]]

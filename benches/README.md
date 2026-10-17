@@ -19,16 +19,21 @@ are printed with each result. No random inputs or seed are used. Run at least th
 times to assess noise. Do not run concurrent tests, builds or soak workloads while
 collecting a comparison baseline. There is no absolute performance gate in CI.
 
+Benchmark output is intentionally local and is not part of the published source tree. Record
+comparisons in an external or ignored evidence directory when a release review requires them.
+
 An operation means:
 
 - `scope/reserve_drop/N`: reserve and release the entire N-slot batch. Includes the
-  admission mutex, cancellation check, allocation and reservation release operations.
-  This standalone scope has no generation parent and no contending threads.
+  admission mutex, cancellation check, allocation and atomic reservation release operations.
+  This standalone scope has no subscribed waiters, shared supervisor notification or
+  contending threads. It does not measure notification delivery to observers.
 - `scope/reserve_track_ready/1`: reserve one slot, allocate and poll an immediately
   ready tracked future, then release it. A single `block_on` encloses each batch.
 - `scope/closed_rejection`: attempt admission into an already closed scope.
 - `manager/*/unchanged/128`: reconcile 128 unchanged cooperative tasks. Includes
-  bounded desired-Vec construction, planning over borrowed current state, empty reservation and report handling.
+  bounded desired-Vec construction, ordered comparison with current state, empty
+  reservation and report handling.
 - `manager/*/replace/N`: replace all N tasks, including cancellation, joining old
   tasks, allocating and spawning replacements, and report validation. Startup and
   final shutdown are outside timing; replacement tasks may first be polled during
@@ -45,6 +50,55 @@ These are synthetic baselines, not Edge workload measurements. They do not measu
 blocked work, slow resource destructors, I/O,
 shutdown timeout tails or memory usage. Performance results alone do not establish
 concurrent correctness; use the model checks and stress suites for that purpose.
+
+## Task round latency
+
+```sh
+RIVIUM_LATENCY_RAW=/tmp/rivium-rounds.csv cargo bench -p rivium-benches --bench task_latency --locked
+```
+
+The matrix uses 128/512/1024 tasks, inline 1 KiB specs, and 0/1/10/100% changed keys
+on current-thread and two-worker runtimes. The affected count is rounded up, so 1%
+of 128 means two tasks. Keys and mixed actions rotate deterministically; input is
+key-ordered. This does not characterize sorting costs for arbitrary input order.
+Each case warms up 1,000 times and records 10,000 actual samples. Percentiles use
+nearest rank: `ceil(percent * samples / 100)`, with one-based ranks. Run three
+independent processes per revision and retain every process result and raw sample.
+
+`replacement` measures one reconcile, including desired Vec/spec construction through
+its return. Report validation and destruction are outside timing. These 24 cases
+provide single-round p50/p95/p99. `mixed_recovery_episode` divides affected keys among
+successful exits, failed exits and replacements. Exit commands and scope accounting
+are prepared before timing. Scope release is not a JoinHandle completion barrier;
+the measured episode includes repeated input construction, reconcile calls and yields
+until all affected tasks restart. These episode percentiles are **not single-round
+p99**. Summary and raw CSV record the number of reconcile calls. Both revisions use
+1 ns backoff because the historical implementation rejects zero; the historical
+retry decision can consequently require another round.
+
+The same source runs against historical `aa48a03`: passing an explicit Vec adapts its
+IntoIterator API without moving construction outside timing. No historical production
+code is patched. `-- --test` runs three warmup and three measured samples per case
+with the same assertions. These closed-loop samples are not a production arrival
+distribution or failure-to-recovery SLO. The provisional +20% P-TASK trigger applies
+to single-round replacement p99, not mixed recovery episode percentiles.
+
+## Scope diagnostics
+
+```sh
+cargo bench -p rivium-benches --bench scope_diagnostics --locked
+```
+
+Six attribution probes use 21 batches of 100,000 operations after one warmup batch:
+reserve/drop, pre-reserved ready, manually polled Pending-to-Ready, actual captured
+resource destruction, subscribed waiter wake/rearm, and shared Supervisor notification
+with a scheduler yield. `-- --test` checks one operation per case.
+
+The pre-reserved probe excludes reservation setup and Vec destruction; only the final
+slot reaches zero. Optimized assembly in this experiment elides its Box allocation,
+so its result cannot stand in for complete tracked-future allocation cost. The
+Pending/Ready probe excludes scheduling, while the Supervisor probe includes it.
+Retain end-to-end task_lifecycle results when evaluating any scope optimization.
 
 ## Log directory throughput
 
