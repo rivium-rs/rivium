@@ -36,13 +36,13 @@ sort_commits = "oldest"
 commit_preprocessors = [
     { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/rivium-rs/rivium/pull/${1}))" },
 ]
-# What a consumer gets is the five library crates: commits about anything else
+# What a consumer gets is the six public library crates: commits about anything else
 # (CI, tests, examples, scripts, documentation, housekeeping) are left out.
 commit_parsers = [
     { message = "^[a-z]+(\\([^)]*\\))?!:", group = "Breaking" },
     { footer = "^BREAKING[ -]CHANGE", group = "Breaking" },
-    { message = "^feat(\\((rivium|rivium-error|rivium-http|rivium-jni|rivium-test)\\))?:", group = "Added" },
-    { message = "^fix(\\((rivium|rivium-error|rivium-http|rivium-jni|rivium-test)\\))?:", group = "Fixed" },
-    { message = "^(perf|refactor)(\\((rivium|rivium-error|rivium-http|rivium-jni|rivium-test)\\))?:", group = "Changed" },
+    { message = "^feat(\\([^)]*\\))?:", group = "Added" },
+    { message = "^fix(\\([^)]*\\))?:", group = "Fixed" },
+    { message = "^(perf|refactor)(\\([^)]*\\))?:", group = "Changed" },
     { message = ".*", skip = true },
 ]

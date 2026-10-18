@@ -55,7 +55,7 @@ change comes from a dependency update. A successful build on stable alone does n
 
 ## Versioning
 
-The five public crates are released together at one version. Before 1.0, a new minor release
+The six public crates are released together at one version. Before 1.0, a new minor release
 may change the API or configuration contract; those changes need migration steps in the
 [upgrade guide](docs/upgrading.md). Keep breaking changes explicit in the PR and its title.
 The maintainer chooses the next version; do not bump it as part of an unrelated contribution.

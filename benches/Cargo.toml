@@ -1,0 +1,58 @@
+[package]
+name = "rivium-benches"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+autobenches = false
+
+[dev-dependencies]
+rivium = { workspace = true, features = ["rt", "task"] }
+rivium-util = { workspace = true, features = ["task", "config", "log-export"] }
+rivium-test.workspace = true
+rivium-http = { workspace = true, features = ["server"] }
+
+axum = { workspace = true, features = ["http1", "tokio"] }
+futures-util = { workspace = true, features = ["std"] }
+flate2 = { workspace = true, features = ["rust_backend"] }
+tracing = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util"] }
+
+[[bench]]
+name = "task_lifecycle"
+path = "task_lifecycle.rs"
+harness = false
+
+[[bench]]
+name = "task_latency"
+path = "task_latency.rs"
+harness = false
+
+[[bench]]
+name = "scope_diagnostics"
+path = "scope_diagnostics.rs"
+harness = false
+
+[[bench]]
+name = "log_directory"
+path = "log_directory.rs"
+harness = false
+
+[[bench]]
+name = "http_acceptance"
+path = "http_acceptance.rs"
+harness = false
+
+[[bench]]
+name = "supervisor_scale"
+path = "supervisor_scale.rs"
+harness = false
+
+[[bench]]
+name = "resources_scale"
+path = "resources_scale.rs"
+harness = false
+
+[lints]
+workspace = true

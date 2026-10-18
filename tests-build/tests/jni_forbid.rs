@@ -1,59 +1,74 @@
-//! The JNI export compiles in an unsafe-forbidden consumer; aborting panics are rejected.
-#![forbid(unsafe_code)]
-
-use std::collections::BTreeMap;
-
-struct Guarded;
-
-impl rivium::App for Guarded {
-    const NAME: &'static str = "jni-guard";
-    const VERSION: &'static str = "0.0.0";
-    type Config = BTreeMap<String, String>;
-
-    fn services(
-        _: &Self::Config,
-        _: &rivium::AppContext,
-    ) -> rivium::Result<Vec<Box<dyn rivium::Service>>> {
-        Ok(Vec::new())
-    }
-}
-
-rivium_jni::export!(class = "rivium/tests/GuardedBridge", app = Guarded);
-
 #[test]
-fn export_compiles_with_unsafe_forbidden() {
-    // This is a compile guard, not a JVM invocation or an unsafe call from the consumer.
-    let _entry_point = JNI_OnLoad;
-}
-
-#[test]
-fn aborting_panics_are_rejected_for_the_documented_reason() {
-    let executable = std::env::current_exe().expect("test executable");
-    let target = executable
+fn jni_rejects_abort_profiles() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("test directory")
-        .join("jni-abort");
-    let output = tests_build::cargo("check")
+        .unwrap();
+    let output = std::process::Command::new(env!("CARGO"))
+        .current_dir(root)
         .args([
-            "--package",
+            "check",
+            "-p",
             "rivium-jni",
             "--lib",
-            "--target",
-            tests_build::TARGET,
-            "--profile",
-            "dev",
+            "--locked",
+            "--target-dir",
         ])
-        .env("CARGO_PROFILE_DEV_PANIC", "abort")
-        .env_remove("RUSTFLAGS")
+        .arg(root.join("target/jni-abort-guard"))
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
-        // Do not reuse or lock the outer test run's build directory.
-        .env("CARGO_TARGET_DIR", target)
+        .env("RUSTFLAGS", "-Cpanic=abort")
         .output()
-        .expect("check the JNI library with aborting panics");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success(), "JNI must reject panic=abort");
+        .unwrap();
+    assert!(!output.status.success());
     assert!(
-        stderr.contains("rivium-jni needs panic = \"unwind\""),
-        "failed for an unrelated reason:\n{stderr}"
+        String::from_utf8_lossy(&output.stderr).contains("rivium-jni requires panic=unwind"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn exported_jni_entry_has_checked_types_syntax_and_symbol_uniqueness() {
+    let consumer = tests_build::Consumer::new("test-jni", "");
+    consumer.set_source(
+        r#"#![forbid(unsafe_code)]
+        mod nested {
+            mod __private {}
+            struct JavaVM;
+            subject::export!(class = "rivium/tests/Isolated", app = test_app::TestApp);
+        }"#,
+    );
+    tests_build::Consumer::checked(consumer.cargo("build").arg("--lib").output().unwrap());
+
+    for (source, expected) in [
+        (
+            r#"subject::export!(class = "rivium/tests/Isolated", app = ());"#,
+            "trait bound `(): rivium_host::App`",
+        ),
+        (
+            r#"subject::export!(class = "rivium/tests/Isolated", unknown = test_app::TestApp);"#,
+            "expected export!",
+        ),
+        (
+            r#"
+            mod a { subject::export!(class = "rivium/tests/A", app = test_app::TestApp); }
+            mod b { subject::export!(class = "rivium/tests/B", app = test_app::TestApp); }
+            "#,
+            "JNI_OnLoad",
+        ),
+    ] {
+        consumer.set_source(source);
+        let output = consumer.cargo("build").arg("--lib").output().unwrap();
+        let diagnostics = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !output.status.success(),
+            "invalid export unexpectedly built"
+        );
+        assert!(diagnostics.contains(expected), "{diagnostics}");
+        if expected == "JNI_OnLoad" {
+            assert!(
+                diagnostics.contains("already defined") || diagnostics.contains("duplicate symbol"),
+                "expected a duplicate loader symbol, got: {diagnostics}",
+            );
+        }
+    }
 }

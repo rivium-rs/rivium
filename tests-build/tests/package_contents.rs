@@ -4,12 +4,14 @@
 fn packages_contain_only_their_declared_public_files() {
     for name in [
         "rivium",
-        "rivium-error",
+        "rivium-util",
+        "rivium-host",
         "rivium-http",
         "rivium-jni",
         "rivium-test",
     ] {
-        let output = tests_build::cargo("package")
+        let output = std::process::Command::new(env!("CARGO"))
+            .arg("package")
             .args(["--package", name, "--list", "--allow-dirty"])
             .output()
             .expect("list a library package");
@@ -23,6 +25,7 @@ fn packages_contain_only_their_declared_public_files() {
             .lines()
             .map(|path| path.replace('\\', "/"))
             .collect();
+
         for required in [
             "Cargo.toml",
             "src/lib.rs",
@@ -35,6 +38,7 @@ fn packages_contain_only_their_declared_public_files() {
                 "{name}: missing {required}"
             );
         }
+
         for path in &files {
             let public = matches!(
                 path.as_str(),

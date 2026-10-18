@@ -10,7 +10,7 @@ mode=$1; version=$2
 [[ "$mode" = absent && "$#" -eq 2 || "$mode" = published && "$#" -eq 3 ]] || exit 2
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-for crate in rivium-error rivium rivium-http rivium-jni rivium-test; do
+for crate in rivium rivium-util rivium-host rivium-http rivium-jni rivium-test; do
   # --fail cannot distinguish an absent version from a registry outage; handle every status explicitly.
   attempts=1
   [ "$mode" != published ] || attempts=6

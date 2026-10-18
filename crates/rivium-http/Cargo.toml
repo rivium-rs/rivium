@@ -1,33 +1,70 @@
 [package]
 name = "rivium-http"
-description = "axum integration for Rivium: the HTTP contract as a layer and its primitives, and an HTTP server service"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Bounded HTTP contracts and owned Axum listeners"
 readme = "README.md"
-include = ["src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
-keywords = ["axum", "http", "service"]
-categories = ["web-programming::http-server"]
+include = ["/src/**", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+
+[features]
+default = []
+contract = [
+    "dep:tokio",
+    "dep:futures-util",
+    "dep:http-body",
+    "dep:tracing",
+    "dep:uuid",
+    "axum/matched-path",
+]
+server = [
+    "contract",
+    "rivium/rt",
+    "axum/tokio",
+    "axum/http1",
+    "tokio/net",
+    "tokio/io-util",
+    "dep:tower",
+]
+fs = ["dep:tower", "dep:tower-http", "tower-http/fs"]
+full = ["server", "fs"]
 
 [dependencies]
 rivium.workspace = true
-axum = { workspace = true, features = ["tokio", "http1", "matched-path", "query"] }
+
+axum = { workspace = true, features = ["json", "query"] }
 serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true, features = ["std"] }
-serde_path_to_error.workspace = true
-tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
-tower = { workspace = true, features = ["util"] }
-tower-http = { workspace = true, features = ["fs"] }
-tracing.workspace = true
-uuid = { workspace = true, features = ["std", "v7"] }
+futures-util = { workspace = true, optional = true, features = ["std"] }
+http-body = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["time", "sync", "macros"] }
+tower = { workspace = true, optional = true, features = ["util"] }
+tower-http = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true, features = ["std"] }
+uuid = { workspace = true, optional = true, features = ["std", "v7"] }
 
 [dev-dependencies]
-futures-util.workspace = true
-# Without a version, so that publishing rivium-http does not wait for rivium-test.
 rivium-test = { path = "../rivium-test" }
-tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+
+tracing-subscriber = { workspace = true, features = ["std", "fmt", "registry"] }
+# Synthetic TLS fixture only; the HTTP product leaves TLS to application adapters.
+tokio-rustls = { workspace = true, features = ["ring", "tls12"] }
+futures-util = { workspace = true, features = ["std"] }
+http-body.workspace = true
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "io-util",
+    "test-util",
+] }
+tower = { workspace = true, features = ["util"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
 workspace = true

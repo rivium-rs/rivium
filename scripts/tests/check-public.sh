@@ -67,6 +67,54 @@ expect 0 "--range limited to the clean last commit" in_repo "$check" "$list" --r
 
 new_repo
 echo clean > "$tmp/repo/a.txt"
+commit "first"
+git -C "$tmp/repo" mv a.txt "$term1.txt"
+commit "rename only"
+git -C "$tmp/repo" mv "$term1.txt" a.txt
+commit "rename back"
+expect 1 "same blob under a historical denied path" in_repo "$check" "$list"
+expect 1 "selected historical tree checks every path" in_repo "$check" "$list" --range HEAD~2..HEAD~1
+expect 0 "selected clean tree excludes old paths" in_repo "$check" "$list" --range HEAD~1..HEAD
+
+# Git paths are NUL-delimited: tabs/newlines must not change the file scanned or its label.
+mkdir "$tmp/path-fixture"
+for special in 'with space' $'with\ttab' $'with\nnewline' $'trailing\n' '中文' 'with\backslash'; do
+  new_repo
+  path="$term2-$special"
+  printf 'clean\n' > "$tmp/repo/$path"
+  printf 'clean\n' > "$tmp/path-fixture/$path"
+  commit "unusual path"
+  expect 1 "history: unusual path is scanned" in_repo "$check" "$list"
+  expect 1 "index: unusual path is scanned" in_repo "$check" "$list" --index
+  expect 1 "directory: unusual path is scanned" "$check" "$list" --dir "$tmp/path-fixture"
+  if grep -q ': path name matches denylist entry #2$' "$tmp/out"; then
+    pass "unusual path reports a path match"
+  else
+    fail "unusual path reports a path match"
+  fi
+  rm "$tmp/path-fixture/$path"
+  path="clean-$special"
+  new_repo
+  printf 'contains %s\n' "$term1" > "$tmp/repo/$path"
+  printf 'contains %s\n' "$term1" > "$tmp/path-fixture/$path"
+  git -C "$tmp/repo" add -A
+  expect 1 "index: unusual path content is scanned" in_repo "$check" "$list" --index
+  expect 1 "directory: unusual path content is scanned" "$check" "$list" --dir "$tmp/path-fixture"
+  if grep -q ':1: matches denylist entry #1$' "$tmp/out"; then
+    pass "unusual path reports a content match"
+  else
+    fail "unusual path reports a content match"
+  fi
+  printf 'clean\n' > "$tmp/repo/$path"
+  printf 'clean\n' > "$tmp/path-fixture/$path"
+  git -C "$tmp/repo" add -A
+  expect 0 "index: clean unusual path passes" in_repo "$check" "$list" --index
+  expect 0 "directory: clean unusual path passes" "$check" "$list" --dir "$tmp/path-fixture"
+  rm "$tmp/path-fixture/$path"
+done
+
+new_repo
+echo clean > "$tmp/repo/a.txt"
 commit "subject mentions $term2"
 expect 1 "commit message, non-ASCII entry" in_repo "$check" "$list"
 

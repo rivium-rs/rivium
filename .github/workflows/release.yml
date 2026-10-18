@@ -52,8 +52,8 @@ jobs:
             scripts/release-check.sh preview "$RUNNER_TEMP/release"
           fi
           jq -r '"rust=" + .rust' "$RUNNER_TEMP/release/release.json" >> "$GITHUB_OUTPUT"
-      - name: Package the five public crates without executing build scripts
-        run: cargo package -p rivium-error -p rivium -p rivium-http -p rivium-jni -p rivium-test --all-features --locked --registry crates-io --no-verify --target-dir "$RUNNER_TEMP/release/build"
+      - name: Package the six public crates without executing build scripts
+        run: cargo package -p rivium -p rivium-util -p rivium-host -p rivium-http -p rivium-jni -p rivium-test --all-features --locked --registry crates-io --no-verify --target-dir "$RUNNER_TEMP/release/build"
       - name: Scan the actual archives and notes before any dependency verification runs
         env:
           PUBLIC_DENYLIST: ${{ secrets.PUBLIC_DENYLIST }}
@@ -87,11 +87,11 @@ jobs:
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-semver-checks@0.51.0
-      - name: Check all five public APIs against crates.io, without skipping missing baselines
+      - name: Check the four continuing public APIs against crates.io
         run: |
           before=$(git hash-object Cargo.lock)
           # This plugin has no --locked flag. Normal Cargo commands stay locked, and this input must not change.
-          cargo semver-checks check-release -p rivium-error -p rivium -p rivium-http -p rivium-jni -p rivium-test --all-features
+          cargo semver-checks check-release -p rivium -p rivium-http -p rivium-jni -p rivium-test --all-features
           test "$(git hash-object Cargo.lock)" = "$before"
 
   public:
@@ -101,11 +101,13 @@ jobs:
     uses: ./.github/workflows/ci.yml
   daily:
     uses: ./.github/workflows/daily.yml
+  loom:
+    uses: ./.github/workflows/loom.yml
 
   ready:
     name: release/ready
     if: ${{ always() }}
-    needs: [check, semver, public, ci, daily]
+    needs: [check, semver, public, ci, daily, loom]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -148,11 +150,24 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/environments/crates-io" > "$RUNNER_TEMP/environment.json"
           scripts/release-check.sh environment "$RUNNER_TEMP/environment.json"
           scripts/release-check.sh tag "$TAG" "$RUNNER_TEMP/release"
-          cargo package -p rivium-error -p rivium -p rivium-http -p rivium-jni -p rivium-test --all-features --locked --registry crates-io --no-verify --target-dir "$RUNNER_TEMP/release/build"
+          cargo package -p rivium -p rivium-util -p rivium-host -p rivium-http -p rivium-jni -p rivium-test --all-features --locked --registry crates-io --no-verify --target-dir "$RUNNER_TEMP/release/build"
           scripts/release-packages.sh verify "$RUNNER_TEMP/release/build/package" "$RUNNER_TEMP/release" "$RUNNER_TEMP/verified-release"
       - id: auth
+        if: ${{ github.ref != 'refs/tags/v0.2.0' }}
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
-      - name: Publish the verified packages in dependency order
+      - name: First publication of the verified 0.2.0 workspace
+        if: ${{ github.ref == 'refs/tags/v0.2.0' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_NET_RETRY: 0
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo 'release: configure the first-publication token in the protected crates-io environment' >&2
+            exit 1
+          fi
+          cargo publish --workspace --all-features --locked --registry crates-io --no-verify --target-dir "$RUNNER_TEMP/release/build"
+      - name: Publish subsequent versions using Trusted Publishing
+        if: ${{ github.ref != 'refs/tags/v0.2.0' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           CARGO_NET_RETRY: 0

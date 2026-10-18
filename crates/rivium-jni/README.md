@@ -1,26 +1,32 @@
 # rivium-jni
 
-The JNI adapter for Rivium's embedded host: a macro that generates `JNI_OnLoad` and registers a fixed set of native methods, so the application's cdylib can keep `#![forbid(unsafe_code)]`.
+A thin export macro and normal Rust implementation for the embedded host:
 
-```rust
-#![forbid(unsafe_code)]
-
-rivium_jni::export!(class = "com/example/svc/RiviumBridge", app = my_svc::App);
+```rust,ignore
+rivium_jni::export!(class = "com/example/Bridge", app = Application);
 ```
 
-The generated `JNI_OnLoad`, an `unsafe` function that only the JVM calls, registers
-`nativeStart`, `nativeStop`, `nativeStatus`, `nativeLastError` and `nativeVersion` on the bridge
-class, which drive the application's embedded host; a class that declares them otherwise fails
-to load. A panic in a native method returns -99 or an empty string, and the crate refuses
-`panic = "abort"`. The repository's [bridge declaration](https://github.com/rivium-rs/rivium/blob/main/crates/rivium-jni/tests/jvm/RiviumBridge.java)
-is the reference for Java callers. The [desktop JVM checks](https://github.com/rivium-rs/rivium/blob/main/docs/development.md#jvm-contracts)
-cover loading and the native contract; their fixtures and runner are repository-only and are
-not included in the published crate.
+The class must declare five static native methods:
 
-Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
-version, and the repository has the documentation.
+```java
+static native int nativeStart(String[] args);
+static native int nativeStop(long timeoutMillis);
+static native int nativeStatus();
+static native String nativeLastError();
+static native String nativeVersion();
+```
 
-## License
+One library exports one JNI_OnLoad. Rust wrapper ABIs are checked through the JNI crate;
+Java declaration mismatch is checked at registration/loading, not by the Rust compiler.
+Integer panics return -99 and string panics return an empty string. panic=abort is rejected.
+A null args array means no arguments; a null element means an empty argument. Embedded start
+requires --root. Negative stop durations clamp to zero. Unicode arguments and paths are supported.
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT)
-at your option.
+Status values are Idle=0, Starting=1, Running=2, Stopping=3, Restarting=4, Failed=5.
+Result codes include success=0, already-running=1, not-running=2, busy=3 and cancelled=4;
+errors are negative process exit codes. Java last-error values are safe summaries, not raw
+configuration diagnostics. Blocking start/stop calls belong off the Java UI thread.
+
+Use only the embedded host dependency; no HTTP/process host is selected. Real desktop-JVM
+contracts do not establish Android ART or device compatibility.
+Requires Rust 1.92. Licensed under MIT or Apache-2.0.

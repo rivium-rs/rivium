@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scan only the five packages produced for this candidate, before verification/publishing credentials.
+# Scan only the six packages produced for this candidate, before verification/publishing credentials.
 set -euo pipefail
 [ "$#" -ge 1 ] || exit 2
 mode=$1; shift
@@ -23,7 +23,7 @@ fi
 version=$(jq -er '.version | select(test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))' "$release/release.json")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-printf '%s\n' rivium-error rivium rivium-http rivium-jni rivium-test | LC_ALL=C sort > "$work/names"
+printf '%s\n' rivium rivium-util rivium-host rivium-http rivium-jni rivium-test | LC_ALL=C sort > "$work/names"
 for file in "$packages"/*.crate; do
   [ -s "$file" ] || fail 'no packages were generated'
   basename "$file"
@@ -70,4 +70,4 @@ cp "$release/notes.md" "$release/release.json" "$work/notes/"
 "$root/scripts/check-public.sh" "$denylist" --dir "$work/notes"
 cp "$work/notes/"* "$artifacts/"
 (cd "$artifacts" && shasum -a 256 ./*.crate notes.md release.json > SHA256SUMS)
-echo 'release packages: five archives and notes scanned; checksums recorded'
+echo 'release packages: six archives and notes scanned; checksums recorded'

@@ -26,8 +26,8 @@ the pages here explain how to take part.
 
 | Location | Purpose |
 | --- | --- |
-| [`crates/`](../../crates) | The five public libraries; see the [architecture guide](../architecture.md#crates) for their boundaries |
-| [`test-app/`](../../test-app) | Private host programs and the JNI library used by validation |
+| [`crates/`](../../crates) | The six public libraries; see the [architecture guide](../architecture.md#crates) for their boundaries |
+| [`tests-integration/`](../../tests-integration) | Shared test-app, process driver and JNI validation consumers |
 | [`tests-integration/`](../../tests-integration) | Process-level integration contracts |
 | [`tests-build/`](../../tests-build) | Consumer, dependency, JNI compile, package-boundary and code-budget checks |
 | [`scripts/`](../../scripts) | Verification drivers, public-content hooks and release helpers |

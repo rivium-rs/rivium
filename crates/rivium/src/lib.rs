@@ -1,35 +1,17 @@
-//! The Rivium service foundation.
-//!
-//! A service program implements [`App`]: its configuration and its [`Service`]s, built with
-//! [`service()`], [`periodic()`] or by hand. A host runs it, with configuration ([`config`]),
-//! logging with a disk budget ([`log`]), stop requests, restarts and result codes ([`Code`])
-//! handled: [`process::run`] as a program of its own, or [`embedded::Host`] inside another
-//! program, such as an Android app through rivium-jni. The [`lifecycle`] kernel supervises the
-//! services. Before 1.0, a new minor version may break the API.
+//! Small, explicit building blocks for long-running Tokio applications.
 
-use std::future::Future;
-use std::pin::Pin;
+/// Owned, sendable asynchronous result used by service adapters.
+pub type BoxFuture<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
 
-pub use rivium_error::{self as error, BError, Error, Result};
+pub mod error;
+pub use error::{Error, Result, ResultExt};
 
-mod app;
-mod code;
-pub mod config;
-pub mod embedded;
-pub mod fs;
-mod host;
-pub mod lifecycle;
-pub mod log;
-pub mod process;
-mod stats;
-
-pub use app::{App, AppContext, Identity};
-pub use code::Code;
-pub use lifecycle::health::{Health, HealthHandle, HealthRegistry, Phase, Readiness};
-pub use lifecycle::service::{
-    Restarter, Service, ServiceContext, ServiceKind, StopSignal, periodic, service,
+#[cfg(feature = "rt")]
+pub mod rt;
+#[cfg(feature = "task")]
+pub mod scope;
+#[cfg(feature = "rt")]
+pub use rt::{
+    Context, Control, Health, HealthHandle, HealthRegistry, Kind, Outcome, Phase, Readiness,
+    RunReport, Service, Stop, StopReason, SubmitError, Supervisor, periodic, service,
 };
-pub use stats::{Stats, stats};
-
-/// A boxed future that can move between threads, as [`Service::run`] returns.
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

@@ -1,23 +1,23 @@
 [package]
 name = "rivium-test"
-description = "Test support for Rivium services: scripted services, log capture, contract suites"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-readme = "README.md"
-include = ["build.rs", "src/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
-keywords = ["testing", "service", "lifecycle"]
-categories = ["development-tools::testing"]
+include = ["/src/**", "/build.rs", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+description = "Small public-contract testing tools for Rivium consumers"
 
 [dependencies]
-rivium.workspace = true
-serde_json = { workspace = true, features = ["std"] }
-# test-util: consumers' tests can pause time to drive services through their timeouts.
-tokio = { workspace = true, features = ["test-util", "time"] }
-tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["std", "fmt", "json"] }
+rivium = { workspace = true, features = ["rt"] }
+
+tokio = { workspace = true, features = ["time", "macros", "test-util"] }
+tracing = { workspace = true, features = ["std"] }
+tracing-subscriber = { workspace = true, features = ["std", "registry", "fmt"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
 workspace = true

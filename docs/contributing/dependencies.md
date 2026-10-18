@@ -32,7 +32,7 @@ that requirement to consumers. Keep version and feature changes tied to the actu
 
 ## Public crates and boundaries
 
-All five public Rivium crates inherit the same workspace version. Their normal/build Rivium
+All six public Rivium crates inherit the same workspace version. Their normal/build Rivium
 dependencies use the workspace's local path and matching published version. Keep both aligned
 for a release; do not replace a publishable dependency with a path-only or private workspace
 member dependency. The [release guide](../releasing.md) owns release version changes.
@@ -48,7 +48,7 @@ Keep the existing separation:
 
 Some library tests use a direct path-only **dev-dependency** on `rivium-test` to avoid a publish
 ordering cycle. That existing exception is not permission to make normal/build dependencies
-path-only. Keep `test-app`, `test-jni`, `tests-integration` and `tests-build` private.
+path-only. Keep `test-app`, `test-jni`, `tests-integration`, `tests-build`, `rivium-examples` and `rivium-benches` private.
 
 ## Lockfile and MSRV
 
@@ -64,7 +64,7 @@ not only the direct runtime dependencies of your host platform.
 
 ## Verification
 
-After [installing the local tools](../development.md#setup), run these from the repository root:
+After [installing the local tools](../development.md), run these from the repository root:
 
 ```bash
 cargo hack --each-feature --workspace check --locked
@@ -75,13 +75,13 @@ cargo deny --locked check
 The build tests inspect full normal/build dependency closures, JNI compile guards, consumer
 APIs, package contents and library code budgets. A feature check uses normal build targets;
 it does not need edited manifests or a regenerated lockfile. Use the
-[native checks](../development.md#native-checks) and affected target lanes as well.
+[native checks](../development.md#native-and-feature-contracts) and affected target lanes as well.
 
 To reproduce the MSRV lane with Rust 1.92 and a JDK installed, keep the same feature set in
 the prebuild and test run:
 
 ```bash
-cargo +1.92 build --package test-app --bins --all-features --locked
+cargo +1.92 build --package tests-integration --bin test-host --all-features --locked
 cargo +1.92 test --workspace --all-features --locked
 ```
 

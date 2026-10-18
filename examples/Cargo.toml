@@ -1,0 +1,44 @@
+[package]
+name = "rivium-examples"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dev-dependencies]
+rivium = { workspace = true, features = ["rt"] }
+rivium-host = { workspace = true, features = ["process", "embedded"] }
+rivium-http = { workspace = true, features = ["server"] }
+rivium-jni.workspace = true
+rivium-test.workspace = true
+rivium-util = { workspace = true, features = ["config"] }
+
+axum = { workspace = true, features = ["tokio", "http1"] }
+serde = { workspace = true, features = ["std", "derive"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
+
+[[example]]
+name = "basic-service"
+path = "basic-service.rs"
+
+[[example]]
+name = "http-server"
+path = "http-server.rs"
+
+[[example]]
+name = "embedded-host"
+path = "embedded-host.rs"
+
+[[example]]
+name = "config-reload"
+path = "config-reload.rs"
+test = true
+
+[[example]]
+name = "jni-service"
+path = "jni-service.rs"
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true

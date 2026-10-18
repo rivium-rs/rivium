@@ -1,20 +1,18 @@
 # rivium-test
 
-Test support for services built on Rivium: scripted services, log capture, process-level test tools and lifecycle contract suites. Use it as a dev-dependency only.
+Small public-contract test tools. Add this package only as a dev-dependency.
 
-- `process::lifecycle_contract(bin, args)` and `embedded::lifecycle_contract::<App>(root, args)`:
-  the lifecycle contract that every program built on Rivium keeps, as a process and embedded,
-  for a service's own tests;
-- `process::spawn` and `process::command`: a program run as a supervisor runs it, with its events
-  readable;
-- `ScriptedService`, which follows a list of steps to drive the supervisor, and `capture_logs`;
-- `deps::assert_closure_excludes`: the dependency closure of a package, on the test's platform,
-  has none of the given crates.
+TempDir owns and removes a unique temporary directory. Logs captures small test output through
+a scoped Dispatch. idle creates a cooperative service, and until_ready waits under a finite
+budget. Captured logs are intentionally in-memory test data, not a bounded production sink.
 
-Part of [Rivium](https://github.com/rivium-rs/rivium): its crates are released together, at one
-version, and the repository has the documentation.
+`command` launches a target executable using `CARGO_TARGET_<TRIPLE>_RUNNER` when configured.
+Its build script records Cargo's compilation target, so a different runtime
+`CARGO_BUILD_TARGET` cannot select the wrong runner. Runner arguments are whitespace-separated;
+Windows children launch directly when their parent is already running inside Wine.
 
-## License
+Complete fault applications, processes, JNI loading and model-checking suites stay in the
+repository's private validation packages. This crate does not create a new runtime, test macro
+framework or application host abstraction.
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT)
-at your option.
+Requires Rust 1.92. Licensed under MIT or Apache-2.0.
