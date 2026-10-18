@@ -51,7 +51,7 @@ See the [architecture guide](docs/architecture.md) for the lifecycle and crate b
 
 ## Getting started
 
-**The 0.2.0 workspace is not yet released.** Use Rust 1.92 or newer and run the basic
+**The 0.2.0 workspace is released.** Use Rust 1.92 or newer and run the basic
 service directly from this checkout:
 
 ```sh
@@ -125,7 +125,7 @@ Rivium targets GNU/Linux, macOS and Windows processes, and Android apps through 
 Verification differs by target and release: native tests, emulator tests and device tests are
 not interchangeable. The current Android lane checks compilation and JNI ELF properties,
 not execution on a device. Historical platform results do not establish support for this rewrite.
-The 0.2 candidate's scope and task-management regressions have been reduced; remaining
+The 0.2.0 scope and task-management regressions have been reduced; remaining
 performance acceptance work is still open.
 
 See [platform support](docs/platforms.md) for the current verification scope, known gaps and

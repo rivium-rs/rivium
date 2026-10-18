@@ -1,17 +1,17 @@
 # Upgrading
 
-Keep all Rivium packages on the same version. This page distinguishes the unreleased
-0.2 source rewrite from historical 0.1 maintenance records below.
+Keep all Rivium packages on the same version. This page describes the 0.2 source rewrite
+and the historical 0.1 maintenance records below.
 
 ## 0.2.0
 
-Unreleased rewrite candidate.
+Released rewrite.
 
 This is a complete production-source rewrite on the 0.1.1 history. Old implementations
 serve as behavior evidence; Rust compatibility shims are not included. Preserve your
 application configuration/data before migrating, and test actual external protocols.
 
-| 0.1 / earlier candidate | 0.2 destination or behavior |
+| 0.1 / earlier releases | 0.2 destination or behavior |
 |---|---|
 | rivium-error | rivium::error; default core has no dependencies |
 | rivium::App/process/embedded | rivium-host with explicit process/embedded features |

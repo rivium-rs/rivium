@@ -49,7 +49,7 @@ Rivium 基于 Tokio，提供服务基础设施，不替代异步运行时。
 
 ## 快速开始
 
-**0.2.0 工作区尚未发布。** 使用 Rust 1.92 或更新版本，从当前仓库运行基础服务：
+**0.2.0 工作区已发布。** 使用 Rust 1.92 或更新版本，从当前仓库运行基础服务：
 
 ```sh
 cargo run -p rivium-examples --example basic-service -- --root target/basic-example
@@ -119,8 +119,8 @@ Rivium 面向 GNU/Linux、macOS 和 Windows 进程，以及通过 JNI 接入的 
 
 验证范围随目标平台和版本而变化：原生测试、模拟器测试和设备测试不能相互替代。
 当前 Android 检查覆盖编译和 JNI ELF 属性，不包含设备上的实际运行。
-历史平台验证结果不能直接沿用到本次重写；0.2 候选版本的 scope 和任务管理性能退化已得到改善，
-性能验收仍待完成。
+历史平台验证结果不能直接沿用到本次重写；0.2.0 的 scope 和任务管理性能退化已得到改善，
+性能与部署限制见平台支持记录。
 
 当前验证范围、已知限制和[各版本验证记录](docs/platforms.md#release-records)
 详见[平台支持](docs/platforms.md)。

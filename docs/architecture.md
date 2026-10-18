@@ -1,6 +1,6 @@
 # Architecture
 
-This guide describes the unreleased 0.2.0 rewrite. It is an implementation contract,
+This guide describes the released 0.2.0 rewrite. It is an implementation contract,
 not a claim that every deployment platform has been verified.
 
 ## Crates

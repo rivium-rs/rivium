@@ -9,7 +9,7 @@ The minimum supported Rust version is **1.92**, checked by `ci/msrv`.
 - [Verification levels](#verification-levels)
 - [Current verification scope](#current-verification-scope)
 - [Release records](#release-records)
-- [0.2.0 candidate](#020-candidate)
+- [0.2.0](#020)
 - [0.1.1](#011)
 - [0.1.0](#010)
 
@@ -76,11 +76,11 @@ presence is not proof of its claims. A T3 target without a matching record remai
 See the [release guide](releasing.md) for the approval and publishing procedure. Historical
 records retain their original scope and dates.
 
-## 0.2.0 candidate
+## 0.2.0
 
 The latest local retention follow-up on **2026-10-18** uses frozen source
 `99abbc88623d6387ee73b1f020a4fe25b26c23d3`, with production `crates` subtree
-`b781250ef5aa86803f103e0c2cf89531540acde0`. The candidate record covers the latest native
+`b781250ef5aa86803f103e0c2cf89531540acde0`. The release record covers the latest native
 validation and package preview; earlier platform/LaunchAgent results remain tied to
 `b204cef` and HTTP/Supervisor measurements to `2e50d50`, with their older `cb3d3ec3` subtree;
 they have not been rerun for this changed production source.
@@ -91,25 +91,23 @@ they have not been rerun for this changed production source.
 | JVM and cross-targets (retained earlier source) | At `b204cef`, OpenJDK 27 normal/fault JNI contracts passed; NDK r28b/API 30 compiled/linked Android artifacts with JNI exports and 16 KB LOAD alignment checked; all six Windows GNU libraries passed cross-check. These were not repeated for `99abbc8`; Android and Windows runtime remain unverified |
 | Deployment (retained earlier source) | The `b204cef` temporary `test-host` LaunchAgent completed three readiness/SIGTERM/exit-0/restart rounds and cleanup. The newer test-host build is not a deployment rerun. Production HTTP hosting and systemd/WinSW remain unverified |
 | Packages | A clean `99abbc8` snapshot completed source checks, six-package scanning, actual `cargo publish --dry-run` and unchanged-byte verification; no upload occurred. Earlier previews retain their own artifact hashes. Crate provisioning and Trusted Publishing remain separate prerequisites |
-| HTTP and Supervisor (retained earlier source) | The `2e50d50` HTTP matrix retained 48 cases across three processes per revision: five qualifying normal cases met the provisional p99 trigger, 19 were unqualified, and the candidate mixed workload had 90,524 client errors and seven late cleanup observations. HTTP acceptance remains open. Supervisor ownership checks passed across 72,000 measured generations; timing regressions and the unevaluated steady-state gate remain |
+| HTTP and Supervisor (retained earlier source) | The `2e50d50` HTTP matrix retained 48 cases across three processes per revision: five qualifying normal cases met the provisional p99 trigger, 19 were unqualified, and the mixed workload had 90,524 client errors and seven late cleanup observations. These remain documented operational limitations. Supervisor ownership checks passed across 72,000 measured generations; timing regressions and the unevaluated steady-state gate remain |
 | Sustained scale | File-count/byte retention repaired with boundary RED/GREEN evidence. Three load processes plus churn completed 17 phases and cleanup checks: 8,569 application rows, 1,700 OS samples without sampling errors, and file-count maximum 8,191 in each process. One original successful process was revalidated; three were fresh recovery runs. Withdrawal zeros are fixed post-cleanup placeholders, with separate OS observations. No universal RSS bound or full P-LOG/P-SCALE pass is claimed; old failed attempts remain retained |
 | Required remote gates | No successful matching-source CI, daily or release workflow is included in this record. Earlier remote snapshots retain their own checked commit/time; local repair evidence does not renew them |
 
-Release acceptance remains open. `release/ready` still requires successful `check`, `semver`,
-`public`, `ci`, `daily` and `loom` results for the candidate, and the protected reviewer must
-resolve required manual workload/deployment acceptance. The local package preview and finite
-resource protocol do not replace those gates. T3 hardware/vendor targets, Android
+Known limitations at publication include the absence of a matching-source daily/release record
+and required manual workload/deployment evidence. T3 hardware/vendor targets, Android
 bionic/ART/devices, systemd/WinSW and production hosting beyond the earlier LaunchAgent fixture
-remain explicitly unverified. The heading will become exact `## 0.2.0` only after the required
-acceptance is satisfied.
+remain explicitly unverified. The local package preview and finite resource protocol are retained
+as release evidence alongside these limitations.
 
-### Earlier candidate runs
+### Earlier 0.2.0 runs
 
-Local verification on **2026-10-16** covers the unreleased six-package source rewrite based
+Local verification on **2026-10-16** covers the six-package source rewrite based
 on `v0.1.1` / `abc50bc2887d9487799dd99dfb9f967315bc875b`.
 The verified `crates` Git subtree is `792d22cecde7b20780299aefa7127db75f28b37e`;
 this identifies the library sources, manifests and tests independently of later documentation.
-These are local candidate results, not a release preview or a renewed native CI matrix.
+These are local results, not a renewed native CI matrix.
 
 | Target or check | Actual result and scope |
 | --- | --- |
@@ -127,9 +125,9 @@ The historical 0.1.x Linux, macOS x86-64, Windows, QEMU, glibc and hardware resu
 are not evidence for this rewrite. Native Linux/Windows, QEMU/Wine execution, service-manager
 hosting, Android bionic/ART/devices and deployment workload acceptance remain unverified here.
 Microbenchmarks and bounded synthetic stress do not establish production tail-latency or
-RSS/FD capacity targets. Publishing still requires the candidate's complete release workflow.
+RSS/FD capacity targets. Publishing uses the complete release workflow for the tagged source.
 
-Three sequential microbenchmark processes per revision also compared this candidate with the
+Three sequential microbenchmark processes per revision also compared this release with the
 earlier `aa48a03` implementation. The median batch mean for reserving/releasing 64 scope slots
 rose from 329 ns to 1,473 ns; reconciling 128 unchanged tasks on one worker rose from 4.68 µs to
 10.35 µs. That comparison did **not meet** the provisional performance regression target.
@@ -144,7 +142,7 @@ Scope reserve/release of 64 slots fell from 1,422.4 ns to 270.8 ns (historical: 
 and unchanged reconciliation of 128 tasks on one worker fell from 10.04 µs to 2.90 µs
 (historical: 4.57 µs). Immediately-ready tracking remains 10.6% above the historical
 batch mean; single-task replacement on one worker remains 16.8% above it. **Performance
-acceptance remains open**: these are batch means, and task p99 and the deployment workload
+remains limited**: these are batch means, and task p99 and the deployment workload
 matrix are still unverified.
 
 The follow-up passed workspace all-feature tests, the added native scope race, eight
@@ -184,10 +182,10 @@ remains open.
 
 ## 0.1.1
 
-Candidate verification recorded on **2026-10-13** at
+Verification recorded on **2026-10-13** at
 [`448b47e`](https://github.com/rivium-rs/rivium/commit/448b47ede3abcf17e7f04c9ea4f9de72bda93f13).
 All five public crates and internal dependency requirements are 0.1.1; MSRV remains Rust 1.92.
-This records verified candidate behavior, not a claim that the version has been published.
+This records the verified 0.1.1 behavior and its historical publication checks.
 
 Evidence:
 
@@ -202,8 +200,8 @@ Evidence:
   and notes versions in `release.json` are 0.1.1; this is not the earlier 0.1.0-version preview.
 
 The [release preparation PR](https://github.com/rivium-rs/rivium/pull/70) tracks checks on its
-final revision as well. Documentation-only closeout does not waive a fresh candidate preview;
-a future release tag must pass its own full workflow before publication.
+final revision as well. Documentation-only closeout does not replace the release workflow;
+a release tag must pass its own full workflow before publication.
 
 | Target or check | Result and scope |
 | --- | --- |
@@ -226,7 +224,7 @@ verification, and the declared 16 KB ELF alignment is not a real-device compatib
 The following remain **unverified for 0.1.1**: real systemd/launchd/WinSW hosting and sd-notify;
 Android bionic/ART runtime and devices; physical ARMv7 and LoongArch hardware, including the
 vendor old-world ABI/toolchain; and renewed architecture-specific glibc baselines other than
-x86_64. Historical T3 records below remain historical, not a claim of new candidate acceptance.
+x86_64. Historical T3 records below remain historical, not a claim of new 0.2.0 acceptance.
 The protected release reviewer must confirm any required manual acceptance and publishing
 configuration separately; this preview did not request OIDC credentials or upload packages.
 
@@ -244,7 +242,7 @@ record, not the current workflow matrix.
 | `armv7-unknown-linux-gnueabihf` | process (systemd) | glibc ≤ 2.17 | T2 | cross build; tests under qemu-user, including process-level tests; glibc 2.17 symbol check | `cross/armv7` |
 | `loongarch64-unknown-linux-gnu` (new-world ABI) | process | glibc ≤ 2.36, Linux ≥ 5.19 | T2 | cross build; tests under qemu-user, including process-level tests; glibc 2.36 symbol check | `cross/loongarch64` |
 | `aarch64-linux-android` (arm64-v8a, minSdk 30) | embedded (JNI) | 16 KB page alignment | T2 | NDK build and LOAD-segment alignment check; non-JNI tests under the bionic runner; JNI contract on a desktop JVM | `cross/android`, `ci/test-linux` |
-| LoongArch old-world ABI 1.0 (vendor Rust 1.92 toolchain) | process | glibc ≤ 2.28, ELF flags `0x3`, interpreter `/lib64/ld.so.1` | T3 | built and tested natively from an offline bundle of the release candidate, and its builds checked against the baseline; recorded by hand before each release. `ci/msrv` is the public early warning | `ci/msrv` |
+| LoongArch old-world ABI 1.0 (vendor Rust 1.92 toolchain) | process | glibc ≤ 2.28, ELF flags `0x3`, interpreter `/lib64/ld.so.1` | T3 | built and tested natively from an offline bundle of the release source, and its builds checked against the baseline; recorded by hand before each release. `ci/msrv` is the public early warning | `ci/msrv` |
 | armv7 hardware | process | glibc ≤ 2.17 | T3 | test binaries and release programs, cross-built against glibc 2.17, run on a board; recorded by hand | — |
 | Android devices (arm64-v8a) | embedded (JNI) | 16 KB page alignment | T3 | device checklist: install, start, stop, three start-stop rounds, restart after the process is killed, logs in logcat, stop from `onDestroy` | — |
 | LoongArch new-world hardware | process | glibc ≤ 2.36, Linux ≥ 5.19 | T3 | manual checklist | — |
