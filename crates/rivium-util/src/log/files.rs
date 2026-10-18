@@ -32,6 +32,13 @@ pub(super) struct Directory {
     _lock: File,
 }
 
+impl Drop for Directory {
+    fn drop(&mut self) {
+        // A child forked before exec can retain a copy of this descriptor.
+        let _ = self._lock.unlock();
+    }
+}
+
 impl Directory {
     pub(super) fn open(path: &Path) -> Result<Arc<Self>> {
         fs::create_dir_all(path).map_err(io_error)?;
@@ -699,4 +706,25 @@ pub(super) fn date(time: SystemTime) -> String {
     let m = mp + if mp < 10 { 3 } else { -9 };
     y += i128::from(m <= 2);
     format!("{y:04}-{m:02}-{d:02}")
+}
+
+#[cfg(all(test, unix))]
+mod directory_tests {
+    use super::*;
+
+    #[test]
+    fn directory_release_unlocks_even_with_a_duplicated_descriptor() {
+        let temp = rivium_test::TempDir::new().unwrap();
+        let directory = Directory::open(temp.path()).unwrap();
+        // Model a descriptor inherited by a concurrent child before exec.
+        let inherited = directory._lock.try_clone().unwrap();
+        assert!(Directory::open(temp.path()).is_err());
+        drop(directory);
+        let replacement = Directory::open(temp.path()).unwrap();
+        assert!(Directory::open(temp.path()).is_err());
+        drop(inherited);
+        assert!(Directory::open(temp.path()).is_err());
+        drop(replacement);
+        assert!(Directory::open(temp.path()).is_ok());
+    }
 }
