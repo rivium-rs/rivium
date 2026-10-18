@@ -92,6 +92,27 @@ An explicit OIDC action obtains a short-lived token; only then does Cargo publis
 The workflow checks registry checksums and then creates and reads back the GitHub Release, using
 the generated notes file rather than interpolating its contents into a shell command.
 
+### One-time publication of new crate identities
+
+`rivium-util` and `rivium-host` are new crate identities in this release. They do not have
+published semver baselines; the package, feature, MSRV, archive and dry-run checks are their
+first-release validation. They are still part of the same six-package publication and are
+published in Cargo's dependency order.
+
+Before creating `v0.2.0`, configure a separate Trusted Publisher for each of the six crate names,
+including both new identities. Bind every publisher to this repository, `.github/workflows/release.yml`
+and the protected `crates-io` environment. The workflow cannot create publisher records and has no
+long-lived-token fallback. A local `cargo publish --dry-run` does not prove that a publisher record
+exists, and the current release must not be manually uploaded first as a workaround.
+
+The tag workflow performs a read-only `absent` check for all six names before requesting the
+short-lived crates.io OIDC token. This protects the one-time release from duplicate uploads. The
+workspace upload is not transactional: if a later crate fails, stop and inspect the registry with
+`scripts/release-registry.sh published <version> <verified-artifact-dir>` using the retained
+archives. Do not delete and recreate the tag or rerun the workspace upload blindly. If all six
+checksums are confirmed and only the announcement failed, create the GitHub Release from the
+retained `notes.md` without publishing again.
+
 Publications are serialized and never automatically replayed after an ambiguous failure. If some
 crates were uploaded, an API times out, or the GitHub announcement fails, **inspect remote state
 first**. The read-only `scripts/release-registry.sh published <version> <verified-artifact-dir>`
