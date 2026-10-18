@@ -222,9 +222,8 @@ fn close_disables_retained_dispatchers_and_extra_layers() {
 #[test]
 fn concurrent_producers_respect_queue_and_byte_bounds() {
     let temp = TempDir::new().unwrap();
-    let mut settings = Settings::for_app("pressure");
-    settings.file.max_file_size = 1024;
-    let logger = Logger::new("pressure", temp.path(), settings, false, vec![]).unwrap();
+    // Keep this queue test independent of per-event rotation and compression IO.
+    let logger = default_logger(&temp, "pressure").unwrap();
     std::thread::scope(|scope| {
         for _ in 0..4 {
             let dispatch = logger.dispatch();
@@ -252,6 +251,7 @@ fn concurrent_producers_respect_queue_and_byte_bounds() {
         replacement.close(Duration::from_secs(2)).unwrap();
     }
     logger.close(Duration::from_secs(10)).unwrap();
+    assert_eq!(logger.pending_workers(), 0);
     assert_eq!(logger.stats().queued_events, 0);
     assert_eq!(logger.stats().queued_bytes, 0);
     assert_eq!(logger.stats().write_failures, 0);
