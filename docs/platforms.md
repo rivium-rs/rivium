@@ -105,8 +105,8 @@ acceptance is satisfied.
 
 ### Earlier candidate runs
 
-Local verification on **2026-10-16** covers the unreleased six-package source rewrite on
-`codex/rebuild-020-full`, based on `v0.1.1` / `abc50bc2887d9487799dd99dfb9f967315bc875b`.
+Local verification on **2026-10-16** covers the unreleased six-package source rewrite based
+on `v0.1.1` / `abc50bc2887d9487799dd99dfb9f967315bc875b`.
 The verified `crates` Git subtree is `792d22cecde7b20780299aefa7127db75f28b37e`;
 this identifies the library sources, manifests and tests independently of later documentation.
 These are local candidate results, not a release preview or a renewed native CI matrix.
