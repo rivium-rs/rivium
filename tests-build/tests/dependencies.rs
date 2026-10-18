@@ -200,16 +200,17 @@ fn release_packages_exclude_internal_material() {
             String::from_utf8_lossy(&out.stderr)
         );
         let files = String::from_utf8(out.stdout).unwrap();
-        assert!(files.lines().any(|f| f == "src/lib.rs"));
-        assert!(files.lines().any(|f| f == "LICENSE-MIT"));
+        let files: Vec<_> = files.lines().map(|f| f.replace('\\', "/")).collect();
+        assert!(files.iter().any(|f| f == "src/lib.rs"));
+        assert!(files.iter().any(|f| f == "LICENSE-MIT"));
         assert_eq!(
-            files.lines().any(|f| f == "build.rs"),
+            files.iter().any(|f| f == "build.rs"),
             package == "rivium-test",
             "only the target-aware test helper has a packaged build script"
         );
-        assert!(!files.lines().any(|f| f.starts_with("tests/")
-            || f.starts_with("docs/design/")
-            || f.starts_with(".tools/")));
+        assert!(!files.iter().any(|f| {
+            f.starts_with("tests/") || f.starts_with("docs/design/") || f.starts_with(".tools/")
+        }));
     }
 }
 

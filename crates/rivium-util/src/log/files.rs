@@ -305,7 +305,7 @@ impl Worker {
     fn wait(&self, until: Instant, serial: Option<u64>) -> Result<()> {
         let mut queue = super::lock(&self.0.queue);
         loop {
-            if queue.done || serial.is_some_and(|s| queue.flush_done >= s) {
+            if serial.is_some_and(|s| queue.flush_done >= s) || (serial.is_none() && queue.done) {
                 return queue.failure.as_deref().map_or(Ok(()), |e| Err(failure(e)));
             }
             let left = until.saturating_duration_since(Instant::now());
