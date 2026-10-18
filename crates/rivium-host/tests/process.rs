@@ -40,6 +40,7 @@ impl App for Fixture {
         }
 
         let mode = config.mode.clone();
+        let stopping = context.paths().root().join("stopping");
         Ok(vec![rivium::service(
             "worker",
             Kind::Frontline,
@@ -57,7 +58,8 @@ impl App for Fixture {
                     _ => {}
                 }
                 context.stopped().await;
-                if mode == "stop-hang" {
+                if mode == "stop-hang" || mode == "second-signal" {
+                    std::fs::write(stopping, b"stopping").unwrap();
                     std::future::pending::<()>().await;
                 }
                 Ok(())
@@ -83,7 +85,11 @@ fn process_child() {
             "--set".into(),
             format!("mode={mode}").into(),
             "--set".into(),
-            "lifecycle.stop_timeout=150ms".into(),
+            if mode == "second-signal" {
+                "lifecycle.stop_timeout=10s".into()
+            } else {
+                "lifecycle.stop_timeout=150ms".into()
+            },
         ]);
     }
     if mode == "restart-backoff" {
@@ -141,7 +147,7 @@ fn process_handles_first_second_signals_and_shared_deadline() {
         ("normal", vec!["TERM"], 0),
         ("normal", vec!["INT"], 0),
         ("stop-hang", vec!["TERM"], 124),
-        ("stop-hang", vec!["TERM", "INT"], 130),
+        ("second-signal", vec!["TERM", "INT"], 130),
     ] {
         let root = TempDir::new().unwrap();
         let mut child = command(&root, mode)
@@ -150,9 +156,19 @@ fn process_handles_first_second_signals_and_shared_deadline() {
             .spawn()
             .unwrap();
         wait_log(&mut child, &root, |text| text.contains("services running"));
-        for signal in signals {
+        for (index, signal) in signals.iter().enumerate() {
+            if index > 0 {
+                // Observe the first signal before sending the abort signal;
+                // scheduler latency must not consume the short timeout case.
+                wait_for(&mut child, Duration::from_secs(5), |child| {
+                    assert!(
+                        child.try_wait().unwrap().is_none(),
+                        "child exited before stopping"
+                    );
+                    root.path().join("stopping").exists().then_some(())
+                });
+            }
             send_signal(&child, signal);
-            std::thread::sleep(Duration::from_millis(20));
         }
 
         let status = wait_for(&mut child, Duration::from_secs(4), |child| {

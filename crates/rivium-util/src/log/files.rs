@@ -285,7 +285,16 @@ impl Worker {
     }
 
     pub(super) fn wait_closed(&self, until: Instant) -> Result<()> {
-        self.wait(until, None)
+        let result = self.wait(until, None);
+        // `done` is set only after the worker has dropped its `Files` and
+        // `Directory` values. Join the finished thread before returning so
+        // callers can immediately reacquire the same directory lock.
+        if self.pending() == 0
+            && let Some(thread) = super::lock(&self.0._thread).take()
+        {
+            let _ = thread.join();
+        }
+        result
     }
 
     pub(super) fn flush(&self, within: Duration) -> Result<()> {

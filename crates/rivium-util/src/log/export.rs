@@ -306,10 +306,15 @@ impl Exporter {
                 .wait_timeout(state, left)
                 .unwrap_or_else(|e| e.into_inner());
         }
-        state
+        let result = state
             .failure
             .as_ref()
-            .map_or(Ok(()), |e| Err(Error::internal(e.clone())))
+            .map_or(Ok(()), |e| Err(Error::internal(e.clone())));
+        drop(state);
+        if let Some(thread) = super::lock(&self.0._thread).take() {
+            let _ = thread.join();
+        }
+        result
     }
 }
 
