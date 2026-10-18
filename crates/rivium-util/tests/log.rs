@@ -707,7 +707,14 @@ fn external_active_file_removal_is_a_visible_flush_failure() {
     let logger = default_logger(&temp, "removed").unwrap();
     tracing::dispatcher::with_default(&logger.dispatch(), || tracing::info!("before removal"));
     logger.flush(Duration::from_secs(2)).unwrap();
-    std::fs::remove_file(temp.path().join("logs/removed/removed.log")).unwrap();
+    let active = temp.path().join("logs/removed/removed.log");
+    std::fs::remove_file(&active).unwrap();
+    // Wine 10 keeps a delete-pending file visible while the writer owns it.
+    // Ensure the missing-path precondition without weakening the error checks.
+    if active.try_exists().unwrap() {
+        std::fs::rename(&active, temp.path().join("removed.log")).unwrap();
+    }
+    assert!(!active.try_exists().unwrap());
     assert!(logger.flush(Duration::from_secs(2)).is_err());
     assert!(logger.close(Duration::from_secs(2)).is_err());
     assert_eq!(logger.pending_workers(), 0);
