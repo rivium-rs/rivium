@@ -83,12 +83,21 @@ pub(crate) fn ready_archive(
     exporter: &rivium_util::log::Exporter,
     id: rivium_util::log::ExportId,
 ) -> rivium_util::log::Archive {
-    let until = Instant::now() + Duration::from_secs(5);
+    ready_archive_with_timeout(exporter, id, Duration::from_secs(5))
+}
+
+#[cfg(feature = "log-export")]
+pub(crate) fn ready_archive_with_timeout(
+    exporter: &rivium_util::log::Exporter,
+    id: rivium_util::log::ExportId,
+    timeout: Duration,
+) -> rivium_util::log::Archive {
+    let until = Instant::now() + timeout;
     loop {
         match exporter.progress(id).unwrap() {
             rivium_util::log::ExportState::Running => {
-                assert!(Instant::now() < until, "export timed out");
-                std::thread::yield_now();
+                assert!(Instant::now() < until, "export timed out after {timeout:?}");
+                std::thread::sleep(Duration::from_millis(10));
             }
             rivium_util::log::ExportState::Ready(archive) => return archive,
             state => panic!("export did not become ready: {state:?}"),
