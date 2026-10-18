@@ -198,4 +198,34 @@ grep -Fq "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" 
 if grep -Eq 'gh (workflow run|run list)|FIRST_RELEASE_TOKEN|continue-on-error:' "$workflow"; then
   echo 'release workflow weakened its candidate or failure boundary' >&2; exit 1
 fi
+
+# Exercise the actual bootstrap shell with a fake publisher; never upload.
+awk '/      - name: First publication/ {inside=1; next}
+  inside && /      - name:/ {exit} inside {print}' "$workflow" > "$work/bootstrap-step"
+# shellcheck disable=SC2016
+grep -Fq "github.ref == 'refs/tags/v0.2.0'" "$work/bootstrap-step"
+# shellcheck disable=SC2016
+grep -Fq 'CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}' "$work/bootstrap-step"
+[ "$(grep -Fc 'secrets.CARGO_REGISTRY_TOKEN' "$workflow")" -eq 1 ]
+[ "$(grep -Fc "github.ref != 'refs/tags/v0.2.0'" "$work/publish-job")" -eq 2 ]
+awk '/        run: \|/ {inside=1; next} inside {sub(/^          /, ""); print}' \
+  "$work/bootstrap-step" > "$work/bootstrap.sh"
+cat > "$work/bin/cargo" <<'CARGO'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$CARGO_REGISTRY_TOKEN" = fixture-token ] || exit 93
+[ "$*" = "publish --workspace --all-features --locked --registry crates-io --no-verify --target-dir $RUNNER_TEMP/release/build" ] || exit 94
+touch "$RUNNER_TEMP/published"
+CARGO
+export RUNNER_TEMP="$work"
+if CARGO_REGISTRY_TOKEN='' bash "$work/bootstrap.sh" > "$work/bootstrap.log" 2>&1; then
+  echo 'bootstrap accepted a missing credential' >&2; exit 1
+fi
+grep -Fq 'configure the first-publication token' "$work/bootstrap.log"
+[ ! -e "$work/published" ]
+CARGO_REGISTRY_TOKEN=fixture-token bash "$work/bootstrap.sh" > "$work/bootstrap.log" 2>&1
+[ -e "$work/published" ]
+if grep -Fq fixture-token "$work/bootstrap.log"; then
+  echo 'bootstrap exposed its token' >&2; exit 1
+fi
 echo 'Release source, registry, package and workflow self-tests: passed (no uploads)'

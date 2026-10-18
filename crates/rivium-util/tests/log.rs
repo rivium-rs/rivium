@@ -222,9 +222,8 @@ fn close_disables_retained_dispatchers_and_extra_layers() {
 #[test]
 fn concurrent_producers_respect_queue_and_byte_bounds() {
     let temp = TempDir::new().unwrap();
-    let mut settings = Settings::for_app("pressure");
-    settings.file.max_file_size = 1024;
-    let logger = Logger::new("pressure", temp.path(), settings, false, vec![]).unwrap();
+    // Keep this queue test independent of per-event rotation and compression IO.
+    let logger = default_logger(&temp, "pressure").unwrap();
     std::thread::scope(|scope| {
         for _ in 0..4 {
             let dispatch = logger.dispatch();
@@ -252,6 +251,7 @@ fn concurrent_producers_respect_queue_and_byte_bounds() {
         replacement.close(Duration::from_secs(2)).unwrap();
     }
     logger.close(Duration::from_secs(10)).unwrap();
+    assert_eq!(logger.pending_workers(), 0);
     assert_eq!(logger.stats().queued_events, 0);
     assert_eq!(logger.stats().queued_bytes, 0);
     assert_eq!(logger.stats().write_failures, 0);
@@ -707,7 +707,14 @@ fn external_active_file_removal_is_a_visible_flush_failure() {
     let logger = default_logger(&temp, "removed").unwrap();
     tracing::dispatcher::with_default(&logger.dispatch(), || tracing::info!("before removal"));
     logger.flush(Duration::from_secs(2)).unwrap();
-    std::fs::remove_file(temp.path().join("logs/removed/removed.log")).unwrap();
+    let active = temp.path().join("logs/removed/removed.log");
+    std::fs::remove_file(&active).unwrap();
+    // Wine 10 keeps a delete-pending file visible while the writer owns it.
+    // Ensure the missing-path precondition without weakening the error checks.
+    if active.try_exists().unwrap() {
+        std::fs::rename(&active, temp.path().join("removed.log")).unwrap();
+    }
+    assert!(!active.try_exists().unwrap());
     assert!(logger.flush(Duration::from_secs(2)).is_err());
     assert!(logger.close(Duration::from_secs(2)).is_err());
     assert_eq!(logger.pending_workers(), 0);

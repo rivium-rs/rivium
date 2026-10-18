@@ -143,7 +143,8 @@ fn rotation_at_the_owned_file_limit_prunes_oldest_archives_and_keeps_export_usab
     let id = exporter
         .start(request("1970-01-01", "9999-12-31", &[]))
         .unwrap();
-    let archive = ready_archive(&exporter, id);
+    // Thousands of file operations need a larger observation budget under Wine/QEMU.
+    let archive = ready_archive_with_timeout(&exporter, id, Duration::from_secs(60));
     let mut zip = zip::ZipArchive::new(fs::File::open(&archive.path).unwrap()).unwrap();
     assert_eq!(zip.len(), 8191);
     assert!(zip.by_name(unrelated).is_err());
