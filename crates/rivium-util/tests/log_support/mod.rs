@@ -42,7 +42,8 @@ pub(crate) fn default_logger(root: &TempDir, name: &str) -> rivium::Result<Logge
 
 pub(crate) fn run_child(test: &str, variable: &str, value: &str) -> Output {
     rivium_test::command(std::env::current_exe().unwrap())
-        .args(["--exact", test, "--nocapture"])
+        // Keep libtest's single-thread test-name prefix off the captured log line.
+        .args(["--exact", test, "--nocapture", "--format=terse"])
         .env(variable, value)
         .output()
         .unwrap()
