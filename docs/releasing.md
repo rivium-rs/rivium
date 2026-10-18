@@ -67,8 +67,8 @@ The semver job checks the four continuing packages (rivium, rivium-http, rivium-
 and rivium-test) against published baselines. rivium-util and rivium-host are new package
 identities and use package/feature/MSRV verification for their first release. The checker
 has no --locked switch; CI verifies that the root lockfile stays unchanged. Missing existing
-baselines and registry errors remain failures. New package names and Trusted Publishing
-settings require maintainer provisioning before publication.
+baselines and registry errors remain failures. New package names require the first-publication
+setup below; a dry run does not verify publishing credentials or Trusted Publisher settings.
 
 The release aggregate requires the dedicated Loom job for the same candidate as well as
 native/daily/package/content checks. Failure, cancellation or a skipped prerequisite is
@@ -77,18 +77,21 @@ not a successful release gate.
 ## Protected publishing and recovery
 
 The repository must have the `PUBLIC_DENYLIST` secret and a **protected `crates-io` environment**
-with a required reviewer and a deployment policy allowing the version tags. Configure Trusted
-Publishing for each of the six public crates, bound to this repository, `release.yml` and
-that environment. These are maintainer-managed settings; adding the workflow does not set them.
-The workflow checks reviewer protection through the read-only environments API. It has no
-long-lived-token fallback and does not provision new crate names.
+with a required reviewer and a deployment policy allowing the version tags. Publishing normally
+uses Trusted Publishing for each of the six public crates, bound to `rivium-rs/rivium`,
+`release.yml` and that environment. The `v0.2.0` tag uses the one-time API token setup below
+because Trusted Publishing cannot be configured until a crate exists. These are maintainer-managed
+settings; adding the workflow does not set them. The workflow checks reviewer protection through
+the read-only environments API. Other tags require OIDC and have no API-token fallback.
 
 The publish job is the only job with `id-token: write` and `contents: write`. After every required
 job succeeds and environment approval is granted, it checks out the same tag, installs the same
 Rust version, downloads the verified artifact **by ID from that run**, and compares freshly
 packaged bytes against it. Dependency build scripts do not run in this privileged job:
 `--no-verify` is used only after the identical archives passed the unprivileged `publish --dry-run`.
-An explicit OIDC action obtains a short-lived token; only then does Cargo publish the workspace.
+For `v0.2.0`, Cargo uses the environment's `CARGO_REGISTRY_TOKEN` secret; for other tags, an explicit
+OIDC action obtains a short-lived token. Only the publish step receives the selected credential.
+Manual previews receive neither publishing credential and cannot publish.
 The workflow checks registry checksums and then creates and reads back the GitHub Release, using
 the generated notes file rather than interpolating its contents into a shell command.
 
@@ -99,25 +102,31 @@ published semver baselines; the package, feature, MSRV, archive and dry-run chec
 first-release validation. They are still part of the same six-package publication and are
 published in Cargo's dependency order.
 
-Before creating `v0.2.0`, configure a separate Trusted Publisher for each of the six crate names,
-including both new identities. Bind every publisher to this repository, `.github/workflows/release.yml`
-and the protected `crates-io` environment. The workflow cannot create publisher records and has no
-long-lived-token fallback. A local `cargo publish --dry-run` does not prove that a publisher record
-exists, and the current release must not be manually uploaded first as a workaround.
+Before creating `v0.2.0`, create one crates.io API token and store it as `CARGO_REGISTRY_TOKEN`
+in the protected `crates-io` environment. Give it a short expiry and the least permissions that
+allow publishing all six public packages, including creating `rivium-util` and `rivium-host`.
+Separate tokens per crate are unnecessary. A token restricted to existing crate names will not
+cover these new identities. The workflow uses this secret only for the exact `v0.2.0` tag;
+manual dispatch remains an unprivileged preview.
 
-The tag workflow performs a read-only `absent` check for all six names before requesting the
-short-lived crates.io OIDC token. This protects the one-time release from duplicate uploads. The
-workspace upload is not transactional: if a later crate fails, stop and inspect the registry with
-`scripts/release-registry.sh published <version> <verified-artifact-dir>` using the retained
-archives. Do not delete and recreate the tag or rerun the workspace upload blindly. If all six
-checksums are confirmed and only the announcement failed, create the GitHub Release from the
-retained `notes.md` without publishing again.
+Do not manually publish either new crate's `0.2.0` version first. The tag workflow requires a
+read-only `absent` check for all six names before publication; an already uploaded version fails
+that check. Cargo publishes all six packages in dependency order after the common checks and
+environment approval.
 
-Publications are serialized and never automatically replayed after an ambiguous failure. If some
-crates were uploaded, an API times out, or the GitHub announcement fails, **inspect remote state
-first**. The read-only `scripts/release-registry.sh published <version> <verified-artifact-dir>`
-checks all six uploaded versions against the retained archives. A partial publication needs a
+After all six published checksums are verified, configure Trusted Publishing for every package,
+including the two newly created crates: repository `rivium-rs/rivium`, workflow filename
+`release.yml` (the file at `.github/workflows/release.yml`), environment `crates-io`. Revoke the
+API token on crates.io and remove the environment secret. Subsequent version tags use OIDC;
+removing the secret does not make `v0.2.0` safe to replay. A dry run proves neither token
+permissions nor publisher configuration.
+
+Workspace publication is not transactional. Publications are serialized and never automatically
+replayed after an ambiguous failure. If some crates were uploaded, an API times out, or the GitHub
+announcement fails, **inspect remote state first**. The read-only
+`scripts/release-registry.sh published <version> <verified-artifact-dir>` checks all six uploaded
+versions against the retained archives. A partial publication needs a
 maintainer-directed recovery; do not delete/recreate tags, assume rollback, or blindly rerun an
 upload. If all crates are verified and only the announcement is missing, recover the announcement
-without uploading the crates again. Preview artifacts are retained for seven days; expired or
-incomplete evidence requires fresh validation, not bypassing the checks.
+from the retained `notes.md` without uploading the crates again. Preview artifacts are retained
+for seven days; expired or incomplete evidence requires fresh validation, not bypassing the checks.
