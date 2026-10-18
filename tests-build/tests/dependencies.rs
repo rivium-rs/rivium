@@ -21,6 +21,8 @@ fn graph(package: &str, features: &str) -> std::collections::BTreeMap<String, BT
             .cargo("tree")
             .args([
                 "--locked",
+                "--color",
+                "never",
                 "-e",
                 "normal,build",
                 "--prefix",

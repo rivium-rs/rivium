@@ -77,7 +77,7 @@ pub mod __private {
     }
 }
 
-#[allow(unsafe_code)]
+#[allow(deprecated, unsafe_code)]
 unsafe fn register_application<A: App>(raw: *mut jni::sys::JavaVM, java_class: &str) -> jint {
     let installed = catch_unwind(AssertUnwindSafe(|| {
         APPLICATION.get_or_init(|| ApplicationBridge {
