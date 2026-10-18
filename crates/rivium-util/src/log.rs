@@ -295,6 +295,7 @@ pub struct LogStats {
 
 // Subscriber hooks are user code and may unwind before Logger exists.
 struct ConstructionGuard {
+    directory: Option<Arc<files::Directory>>,
     writer: files::Worker,
     #[cfg(feature = "log-export")]
     exporter: Option<Exporter>,
@@ -304,6 +305,10 @@ struct ConstructionGuard {
 impl Drop for ConstructionGuard {
     fn drop(&mut self) {
         if self.armed {
+            // Release the constructor's lease before waiting for workers. The
+            // worker threads own their cloned leases and are then the only
+            // remaining directory users during shutdown.
+            self.directory.take();
             self.writer.request_close();
             #[cfg(feature = "log-export")]
             if let Some(exporter) = &self.exporter {
@@ -374,6 +379,7 @@ impl Logger {
             settings.reserve(),
         )?;
         let mut construction = ConstructionGuard {
+            directory: Some(directory.clone()),
             writer: writer.clone(),
             #[cfg(feature = "log-export")]
             exporter: None,
@@ -396,6 +402,7 @@ impl Logger {
         {
             construction.exporter = Some(exporter.clone());
         }
+        drop(directory);
 
         let terminal = console && std::io::stdout().is_terminal();
         let mut layers = extra;
@@ -458,6 +465,7 @@ impl Logger {
             #[cfg(feature = "log-export")]
             exporter,
         };
+        construction.directory = None;
         construction.armed = false;
         Ok(logger)
     }
