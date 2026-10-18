@@ -80,7 +80,8 @@ records retain their original scope and dates.
 
 The latest local retention follow-up on **2026-10-18** uses frozen source
 `99abbc88623d6387ee73b1f020a4fe25b26c23d3`, with production `crates` subtree
-`b781250ef5aa86803f103e0c2cf89531540acde0`. The candidate record covers the latest native validation and package preview; earlier platform/LaunchAgent results remain tied to
+`b781250ef5aa86803f103e0c2cf89531540acde0`. The candidate record covers the latest native
+validation and package preview; earlier platform/LaunchAgent results remain tied to
 `b204cef` and HTTP/Supervisor measurements to `2e50d50`, with their older `cb3d3ec3` subtree;
 they have not been rerun for this changed production source.
 
@@ -144,7 +145,7 @@ and unchanged reconciliation of 128 tasks on one worker fell from 10.04 µs to 2
 (historical: 4.57 µs). Immediately-ready tracking remains 10.6% above the historical
 batch mean; single-task replacement on one worker remains 16.8% above it. **Performance
 acceptance remains open**: these are batch means, and task p99 and the deployment workload
-matrix are still unverified. 
+matrix are still unverified.
 
 The follow-up passed workspace all-feature tests, the added native scope race, eight
 production-code Loom models, strict Clippy, formatting, minimal-task feature tests and
