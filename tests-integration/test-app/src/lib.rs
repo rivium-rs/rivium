@@ -34,6 +34,7 @@ impl App for TestApp {
             writeln!(builds, "built")?;
         }
         let mode = config.mode.clone();
+        let stopping = context.paths().root().join("stopping");
         let services = vec![service("worker", Kind::Frontline, move |ctx| async move {
             if mode == "startup-error" {
                 return Err(rivium::Error::internal("startup rejected"));
@@ -49,10 +50,11 @@ impl App for TestApp {
             if mode == "restart" {
                 ctx.control().restart("configuration changed");
             }
+            ctx.stopped().await;
             if mode == "stop-hang" {
+                std::fs::write(stopping, b"stopping")?;
                 std::future::pending::<()>().await;
             }
-            ctx.stopped().await;
             Ok(())
         })];
         Ok(services)

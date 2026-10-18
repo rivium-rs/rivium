@@ -133,10 +133,15 @@ fn process_signals_and_deadline() {
         ("stop-hang", vec!["TERM", "TERM"], 143),
     ] {
         let dir = TempDir::new().unwrap();
+        let timeout = if signals.len() > 1 {
+            "lifecycle.stop_timeout=10s"
+        } else {
+            "lifecycle.stop_timeout=200ms"
+        };
         let mut child = tests_integration::command()
             .env_remove("RUST_LOG")
             .args(args(&dir, mode))
-            .args(["--set", "lifecycle.stop_timeout=200ms"])
+            .args(["--set", timeout])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -156,7 +161,23 @@ fn process_signals_and_deadline() {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
-        for signal in signals {
+        for (index, signal) in signals.iter().enumerate() {
+            if index > 0 {
+                // Observe the first signal before sending the abort signal.
+                let end = std::time::Instant::now() + Duration::from_secs(5);
+                while !dir.path().join("stopping").exists() {
+                    assert!(
+                        child.try_wait().unwrap().is_none(),
+                        "child exited before stopping"
+                    );
+                    if std::time::Instant::now() >= end {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("child never observed the first signal");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
             assert!(
                 Command::new("kill")
                     .args(["-s", signal, &child.id().to_string()])
@@ -164,7 +185,6 @@ fn process_signals_and_deadline() {
                     .unwrap()
                     .success()
             );
-            std::thread::sleep(Duration::from_millis(30));
         }
         let end = std::time::Instant::now() + Duration::from_secs(5);
         let exit = loop {
