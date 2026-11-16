@@ -48,7 +48,7 @@ fn wait_exit(child: &mut Child) -> std::process::ExitStatus {
 fn an_uncreatable_log_directory_exits_73_before_starting_services() {
     let root = TempDir::new().unwrap();
     std::fs::write(root.path().join("blocked"), "not a directory").unwrap();
-    let output = tests_integration::command()
+    let output = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
         .arg("--root")
         .arg(root.path())
         .args(["--set", "log.file.dir=blocked/logs"])
@@ -67,7 +67,7 @@ fn an_uncreatable_log_directory_exits_73_before_starting_services() {
 fn cli_aliases_and_existing_config_inspection_are_read_only() {
     let root = TempDir::new().unwrap();
     for flag in ["--version", "-V", "--help", "-h"] {
-        let output = tests_integration::command()
+        let output = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .args([flag, "--root"])
             .arg(root.path())
             .output()
@@ -78,7 +78,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
     }
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
 
-    let defaults = tests_integration::command()
+    let defaults = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
         .args(["default-config", "--root"])
         .arg(root.path())
         .output()
@@ -88,7 +88,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
 
     let file = root.path().join("config.toml");
     std::fs::write(&file, &defaults.stdout).unwrap();
-    let checked = tests_integration::command()
+    let checked = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
         .args(["check-config", "--root"])
         .arg(root.path())
         .args([
@@ -115,7 +115,7 @@ fn cli_aliases_and_existing_config_inspection_are_read_only() {
 fn normal_sigterm_flushes_the_final_run_record_before_process_exit() {
     let root = TempDir::new().unwrap();
     let mut child = Reap(
-        tests_integration::command()
+        tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .arg("--root")
             .arg(root.path())
             .stdout(Stdio::null())
@@ -151,7 +151,7 @@ fn sigquit_retains_default_signal_termination() {
     use std::os::unix::process::ExitStatusExt;
 
     let root = TempDir::new().unwrap();
-    let original = tests_integration::command();
+    let original = tests_integration::command(env!("CARGO_BIN_EXE_test-host"));
     // Only the child shell disables dumps; no unsafe pre_exec or process-global changes.
     let mut child = Reap(
         Command::new("sh")
@@ -195,27 +195,16 @@ fn temporary_fixture_roots_are_isolated_and_removed() {
 
 #[test]
 fn child_binary_is_located_without_runtime_cargo_binary_variables() {
-    let command = tests_integration::command();
-    assert!(
-        command
-            .get_program()
-            .to_string_lossy()
-            .ends_with("test-host")
-            || command
-                .get_args()
-                .any(|arg| arg.to_string_lossy().ends_with("test-host"))
-            || command
-                .get_program()
-                .to_string_lossy()
-                .ends_with("test-host.exe")
-    );
+    let command = tests_integration::command(env!("CARGO_BIN_EXE_test-host"));
+    let binary = std::ffi::OsStr::new(env!("CARGO_BIN_EXE_test-host"));
+    assert!(command.get_program() == binary || command.get_args().any(|arg| arg == binary));
 }
 
 #[test]
 fn usage_and_configuration_failures_do_not_create_runtime_files() {
     for (arguments, code) in [(vec!["--wrong"], 64), (vec!["--set", "unknown=1"], 78)] {
         let root = TempDir::new().unwrap();
-        let output = tests_integration::command()
+        let output = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .arg("--root")
             .arg(root.path())
             .args(arguments)
@@ -232,13 +221,13 @@ fn process_reads_its_environment_root_and_explicit_root_wins() {
     let environment = TempDir::new().unwrap();
     let explicit = TempDir::new().unwrap();
     std::fs::write(environment.path().join("rivium-demo.toml"), "mode = 42\n").unwrap();
-    let from_env = tests_integration::command()
+    let from_env = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
         .env("RIVIUM_DEMO_ROOT", environment.path())
         .arg("check-config")
         .output()
         .unwrap();
     assert_eq!(from_env.status.code(), Some(78));
-    let from_cli = tests_integration::command()
+    let from_cli = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
         .env("RIVIUM_DEMO_ROOT", environment.path())
         .args(["check-config", "--root"])
         .arg(explicit.path())

@@ -105,7 +105,13 @@ else
     if [ "${BUILD_CASE:-}" = missing-signal ] && [ "$name" = task ]; then continue; fi
     package=tests-integration
     [ "$name" != consumers ] || package=tests-build
-    emit "$name" "$out/deps/$name-abcd" test true "$package"
+    case "${LAYOUT:-deps}" in
+      deps) directory="$out/deps"; filename="$name-abcd" ;;
+      build) directory="$out/build/$package/abcd/out"; filename="$name-abcd" ;;
+      custom) directory="$out/custom/$package"; filename="$name" ;;
+    esac
+    mkdir -p "$directory"
+    emit "$name" "$directory/$filename" test true "$package"
   done
 fi
 echo '{"reason":"build-finished","success":true}'
@@ -113,8 +119,10 @@ CARGO
 chmod +x "$work/bin/cargo"
 export PATH="$work/bin:$PATH"
 build="$work/repo/scripts/glibc.sh"
-"$build" build > "$work/log" 2>&1 || { cat "$work/log" >&2; exit 1; }
-[ "$(wc -l < "$work/repo/target/glibc/runtime-tests.txt" | tr -d ' ')" -eq 12 ]
+for layout in deps build custom; do
+  LAYOUT=$layout "$build" build > "$work/log" 2>&1 || { cat "$work/log" >&2; exit 1; }
+  [ "$(wc -l < "$work/repo/target/glibc/runtime-tests.txt" | tr -d ' ')" -eq 12 ]
+done
 for case in failed incomplete empty missing-jni missing-signal; do
   if BUILD_CASE=$case "$build" build > "$work/log" 2>&1; then
     echo "glibc accepted build case: $case" >&2; exit 1
