@@ -77,7 +77,7 @@ fn config_commands_are_read_only() {
     let dir = TempDir::new().unwrap();
 
     for command in ["--version", "--help", "check-config", "default-config"] {
-        let output = tests_integration::command()
+        let output = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .args([command, "--root"])
             .arg(dir.path())
             .output()
@@ -104,7 +104,7 @@ fn process_errors_have_stable_codes() {
         (vec!["--set", "mode=restart"], 75),
         (vec!["--set", "unknown=1"], 78),
     ] {
-        let output = tests_integration::command()
+        let output = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .arg("--root")
             .arg(dir.path())
             .args(extra)
@@ -138,7 +138,7 @@ fn process_signals_and_deadline() {
         } else {
             "lifecycle.stop_timeout=200ms"
         };
-        let mut child = tests_integration::command()
+        let mut child = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .env_remove("RUST_LOG")
             .args(args(&dir, mode))
             .args(["--set", timeout])
@@ -202,7 +202,7 @@ fn process_signals_and_deadline() {
 
     for signal in ["TERM", "INT"] {
         let dir = TempDir::new().unwrap();
-        let mut child = tests_integration::command()
+        let mut child = tests_integration::command(env!("CARGO_BIN_EXE_test-host"))
             .args(args(&dir, "restart-backoff"))
             .args(["--set", "lifecycle.restart=in-process"])
             .stdout(Stdio::null())

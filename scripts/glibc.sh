@@ -61,7 +61,10 @@ for subject in test-host libtest_jni.so; do
     || { echo "glibc: missing required subject: $subject" >&2; exit 1; }
 done
 for name in hosts lifecycle config log log_export export_compat fs task contract server vocabulary files; do
-  grep -Eq "/deps/$name-[a-f0-9]+$" "$out/runtime-tests.txt" \
+  jq -se --arg name "$name" --rawfile runtime_tests "$out/runtime-tests.txt" '
+    ($runtime_tests | split("\n")) as $executables |
+    any(.[]; .reason == "compiler-artifact" and .target.name == $name and
+      (.executable as $exe | $executables | index($exe) != null))' "$out/tests.jsonl" >/dev/null \
     || { echo "glibc: missing required runtime test: $name" >&2; exit 1; }
 done
 echo "glibc: checked $(wc -l < "$out/artifacts.txt" | tr -d ' ') artifacts"
